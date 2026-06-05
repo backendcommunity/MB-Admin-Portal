@@ -14,6 +14,8 @@ interface AuthState {
 }
 
     
+const isAuthDisabled = process.env.NEXT_PUBLIC_DISABLE_AUTH === "true";
+
 const storage =
   typeof window !== "undefined"
     ? createJSONStorage(() => localStorage)
@@ -22,20 +24,23 @@ const storage =
 export const useAuthStore = create<AuthState>()(
   persist(
     (set) => ({
-      token: null,
-      userRole: null,
+      token: isAuthDisabled ? "dev-token" : null,
+      userRole: isAuthDisabled ? "SUPER_ADMIN" : null,
       login: (token, userRole) => set({ token, userRole }),
       logout: () => {
         if (typeof document !== "undefined") {
           document.cookie =
             "mb_token=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT";
         }
-        set({ token: null, userRole: null });
+        set({
+          token: isAuthDisabled ? "dev-token" : null,
+          userRole: isAuthDisabled ? "SUPER_ADMIN" : null,
+        });
       },
       tokenRefresh: (token) => set((state) => ({ ...state, token })),
     }),
     {
-      name: "mb_token",
+      name: isAuthDisabled ? "mb_token_dev" : "mb_token",
       storage,
       partialize: (state) => ({ token: state.token, userRole: state.userRole }),
     }

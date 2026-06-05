@@ -3,6 +3,7 @@ import axios from "axios";
 import { useAuthStore } from "@/store/authStore";
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "/api";
+const isAuthDisabled = process.env.NEXT_PUBLIC_DISABLE_AUTH === "true";
 
 export const axiosInstance = axios.create({
   baseURL: API_BASE_URL,
@@ -25,7 +26,11 @@ axiosInstance.interceptors.request.use(
 axiosInstance.interceptors.response.use(
   (response) => response,
   (error) => {
-    if (error.response && (error.response.status === 401 || error.response.status === 403)) {
+    if (
+      !isAuthDisabled &&
+      error.response &&
+      (error.response.status === 401 || error.response.status === 403)
+    ) {
       useAuthStore.getState().logout();
       if (typeof window !== "undefined") {
         const returnUrl = encodeURIComponent(

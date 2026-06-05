@@ -11,11 +11,15 @@ export default async function AppLayout({
 }: {
   children: ReactNode;
 }) {
-  const cookieStore = await cookies();
-  const token = cookieStore.get("mb_token")?.value;
+  const isAuthDisabled = process.env.NEXT_PUBLIC_DISABLE_AUTH === "true";
 
-  if (!token) {
-    redirect("/login");
+  if (!isAuthDisabled) {
+    const cookieStore = await cookies();
+    const token = cookieStore.get("mb_token")?.value;
+
+    if (!token) {
+      redirect("/login");
+    }
   }
 
   return <AppShell>{children}</AppShell>;
