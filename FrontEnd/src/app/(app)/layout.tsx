@@ -1,33 +1,21 @@
-"use client";
-
 import type { ReactNode } from "react";
-import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
+import { cookies } from "next/headers";
+import { redirect } from "next/navigation";
 
 import { AppShell } from "@/components/shared/AppShell";
-import { useAuthStore } from "@/store/authStore";
 
-export default function AppLayout({
+export const dynamic = "force-dynamic";
+
+export default async function AppLayout({
   children,
 }: {
   children: ReactNode;
 }) {
-  const router = useRouter();
-  const token = useAuthStore((state) => state.token);
-  const [hydrated, setHydrated] = useState(false);
+  const cookieStore = await cookies();
+  const token = cookieStore.get("mb_token")?.value;
 
-  useEffect(() => {
-    setHydrated(true);
-  }, []);
-
-  useEffect(() => {
-    if (hydrated && !token) {
-      router.replace("/login");
-    }
-  }, [hydrated, token, router]);
-
-  if (!hydrated) {
-    return null;
+  if (!token) {
+    redirect("/login");
   }
 
   return <AppShell>{children}</AppShell>;

@@ -1,3 +1,5 @@
+"use client";
+
 import type { AxiosRequestConfig } from "axios";
 import {
   QueryClient,

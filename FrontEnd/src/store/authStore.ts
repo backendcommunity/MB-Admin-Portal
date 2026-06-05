@@ -25,7 +25,13 @@ export const useAuthStore = create<AuthState>()(
       token: null,
       userRole: null,
       login: (token, userRole) => set({ token, userRole }),
-      logout: () => set({ token: null, userRole: null }),
+      logout: () => {
+        if (typeof document !== "undefined") {
+          document.cookie =
+            "mb_token=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT";
+        }
+        set({ token: null, userRole: null });
+      },
       tokenRefresh: (token) => set((state) => ({ ...state, token })),
     }),
     {

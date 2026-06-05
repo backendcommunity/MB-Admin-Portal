@@ -29,10 +29,17 @@ const loginSchema = z.object({
 
 type LoginValues = z.infer<typeof loginSchema>;
 
+const getSafeReturnUrl = (value: string | null) => {
+  if (!value || !value.startsWith("/") || value.startsWith("//")) {
+    return "/dashboard";
+  }
+  return value;
+};
+
 export default function LoginForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const returnUrl = searchParams.get("returnUrl") ?? "/dashboard";
+  const returnUrl = getSafeReturnUrl(searchParams.get("returnUrl"));
   const [formError, setFormError] = useState<string | null>(null);
 
   const form = useForm<LoginValues>({
@@ -55,7 +62,11 @@ export default function LoginForm() {
 
       useAuthStore.getState().login(token, role);
       if (typeof document !== "undefined") {
-        document.cookie = `mb_token=${token}; path=/`;
+        const cookieParts = ["path=/", "SameSite=Lax"];
+        if (window.location.protocol === "https:") {
+          cookieParts.push("Secure");
+        }
+        document.cookie = `mb_token=${token}; ${cookieParts.join("; ")}`;
       }
       router.replace(returnUrl);
     } catch (error) {
