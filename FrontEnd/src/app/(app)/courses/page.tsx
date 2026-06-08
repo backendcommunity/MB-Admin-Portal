@@ -1,16 +1,15 @@
 import { BookOpen } from "lucide-react";
 
 import { ProtectedPage } from "@/components/shared/ProtectedPage";
-import { EmptyModulePage } from "@/modules/EmptyModulePage";
+import CoursesTable from "@/components/courses/CoursesTable";
 
 export default function CoursesPage() {
   return (
     <ProtectedPage allowedRoles={["SUPER_ADMIN", "ADMIN"]}>
-      <EmptyModulePage
-        title="Courses"
-        description="Create, edit, and publish courses."
-        icon={BookOpen}
-      />
+      <div className="p-6">
+        <h1 className="text-2xl font-semibold mb-4">Courses</h1>
+        <CoursesTable />
+      </div>
     </ProtectedPage>
   );
 }

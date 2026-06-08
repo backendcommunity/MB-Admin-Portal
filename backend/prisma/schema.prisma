@@ -1,0 +1,83 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id        Int      @id @default(autoincrement())
+  email     String   @unique
+  name      String?
+  password  String?
+  role      String   @default("student")
+  active    Boolean  @default(true)
+  enrollments Enrollment[]
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Course {
+  id          Int       @id @default(autoincrement())
+  title       String
+  description String?
+  category    String?
+  instructor  String?
+  tags        String?
+  thumbnail   String?
+  published   Boolean   @default(false)
+  chapters    Chapter[]
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+}
+
+model Bootcamp {
+  id          Int       @id @default(autoincrement())
+  name        String
+  description String?
+  location    String?
+  active      Boolean   @default(true)
+  cohorts     Cohort[]
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+}
+
+model Cohort {
+  id        Int      @id @default(autoincrement())
+  name      String
+  bootcamp  Bootcamp @relation(fields: [bootcampId], references: [id])
+  bootcampId Int
+  enrollments Enrollment[]
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Enrollment {
+  id        Int      @id @default(autoincrement())
+  user      User     @relation(fields: [userId], references: [id])
+  userId    Int
+  cohort    Cohort   @relation(fields: [cohortId], references: [id])
+  cohortId  Int
+  role      String   @default("student")
+  createdAt DateTime @default(now())
+}
+
+model Chapter {
+  id        Int      @id @default(autoincrement())
+  title     String
+  course    Course   @relation(fields: [courseId], references: [id])
+  courseId  Int
+  lessons   Lesson[]
+  order     Int      @default(0)
+}
+
+model Lesson {
+  id        Int      @id @default(autoincrement())
+  title     String
+  content   String?
+  chapter   Chapter  @relation(fields: [chapterId], references: [id])
+  chapterId Int
+  order     Int      @default(0)
+}

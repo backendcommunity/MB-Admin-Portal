@@ -23,7 +23,12 @@ import type { UserRole } from "@/lib/constants/roles";
 import { useAuthStore } from "@/store/authStore";
 
 const loginSchema = z.object({
-  email: z.string().email("Enter a valid email address."),
+  email: z
+    .string()
+    .min(1, "Enter a valid email address.")
+    .refine((value) => /^[^\s@]+@[^\s@]+$/.test(value), {
+      message: "Enter a valid email address.",
+    }),
   password: z.string().min(8, "Password must be at least 8 characters."),
 });
 
@@ -54,6 +59,21 @@ export default function LoginForm() {
     setFormError(null);
 
     try {
+      if (process.env.NEXT_PUBLIC_DISABLE_AUTH === "true") {
+        const token = "dev-token";
+        const role: UserRole = "SUPER_ADMIN";
+        useAuthStore.getState().login(token, role);
+        if (typeof document !== "undefined") {
+          const cookieParts = ["path=/", "SameSite=Lax"];
+          if (window.location.protocol === "https:") {
+            cookieParts.push("Secure");
+          }
+          document.cookie = `mb_token=${token}; ${cookieParts.join("; ")}`;
+        }
+        router.replace(returnUrl);
+        return;
+      }
+
       const response = await axiosInstance.post("/auth/login", values);
       const { token, role } = response.data as {
         token: string;
