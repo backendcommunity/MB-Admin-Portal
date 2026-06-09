@@ -2,10 +2,14 @@
   "name": "mb-admin-backend",
   "version": "0.1.0",
   "private": true,
+  "engines": {
+    "node": "20.x"
+  },
   "scripts": {
     "start": "node dist/index.js",
     "start:dev": "ts-node-dev --respawn --transpile-only src/index.ts",
-    "build": "tsc"
+    "build": "tsc",
+    "prisma:generate": "prisma generate"
   },
   "dependencies": {
     "@prisma/client": "4.15.0",
