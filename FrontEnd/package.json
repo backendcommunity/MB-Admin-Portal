@@ -2,6 +2,9 @@
   "name": "frontend",
   "version": "0.1.0",
   "private": true,
+  "engines": {
+    "node": "20.x"
+  },
   "scripts": {
     "dev": "next dev",
     "build": "next build",
@@ -42,7 +45,7 @@
     "tailwindcss": "^4",
     "typescript": "^5",
     "vitest": "^1.0.0",
-    "@testing-library/react": "^14.0.0",
+    "@testing-library/react": "^16.0.1",
     "@testing-library/jest-dom": "^5.17.0",
     "jsdom": "^22.0.0"
   },
