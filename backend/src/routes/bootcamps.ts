@@ -1,4 +1,5 @@
 import express from 'express';
+import { Prisma } from '@prisma/client';
 import { prisma } from '../db';
 import { requireAuth, requireRole } from '../middleware/auth';
 
@@ -18,8 +19,9 @@ router.get('/', async (req, res) => {
   if (status === 'inactive') where.active = false;
 
   const allowedSortFields = new Set(['id', 'name', 'location', 'active', 'createdAt', 'updatedAt']);
-  const orderBy = allowedSortFields.has(sort)
-    ? { [sort]: order === 'desc' ? 'desc' : 'asc' }
+  const sortOrder: Prisma.SortOrder = order === 'desc' ? 'desc' : 'asc';
+  const orderBy: Prisma.BootcampOrderByWithRelationInput = allowedSortFields.has(sort)
+    ? ({ [sort]: sortOrder } as Prisma.BootcampOrderByWithRelationInput)
     : { id: 'asc' };
 
   const [data, total] = await Promise.all([

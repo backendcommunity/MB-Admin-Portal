@@ -1,4 +1,5 @@
 import express from 'express';
+import { Prisma } from '@prisma/client';
 import { prisma } from '../db';
 
 const router = express.Router();
@@ -24,8 +25,9 @@ router.get('/', async (req, res) => {
   const size = Math.max(1, parseInt(pageSize || limit));
 
   const allowedSortFields = new Set(['id', 'name', 'email', 'role', 'active', 'createdAt', 'updatedAt']);
-  const orderBy = allowedSortFields.has(sort)
-    ? { [sort]: order === 'desc' ? 'desc' : 'asc' }
+  const sortOrder: Prisma.SortOrder = order === 'desc' ? 'desc' : 'asc';
+  const orderBy: Prisma.UserOrderByWithRelationInput = allowedSortFields.has(sort)
+    ? ({ [sort]: sortOrder } as Prisma.UserOrderByWithRelationInput)
     : { id: 'asc' };
 
   const users = await prisma.user.findMany({

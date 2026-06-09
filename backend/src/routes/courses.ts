@@ -1,4 +1,5 @@
 import express from 'express';
+import { Prisma } from '@prisma/client';
 import { prisma } from '../db';
 
 const router = express.Router();
@@ -46,8 +47,9 @@ router.get('/', async (req, res) => {
   if (status === 'draft') where.published = false;
 
   const allowedSortFields = new Set(['id', 'title', 'category', 'instructor', 'published', 'createdAt', 'updatedAt']);
-  const orderBy = allowedSortFields.has(sort)
-    ? { [sort]: order === 'desc' ? 'desc' : 'asc' }
+  const sortOrder: Prisma.SortOrder = order === 'desc' ? 'desc' : 'asc';
+  const orderBy: Prisma.CourseOrderByWithRelationInput = allowedSortFields.has(sort)
+    ? ({ [sort]: sortOrder } as Prisma.CourseOrderByWithRelationInput)
     : { id: 'asc' };
 
   const [courses, total] = await Promise.all([
@@ -61,7 +63,7 @@ router.get('/', async (req, res) => {
     prisma.course.count({ where }),
   ]);
 
-  res.json({ data: courses.map((course) => toCourseResponse(course, course._count.chapters)), total });
+  res.json({ data: courses.map((course: any) => toCourseResponse(course, course._count.chapters)), total });
 });
 
 router.post('/', async (req, res) => {
