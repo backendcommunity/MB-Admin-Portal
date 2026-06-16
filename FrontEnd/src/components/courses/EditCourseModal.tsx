@@ -13,7 +13,7 @@ export default function EditCourseModal({ open, course, onClose, onUpdated }: Pr
   const [instructor, setInstructor] = useState("");
   const [tags, setTags] = useState("");
   const [thumbnail, setThumbnail] = useState("");
-  const [published, setPublished] = useState(false);
+  const [status, setStatus] = useState("DRAFT");
 
   useEffect(() => {
     if (course) {
@@ -23,7 +23,7 @@ export default function EditCourseModal({ open, course, onClose, onUpdated }: Pr
       setInstructor(course.instructor || "");
       setTags((course.tags || []).join(", "));
       setThumbnail(course.thumbnail || "");
-      setPublished(Boolean(course.published));
+      setStatus(course.status || (course.published ? "PUBLISHED" : "DRAFT"));
     }
   }, [course]);
 
@@ -38,7 +38,8 @@ export default function EditCourseModal({ open, course, onClose, onUpdated }: Pr
         category,
         instructor,
         thumbnail,
-        published,
+        status,
+        published: status === "PUBLISHED",
         tags: tags.split(",").map((tag) => tag.trim()).filter(Boolean),
       });
       onUpdated?.();
@@ -81,9 +82,17 @@ export default function EditCourseModal({ open, course, onClose, onUpdated }: Pr
             <label className="block text-sm">Description</label>
             <textarea value={description} onChange={(e) => setDescription(e.target.value)} className="textarea textarea-bordered w-full" />
           </div>
-          <div className="flex items-center gap-2">
-            <input id="published" type="checkbox" checked={published} onChange={(e) => setPublished(e.target.checked)} />
-            <label htmlFor="published">Published</label>
+          <div>
+            <label className="block text-sm">Status</label>
+            <select
+              value={status}
+              onChange={(e) => setStatus(e.target.value)}
+              className="select select-bordered w-full"
+            >
+              <option value="DRAFT">Draft</option>
+              <option value="PUBLISHED">Published</option>
+              <option value="ARCHIVED">Archived</option>
+            </select>
           </div>
           <div className="flex justify-end gap-2 mt-4">
             <button type="button" className="btn btn-ghost" onClick={onClose}>Cancel</button>

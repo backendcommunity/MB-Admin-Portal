@@ -1,62 +1,83 @@
 import { axiosInstance } from "@/lib/api/axios";
 
 export type User = {
-  id: number;
+  id: string;
   name: string;
   email: string;
   role: string;
   active: boolean;
   plan?: string;
+  status?: string;
   joinedAt?: string;
 };
 
-export async function fetchUsers(params?: { page?: number; limit?: number; q?: string }) {
-  const response = await axiosInstance.get<{ data: User[]; total: number }>("/users", {
+export type UsersListResponse = {
+  data: User[];
+  total: number;
+  page?: number;
+  limit?: number;
+};
+
+// Fetch users with pagination, filtering, and sorting
+export async function fetchUsers(params?: {
+  page?: number;
+  limit?: number;
+  q?: string;
+  role?: string;
+  active?: string;
+  sort?: string;
+  order?: string;
+}) {
+  const response = await axiosInstance.get<UsersListResponse>("/admin/users", {
     params,
   });
   return response.data;
 }
 
+// Create new user
 export async function createUser(payload: Partial<User>) {
-  const response = await axiosInstance.post<User>("/users", payload);
+  const response = await axiosInstance.post<User>("/admin/users", payload);
   return response.data;
 }
 
-export async function updateUser(payload: Partial<User> & { id: number }) {
-  const response = await axiosInstance.put<User>(`/users/${payload.id}`, payload);
+// Update user (generic)
+export async function updateUser(payload: Partial<User> & { id: string }) {
+  const response = await axiosInstance.put<User>(`/admin/users/${payload.id}`, payload);
   return response.data;
 }
 
-export async function deleteUser(id: number) {
-  const response = await axiosInstance.delete("/users", { params: { id } });
+// Delete user
+export async function deleteUser(id: string) {
+  const response = await axiosInstance.delete<{ success: boolean }>(`/admin/users/${id}`);
   return response.data;
 }
 
-export async function fetchUserById(id: number) {
-  const response = await axiosInstance.get<User>(`/users/${id}`);
+// Fetch single user by ID
+export async function fetchUserById(id: string) {
+  const response = await axiosInstance.get<User>(`/admin/users/${id}`);
   return response.data;
 }
 
-export async function suspendUserById(id: number, active: boolean) {
-  const response = await axiosInstance.patch<User>(`/users/${id}`, {
-    action: "suspend",
+// Suspend/reactivate user
+export async function suspendUserById(id: string, active: boolean) {
+  const response = await axiosInstance.patch<User>(`/admin/users/${id}/suspend`, {
     active,
   });
   return response.data;
 }
 
-export async function updateUserRole(id: number, role: string) {
-  const response = await axiosInstance.patch<User>(`/users/${id}`, {
-    action: "role",
+// Change user role
+export async function updateUserRole(id: string, role: string) {
+  const response = await axiosInstance.patch<User>(`/admin/users/${id}/role`, {
     role,
   });
   return response.data;
 }
 
-export async function resetUserPassword(id: number) {
-  const response = await axiosInstance.patch<{ success: boolean; message: string }>(
-    `/users/${id}`,
-    { action: "reset-password" }
+// Reset user password (sends email)
+export async function resetUserPassword(id: string) {
+  const response = await axiosInstance.post<{ success: boolean; message: string }>(
+    `/admin/users/${id}/reset-password`
   );
   return response.data;
 }

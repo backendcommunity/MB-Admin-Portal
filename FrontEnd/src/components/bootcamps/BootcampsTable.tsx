@@ -14,6 +14,11 @@ import AddBootcampModal from "@/components/bootcamps/AddBootcampModal";
 import EditBootcampModal from "@/components/bootcamps/EditBootcampModal";
 import ConfirmDelete from "@/components/users/ConfirmDelete";
 import { deleteBootcamp } from "@/lib/api/bootcamps";
+import Link from "next/link";
+import { Card } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 
 export default function BootcampsTable() {
   const [pageIndex, setPageIndex] = useState(0);
@@ -23,7 +28,7 @@ export default function BootcampsTable() {
   const [sorting, setSorting] = useState<SortingState>([]);
   const [showAdd, setShowAdd] = useState(false);
   const [editing, setEditing] = useState<Bootcamp | null>(null);
-  const [deletingId, setDeletingId] = useState<number | null>(null);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
 
   const sortParam = sorting[0]
     ? `&sort=${sorting[0].id}&order=${sorting[0].desc ? "desc" : "asc"}`
@@ -32,7 +37,7 @@ export default function BootcampsTable() {
 
   const { data, isLoading, isError, refetch } = useApiQuery<{ data: Bootcamp[]; total: number }>(
     ["bootcamps", pageIndex, pageSize, q, statusFilter, sorting],
-    `/bootcamps?page=${pageIndex + 1}&limit=${pageSize}&q=${encodeURIComponent(q)}${statusParam}${sortParam}`
+    `/admin/bootcamps?page=${pageIndex + 1}&limit=${pageSize}&q=${encodeURIComponent(q)}${statusParam}${sortParam}`
   );
   const list = data?.data || [];
   const total = data?.total || 0;
@@ -45,7 +50,11 @@ export default function BootcampsTable() {
       {
         accessorKey: "active",
         header: "Active",
-        cell: (info) => (info.getValue() ? "Yes" : "No"),
+        cell: (info) => (
+          <Badge className={info.getValue() ? "bg-green-100 text-green-800" : "bg-red-100 text-red-800"}>
+            {info.getValue() ? "Active" : "Inactive"}
+          </Badge>
+        ),
       },
       {
         id: "actions",
@@ -53,9 +62,9 @@ export default function BootcampsTable() {
         enableSorting: false,
         cell: ({ row }) => (
           <div className="flex gap-2 items-center">
-            <a href={`/bootcamps/${row.original.id}/cohorts`} className="btn btn-sm btn-outline">Cohorts</a>
-            <button className="btn btn-sm btn-ghost" onClick={() => setEditing(row.original)}>Edit</button>
-            <button className="btn btn-sm btn-ghost text-red-600" onClick={() => setDeletingId(row.original.id)}>Delete</button>
+            <Link href={`/bootcamps/${row.original.id}/cohorts`} className="text-blue-600 hover:text-blue-800 text-sm font-medium">Cohorts</Link>
+            <button className="text-blue-600 hover:text-blue-800 text-sm font-medium" onClick={() => setEditing(row.original)}>Edit</button>
+            <button className="text-red-600 hover:text-red-800 text-sm font-medium" onClick={() => setDeletingId(row.original.id)}>Delete</button>
           </div>
         ),
       },
@@ -80,17 +89,17 @@ export default function BootcampsTable() {
   });
 
   return (
-    <div>
+    <Card className="p-6">
       <div className="flex items-center justify-between mb-4">
         <div className="flex items-center gap-2 flex-wrap">
-          <input
+          <Input
             placeholder="Search bootcamps"
             value={q}
             onChange={(e) => {
               setQ(e.target.value);
               setPageIndex(0);
             }}
-            className="input input-bordered"
+            className="w-72"
           />
           <select
             value={statusFilter}
@@ -104,32 +113,34 @@ export default function BootcampsTable() {
             <option value="active">Active</option>
             <option value="inactive">Inactive</option>
           </select>
-          <button className="btn btn-sm" onClick={() => refetch()}>Refresh</button>
+          <Button variant="outline" size="sm" onClick={() => refetch()}>Refresh</Button>
         </div>
         <div>
-          <button className="btn btn-primary btn-sm" onClick={() => setShowAdd(true)}>New Bootcamp</button>
+          <Button className="bg-blue-600 hover:bg-blue-700 text-white" size="sm" onClick={() => setShowAdd(true)}>New Bootcamp</Button>
         </div>
       </div>
 
       {isLoading ? <p>Loading...</p> : isError ? <p>Error</p> : (
         <>
-          <table className="w-full table-auto border-collapse">
-            <thead>
+          <div className="overflow-x-auto">
+          <table className="w-full">
+            <thead className="bg-gray-100 border-b">
               {table.getHeaderGroups().map((headerGroup) => (
                 <tr key={headerGroup.id}>
                   {headerGroup.headers.map((header) => (
-                    <th key={header.id} className="p-2 text-left">
+                    <th key={header.id} className="text-left px-4 py-3 text-sm font-semibold">
                       {header.isPlaceholder ? null : (
                         <div
                           onClick={header.column.getCanSort() ? header.column.getToggleSortingHandler() : undefined}
                           style={{ cursor: header.column.getCanSort() ? "pointer" : undefined }}
+                          className="flex items-center gap-2"
                         >
                           {flexRender(header.column.columnDef.header, header.getContext())}
-                          <span>
+                          <span className="text-xs">
                             {header.column.getIsSorted() === "asc"
-                              ? " 🔼"
+                              ? "↑"
                               : header.column.getIsSorted() === "desc"
-                                ? " 🔽"
+                                ? "↓"
                                 : ""}
                           </span>
                         </div>
@@ -141,9 +152,9 @@ export default function BootcampsTable() {
             </thead>
             <tbody>
               {table.getRowModel().rows.map((row) => (
-                <tr key={row.id} className="border-t">
+                <tr key={row.id} className="border-b hover:bg-gray-50">
                   {row.getVisibleCells().map((cell) => (
-                    <td key={cell.id} className="p-2">
+                    <td key={cell.id} className="px-4 py-3 text-sm">
                       {flexRender(cell.column.columnDef.cell, cell.getContext())}
                     </td>
                   ))}
@@ -151,9 +162,10 @@ export default function BootcampsTable() {
               ))}
             </tbody>
           </table>
+          </div>
 
-          <div className="flex items-center justify-between mt-4">
-            <div>
+          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between mt-4 gap-3">
+            <div className="text-sm text-gray-600">
               Showing {Math.min(pageIndex * pageSize + 1, total)}-{Math.min((pageIndex + 1) * pageSize, total)} of {total}
             </div>
             <div className="flex gap-2">
@@ -169,8 +181,8 @@ export default function BootcampsTable() {
                 <option value={20}>20 / page</option>
                 <option value={50}>50 / page</option>
               </select>
-              <button className="btn btn-sm" onClick={() => table.setPageIndex(Math.max(0, pageIndex - 1))} disabled={pageIndex === 0}>Prev</button>
-              <button className="btn btn-sm" onClick={() => table.setPageIndex(pageIndex + 1)} disabled={(pageIndex + 1) * pageSize >= total}>Next</button>
+              <Button variant="outline" size="sm" onClick={() => table.setPageIndex(Math.max(0, pageIndex - 1))} disabled={pageIndex === 0}>Prev</Button>
+              <Button variant="outline" size="sm" onClick={() => table.setPageIndex(pageIndex + 1)} disabled={(pageIndex + 1) * pageSize >= total}>Next</Button>
             </div>
           </div>
         </>
@@ -179,6 +191,6 @@ export default function BootcampsTable() {
       <AddBootcampModal open={showAdd} onClose={() => setShowAdd(false)} onCreated={() => { setShowAdd(false); setPageIndex(0); refetch(); }} />
       <EditBootcampModal open={Boolean(editing)} bootcamp={editing} onClose={() => setEditing(null)} onUpdated={() => { setEditing(null); setPageIndex(0); refetch(); }} />
       <ConfirmDelete open={Boolean(deletingId)} title="Delete bootcamp" description={`Permanently delete bootcamp ${deletingId}?`} onCancel={() => setDeletingId(null)} onConfirm={async () => { if (!deletingId) return; try { await deleteBootcamp(deletingId); setDeletingId(null); setPageIndex(0); refetch(); } catch (err) { console.error(err); } }} />
-    </div>
+    </Card>
   );
 }

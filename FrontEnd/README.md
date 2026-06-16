@@ -1,4 +1,11 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+This is the MB Admin Portal frontend built with Next.js.
+
+## Backend Integration
+
+- Default API base URL is configured for academy at `https://demo.masteringbackend.com/api/v3`.
+- Override with `NEXT_PUBLIC_API_URL` in local/prod env files as needed.
+- `NEXT_PUBLIC_DISABLE_AUTH=false` is required for live academy integration.
+- Endpoint compatibility notes are documented in `ACADEMY_PARITY_MATRIX.md`.
 
 ## Getting Started
 

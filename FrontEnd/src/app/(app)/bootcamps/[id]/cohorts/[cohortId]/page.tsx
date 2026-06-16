@@ -10,8 +10,8 @@ type Props = {
 export default function CohortDetailPage({ params }: Props) {
   return (
     <CohortDetailClient
-      bootcampId={Number(params.id)}
-      cohortId={Number(params.cohortId)}
+      bootcampId={params.id}
+      cohortId={params.cohortId}
     />
   );
 }

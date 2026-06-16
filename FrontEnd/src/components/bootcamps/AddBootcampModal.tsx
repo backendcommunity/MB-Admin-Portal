@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState } from "react";
-import { useApiMutation } from "@/lib/api/query";
+import { createBootcamp } from "@/lib/api/bootcamps";
 
 type Props = { open: boolean; onClose: () => void; onCreated?: () => void };
 
@@ -9,12 +9,10 @@ export default function AddBootcampModal({ open, onClose, onCreated }: Props) {
   const [name, setName] = useState("");
   const [location, setLocation] = useState("");
 
-  const mutation = useApiMutation<{ id: number; name: string }, { name: string; location?: string }>({ url: "/bootcamps", method: "post" });
-
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     try {
-      await mutation.mutateAsync({ name, location });
+      await createBootcamp({ name, location });
       onCreated?.();
       onClose();
     } catch (err) {

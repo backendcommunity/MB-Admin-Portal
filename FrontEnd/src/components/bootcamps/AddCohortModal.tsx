@@ -1,21 +1,25 @@
 "use client";
 
 import React, { useState } from "react";
-import { useApiMutation } from "@/lib/api/query";
+import { createCohort } from "@/lib/api/cohorts";
 
-type Props = { open: boolean; bootcampId: number; onClose: () => void; onCreated?: () => void };
+type Props = { open: boolean; bootcampId: string; onClose: () => void; onCreated?: () => void };
 
 export default function AddCohortModal({ open, bootcampId, onClose, onCreated }: Props) {
   const [name, setName] = useState("");
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
 
-  const mutation = useApiMutation<{ id: number; name: string }, { bootcampId: number; name: string; startDate?: string; endDate?: string }>({ url: "/cohorts", method: "post" });
-
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     try {
-      await mutation.mutateAsync({ bootcampId, name, startDate, endDate });
+      await createCohort({
+        bootcampId,
+        name,
+        startDate,
+        endDate: endDate || undefined,
+        active: true,
+      });
       onCreated?.();
       onClose();
     } catch (err) {

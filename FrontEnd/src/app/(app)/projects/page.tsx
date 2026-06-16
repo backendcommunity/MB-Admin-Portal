@@ -1,16 +1,18 @@
-import { FolderKanban } from "lucide-react";
-
 import { ProtectedPage } from "@/components/shared/ProtectedPage";
-import { EmptyModulePage } from "@/modules/EmptyModulePage";
+import ProjectsTable from "@/components/projects/ProjectsTable";
 
 export default function ProjectsPage() {
   return (
     <ProtectedPage allowedRoles={["SUPER_ADMIN", "ADMIN"]}>
-      <EmptyModulePage
-        title="Projects"
-        description="Review and manage learning projects."
-        icon={FolderKanban}
-      />
+      <section className="flex flex-col gap-6">
+        <header className="space-y-1">
+          <h1 className="text-2xl font-semibold text-foreground">Projects</h1>
+          <p className="text-sm text-muted-foreground">
+            Manage projects, status, and submissions.
+          </p>
+        </header>
+        <ProjectsTable />
+      </section>
     </ProtectedPage>
   );
 }

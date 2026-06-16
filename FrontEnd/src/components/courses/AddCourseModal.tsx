@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState } from "react";
-import { useApiMutation } from "@/lib/api/query";
+import { createCourse } from "@/lib/api/courses";
 
 type Props = { open: boolean; onClose: () => void; onCreated?: () => void };
 
@@ -12,20 +12,19 @@ export default function AddCourseModal({ open, onClose, onCreated }: Props) {
   const [instructor, setInstructor] = useState("");
   const [tags, setTags] = useState("");
   const [thumbnail, setThumbnail] = useState("");
-  const [published, setPublished] = useState(false);
-
-  const mutation = useApiMutation<{ id: number; title: string }, { title: string; description?: string; category?: string; instructor?: string; tags?: string[]; thumbnail?: string; published?: boolean }>({ url: "/courses", method: "post" });
+  const [status, setStatus] = useState("DRAFT");
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     try {
-      await mutation.mutateAsync({
+      await createCourse({
         title,
         description,
         category,
         instructor,
         thumbnail,
-        published,
+        status,
+        published: status === "PUBLISHED",
         tags: tags.split(",").map((tag) => tag.trim()).filter(Boolean),
       });
       onCreated?.();
@@ -68,10 +67,18 @@ export default function AddCourseModal({ open, onClose, onCreated }: Props) {
             <label className="block text-sm">Description</label>
             <textarea value={description} onChange={(e) => setDescription(e.target.value)} className="textarea textarea-bordered w-full" />
           </div>
-          <label className="flex items-center gap-2">
-            <input type="checkbox" checked={published} onChange={(e) => setPublished(e.target.checked)} />
-            Published
-          </label>
+          <div>
+            <label className="block text-sm">Status</label>
+            <select
+              value={status}
+              onChange={(e) => setStatus(e.target.value)}
+              className="select select-bordered w-full"
+            >
+              <option value="DRAFT">Draft</option>
+              <option value="PUBLISHED">Published</option>
+              <option value="ARCHIVED">Archived</option>
+            </select>
+          </div>
           <div className="flex justify-end gap-2 mt-4">
             <button type="button" className="btn btn-ghost" onClick={onClose}>Cancel</button>
             <button type="submit" className="btn btn-primary">Create</button>

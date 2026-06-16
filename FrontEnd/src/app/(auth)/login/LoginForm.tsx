@@ -18,7 +18,6 @@ import {
 } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { axiosInstance } from "@/lib/api/axios";
 import type { UserRole } from "@/lib/constants/roles";
 import { useAuthStore } from "@/store/authStore";
 
@@ -60,34 +59,26 @@ export default function LoginForm() {
 
     try {
       if (process.env.NEXT_PUBLIC_DISABLE_AUTH === "true") {
-        const token = "dev-token";
         const role: UserRole = "SUPER_ADMIN";
-        useAuthStore.getState().login(token, role);
-        if (typeof document !== "undefined") {
-          const cookieParts = ["path=/", "SameSite=Lax"];
-          if (window.location.protocol === "https:") {
-            cookieParts.push("Secure");
-          }
-          document.cookie = `mb_token=${token}; ${cookieParts.join("; ")}`;
-        }
+        useAuthStore.getState().login(role);
         router.replace(returnUrl);
         return;
       }
 
-      const response = await axiosInstance.post("/auth/login", values);
-      const { token, role } = response.data as {
-        token: string;
-        role: UserRole;
-      };
+      const response = await fetch("/api/auth/login", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(values),
+      });
 
-      useAuthStore.getState().login(token, role);
-      if (typeof document !== "undefined") {
-        const cookieParts = ["path=/", "SameSite=Lax"];
-        if (window.location.protocol === "https:") {
-          cookieParts.push("Secure");
-        }
-        document.cookie = `mb_token=${token}; ${cookieParts.join("; ")}`;
+      if (!response.ok) {
+        throw new Error("Authentication failed");
       }
+
+      const payload = (await response.json()) as { role: UserRole };
+      useAuthStore.getState().login(payload.role);
       router.replace(returnUrl);
     } catch (error) {
       setFormError("Invalid email or password.");

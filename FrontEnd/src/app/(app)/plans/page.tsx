@@ -1,16 +1,18 @@
-import { CreditCard } from "lucide-react";
-
 import { ProtectedPage } from "@/components/shared/ProtectedPage";
-import { EmptyModulePage } from "@/modules/EmptyModulePage";
+import PlansTable from "@/components/plans/PlansTable";
 
 export default function PlansPage() {
   return (
     <ProtectedPage allowedRoles={["SUPER_ADMIN", "ADMIN"]}>
-      <EmptyModulePage
-        title="Plans"
-        description="Create and manage subscription plans."
-        icon={CreditCard}
-      />
+      <section className="flex flex-col gap-6">
+        <header className="space-y-1">
+          <h1 className="text-2xl font-semibold text-foreground">Plans</h1>
+          <p className="text-sm text-muted-foreground">
+            Create and manage subscription plans.
+          </p>
+        </header>
+        <PlansTable />
+      </section>
     </ProtectedPage>
   );
 }

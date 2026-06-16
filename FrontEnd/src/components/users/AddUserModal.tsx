@@ -16,7 +16,7 @@ export default function AddUserModal({ open, onClose, onCreated }: Props) {
   const [active, setActive] = useState(true);
 
   const mutation = useApiMutation<{ id: number; name: string }, { name: string; email: string; role: string; active: boolean }>(
-    { url: "/users", method: "post" }
+    { url: "/admin/users", method: "post" }
   );
 
   async function handleSubmit(e: React.FormEvent) {
@@ -49,7 +49,6 @@ export default function AddUserModal({ open, onClose, onCreated }: Props) {
           <div>
             <label className="block text-sm">Role</label>
             <select value={role} onChange={(e) => setRole(e.target.value)} className="select select-bordered w-full">
-              <option value="SUPER_ADMIN">SUPER_ADMIN</option>
               <option value="ADMIN">ADMIN</option>
               <option value="INSTRUCTOR">INSTRUCTOR</option>
             </select>

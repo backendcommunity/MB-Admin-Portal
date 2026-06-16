@@ -2,38 +2,28 @@
 
 import React, { useMemo, useState } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 
-import { axiosInstance } from "@/lib/api/axios";
-import { useApiMutation, useApiQuery } from "@/lib/api/query";
+import { useApiQuery } from "@/lib/api/query";
+import {
+  createCourseChapter,
+  deleteCourse,
+  deleteCourseChapter,
+  reorderCourseChapters,
+  updateCourse,
+  updateCourseChapter,
+  type Chapter,
+  type Course,
+} from "@/lib/api/courses";
 
-type Chapter = {
-  id: number;
-  title: string;
-  type: "video" | "article";
-  published: boolean;
-  videoId?: string;
-  content?: string;
-};
-
-type CourseDetail = {
-  id: number;
-  title: string;
-  description: string;
-  published: boolean;
-  category: string;
-  instructor: string;
-  tags: string[];
-  thumbnail?: string;
-  enrolledCount: number;
-  chapters: Chapter[];
-  chaptersCount: number;
-};
+type CourseDetail = Course & { chapters?: Chapter[] };
 
 const lessonTypes = ["video", "article"] as const;
 
-export default function CourseDetailClient({ courseId }: { courseId: number }) {
+export default function CourseDetailClient() {
+  const params = useParams();
   const router = useRouter();
+  const courseId = Array.isArray(params.id) ? params.id[0] : params.id;
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [category, setCategory] = useState("");
@@ -49,13 +39,10 @@ export default function CourseDetailClient({ courseId }: { courseId: number }) {
 
   const { data: course, isLoading, isError, refetch } = useApiQuery<CourseDetail>(
     ["course", courseId],
-    `/courses/${courseId}`
+    `/admin/courses/${courseId}`,
+    undefined,
+    { enabled: Boolean(courseId) }
   );
-
-  const saveMutation = useApiMutation<CourseDetail, Partial<CourseDetail> & { id: number }>({
-    url: `/courses/${courseId}`,
-    method: "put",
-  });
 
   const initialised = useMemo(() => Boolean(course), [course]);
 
@@ -71,8 +58,8 @@ export default function CourseDetailClient({ courseId }: { courseId: number }) {
   }, [course, initialised]);
 
   async function handleSave() {
-    if (!course) return;
-    await saveMutation.mutateAsync({
+    if (!course || !courseId) return;
+    await updateCourse({
       id: course.id,
       title,
       description,
@@ -84,18 +71,21 @@ export default function CourseDetailClient({ courseId }: { courseId: number }) {
         .filter(Boolean),
       thumbnail,
       published,
+      status: published ? "PUBLISHED" : "DRAFT",
     });
     setMessage("Course updated");
     await refetch();
   }
 
   async function handleDelete() {
-    await axiosInstance.delete(`/courses/${courseId}`);
+    if (!courseId) return;
+    await deleteCourse(courseId);
     router.push("/courses");
   }
 
   async function handleAddChapter() {
-    await axiosInstance.post(`/courses/${courseId}/chapters`, {
+    if (!courseId) return;
+    await createCourseChapter(courseId, {
       title: newChapterTitle,
       type: newChapterType,
       videoId: newChapterVideoId,
@@ -107,23 +97,21 @@ export default function CourseDetailClient({ courseId }: { courseId: number }) {
     await refetch();
   }
 
-  async function moveChapter(chapterId: number, direction: -1 | 1) {
-    if (!course) return;
+  async function moveChapter(chapterId: string, direction: -1 | 1) {
+    if (!course || !course.chapters || !courseId) return;
     const index = course.chapters.findIndex((chapter) => chapter.id === chapterId);
     const nextIndex = index + direction;
     if (index < 0 || nextIndex < 0 || nextIndex >= course.chapters.length) return;
     const reordered = [...course.chapters];
     const [moved] = reordered.splice(index, 1);
     reordered.splice(nextIndex, 0, moved);
-    await axiosInstance.patch(`/courses/${courseId}/chapters`, {
-      action: "reorder",
-      orderedIds: reordered.map((chapter) => chapter.id),
-    });
+    await reorderCourseChapters(courseId, reordered.map((chapter) => chapter.id));
     await refetch();
   }
 
   async function toggleChapterPublished(chapter: Chapter) {
-    await axiosInstance.put(`/courses/${courseId}/chapters`, {
+    if (!courseId) return;
+    await updateCourseChapter(courseId, {
       chapterId: chapter.id,
       published: !chapter.published,
       title: chapter.title,
@@ -134,11 +122,14 @@ export default function CourseDetailClient({ courseId }: { courseId: number }) {
     await refetch();
   }
 
-  async function deleteChapter(chapterId: number) {
-    await axiosInstance.delete(`/courses/${courseId}/chapters`, {
-      params: { chapterId },
-    });
+  async function deleteChapter(chapterId: string) {
+    if (!courseId) return;
+    await deleteCourseChapter(courseId, chapterId);
     await refetch();
+  }
+
+  if (!courseId) {
+    return <div className="p-6">Invalid course id.</div>;
   }
 
   if (isLoading) {
@@ -168,7 +159,7 @@ export default function CourseDetailClient({ courseId }: { courseId: number }) {
             <span className="badge badge-outline">{course.category}</span>
           </div>
           <p className="text-sm text-muted-foreground mt-1">
-            {course.instructor} · {course.chaptersCount} chapters · {course.enrolledCount} enrolled
+            {course.instructor} · {course.chaptersCount || course.chapters?.length || 0} chapters · {course.enrolledCount || 0} enrolled
           </p>
         </div>
         <Link href="/courses" className="btn btn-sm btn-ghost">
@@ -233,10 +224,10 @@ export default function CourseDetailClient({ courseId }: { courseId: number }) {
         <div className="rounded-lg border bg-white p-4 space-y-4">
           <h2 className="text-lg font-semibold">Course Summary</h2>
           <div className="space-y-2 text-sm">
-            <p><span className="font-medium">Chapters:</span> {course.chaptersCount}</p>
-            <p><span className="font-medium">Enrolled:</span> {course.enrolledCount}</p>
+            <p><span className="font-medium">Chapters:</span> {course.chaptersCount || course.chapters?.length || 0}</p>
+            <p><span className="font-medium">Enrolled:</span> {course.enrolledCount || 0}</p>
             <p><span className="font-medium">Published:</span> {course.published ? "Yes" : "No"}</p>
-            <p><span className="font-medium">Tags:</span> {course.tags.join(", ") || "—"}</p>
+            <p><span className="font-medium">Tags:</span> {course.tags?.join(", ") || "—"}</p>
           </div>
         </div>
       </div>
@@ -276,7 +267,7 @@ export default function CourseDetailClient({ courseId }: { courseId: number }) {
         </div>
 
         <div className="space-y-3">
-          {course.chapters.map((chapter, index) => (
+          {(course.chapters || []).map((chapter, index) => (
             <div key={chapter.id} className="flex items-center justify-between gap-3 rounded-md border p-3">
               <div>
                 <p className="font-medium">{chapter.title}</p>
@@ -291,7 +282,7 @@ export default function CourseDetailClient({ courseId }: { courseId: number }) {
                 <button
                   className="btn btn-sm"
                   onClick={() => moveChapter(chapter.id, 1)}
-                  disabled={index === course.chapters.length - 1}
+                  disabled={index === (course.chapters?.length || 0) - 1}
                 >
                   Down
                 </button>

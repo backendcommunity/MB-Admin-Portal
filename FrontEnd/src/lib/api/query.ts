@@ -9,6 +9,7 @@ import {
   type UseQueryOptions,
 } from "@tanstack/react-query";
 
+import { normalizeMutationResponse, normalizeQueryResponse } from "@/lib/api/adapters";
 import { axiosInstance } from "@/lib/api/axios";
 
 export const createQueryClient = () =>
@@ -31,7 +32,7 @@ export function useApiQuery<TData>(
     queryKey,
     queryFn: async () => {
       const response = await axiosInstance.get<TData>(url, config);
-      return response.data;
+      return normalizeQueryResponse(url, response.data) as TData;
     },
     ...options,
   });
@@ -66,7 +67,7 @@ export function useApiMutation<TData, TVariables>(
         ...config,
       });
 
-      return response.data;
+      return normalizeMutationResponse(response.data) as TData;
     },
     ...mutationOptions,
   });

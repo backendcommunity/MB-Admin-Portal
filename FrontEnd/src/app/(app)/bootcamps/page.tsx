@@ -1,7 +1,5 @@
-import { GraduationCap } from "lucide-react";
-
 import { ProtectedPage } from "@/components/shared/ProtectedPage";
-import { EmptyModulePage } from "@/modules/EmptyModulePage";
+import BootcampsTable from "@/components/bootcamps/BootcampsTable";
 
 export default function BootcampsPage() {
   return (
@@ -13,4 +11,3 @@ export default function BootcampsPage() {
     </ProtectedPage>
   );
 }
-import BootcampsTable from "@/components/bootcamps/BootcampsTable";

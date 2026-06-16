@@ -3,54 +3,38 @@
 import React, { useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-
-import { axiosInstance } from "@/lib/api/axios";
 import { useApiQuery } from "@/lib/api/query";
+import {
+  addCohortLesson,
+  addCohortWeek,
+  enrollCohortMember,
+  fetchCohortById,
+  fetchCohortCurriculum,
+  fetchCohortMembers,
+  removeCohortLesson,
+  removeCohortMember,
+  removeCohortWeek,
+  reorderCohortLessons,
+  reorderCohortWeeks,
+  updateCohortLessonStatus,
+  type CohortDetail,
+  type CohortMember,
+  type CohortWeek,
+} from "@/lib/api/cohorts";
 
-type CohortMember = {
-  id: number;
-  name: string;
-  email: string;
-  role: string;
-};
-
-type Lesson = {
-  id: number;
-  title: string;
-  type: "video" | "live" | "assignment";
-  status: "pending" | "reviewed" | "approved";
-};
-
-type Week = {
-  id: number;
-  title: string;
-  lessons: Lesson[];
-};
-
-type CohortDetail = {
-  id: number;
-  bootcampId: number;
-  name: string;
-  startDate: string;
-  endDate: string;
-  active: boolean;
-  size: number;
-  members: CohortMember[];
-  weeks: Week[];
-  memberCount: number;
-  weekCount: number;
-};
+type Lesson = CohortWeek["lessons"][number];
+type Week = CohortWeek;
 
 const tabs = ["Members", "Curriculum", "Assignments"] as const;
 
-export default function CohortDetailClient({ cohortId, bootcampId }: { cohortId: number; bootcampId: number }) {
+export default function CohortDetailClient({ cohortId, bootcampId }: { cohortId: string; bootcampId: string }) {
   const router = useRouter();
   const [activeTab, setActiveTab] = useState<(typeof tabs)[number]>("Members");
   const [memberEmail, setMemberEmail] = useState("");
   const [newWeekTitle, setNewWeekTitle] = useState("");
   const [lessonTitle, setLessonTitle] = useState("");
   const [lessonType, setLessonType] = useState<Lesson["type"]>("video");
-  const [selectedWeekId, setSelectedWeekId] = useState<number | null>(null);
+  const [selectedWeekId, setSelectedWeekId] = useState<string | null>(null);
   const [message, setMessage] = useState("");
 
   const { data: cohort, isLoading, isError, refetch } = useApiQuery<CohortDetail>(
@@ -82,7 +66,7 @@ export default function CohortDetailClient({ cohortId, bootcampId }: { cohortId:
   );
 
   async function handleEnrol() {
-    await axiosInstance.post(`/cohorts/${cohortId}/members`, { email: memberEmail });
+    await enrollCohortMember(cohortId, memberEmail);
     setMemberEmail("");
     setMessage("Member enrolled");
     await refetchMembers();
@@ -90,7 +74,7 @@ export default function CohortDetailClient({ cohortId, bootcampId }: { cohortId:
   }
 
   async function handleAddWeek() {
-    await axiosInstance.post(`/cohorts/${cohortId}/curriculum`, { action: "week", title: newWeekTitle });
+    await addCohortWeek(cohortId, newWeekTitle);
     setNewWeekTitle("");
     await refetchCurriculum();
     await refetch();
@@ -98,8 +82,7 @@ export default function CohortDetailClient({ cohortId, bootcampId }: { cohortId:
 
   async function handleAddLesson() {
     if (!selectedWeekId) return;
-    await axiosInstance.post(`/cohorts/${cohortId}/curriculum`, {
-      action: "lesson",
+    await addCohortLesson(cohortId, {
       weekId: selectedWeekId,
       title: lessonTitle,
       type: lessonType,
@@ -109,21 +92,18 @@ export default function CohortDetailClient({ cohortId, bootcampId }: { cohortId:
     await refetch();
   }
 
-  async function moveWeek(weekId: number, direction: -1 | 1) {
+  async function moveWeek(weekId: string, direction: -1 | 1) {
     const index = weeks.findIndex((week) => week.id === weekId);
     const nextIndex = index + direction;
     if (index < 0 || nextIndex < 0 || nextIndex >= weeks.length) return;
     const reordered = [...weeks];
     const [moved] = reordered.splice(index, 1);
     reordered.splice(nextIndex, 0, moved);
-    await axiosInstance.patch(`/cohorts/${cohortId}/curriculum`, {
-      action: "reorder-weeks",
-      orderedIds: reordered.map((week) => week.id),
-    });
+    await reorderCohortWeeks(cohortId, reordered.map((week) => week.id));
     await refetchCurriculum();
   }
 
-  async function moveLesson(weekId: number, lessonId: number, direction: -1 | 1) {
+  async function moveLesson(weekId: string, lessonId: string, direction: -1 | 1) {
     const week = weeks.find((item) => item.id === weekId);
     if (!week) return;
     const index = week.lessons.findIndex((lesson) => lesson.id === lessonId);
@@ -132,17 +112,16 @@ export default function CohortDetailClient({ cohortId, bootcampId }: { cohortId:
     const reordered = [...week.lessons];
     const [moved] = reordered.splice(index, 1);
     reordered.splice(nextIndex, 0, moved);
-    await axiosInstance.patch(`/cohorts/${cohortId}/curriculum`, {
-      action: "reorder-lessons",
+    await reorderCohortLessons(cohortId, {
       weekId,
       orderedIds: reordered.map((lesson) => lesson.id),
     });
     await refetchCurriculum();
   }
 
-  async function updateAssignmentStatus(weekId: number, lessonId: number, status: Lesson["status"]) {
-    await axiosInstance.put(`/cohorts/${cohortId}/curriculum`, {
-      action: "lesson",
+  async function updateAssignmentStatus(weekId: string, lessonId: string, status: Lesson["status"]) {
+    if (!weekId) return;
+    await updateCohortLessonStatus(cohortId, {
       weekId,
       lessonId,
       status,
@@ -150,25 +129,19 @@ export default function CohortDetailClient({ cohortId, bootcampId }: { cohortId:
     await refetchCurriculum();
   }
 
-  async function removeLesson(weekId: number, lessonId: number) {
-    await axiosInstance.delete(`/cohorts/${cohortId}/curriculum`, {
-      params: { action: "lesson", weekId, lessonId },
-    });
+  async function removeLesson(weekId: string, lessonId: string) {
+    await removeCohortLesson(cohortId, { weekId, lessonId });
     await refetchCurriculum();
   }
 
-  async function removeWeek(weekId: number) {
-    await axiosInstance.delete(`/cohorts/${cohortId}/curriculum`, {
-      params: { action: "week", weekId },
-    });
+  async function removeWeek(weekId: string) {
+    await removeCohortWeek(cohortId, weekId);
     await refetchCurriculum();
     await refetch();
   }
 
-  async function removeMember(memberId: number) {
-    await axiosInstance.delete(`/cohorts/${cohortId}/members`, {
-      params: { memberId },
-    });
+  async function removeMember(memberId: string) {
+    await removeCohortMember(cohortId, memberId);
     await refetchMembers();
     await refetch();
   }
@@ -269,7 +242,7 @@ export default function CohortDetailClient({ cohortId, bootcampId }: { cohortId:
             <select
               className="select select-bordered"
               value={selectedWeekId || ""}
-              onChange={(e) => setSelectedWeekId(Number(e.target.value))}
+              onChange={(e) => setSelectedWeekId(e.target.value)}
             >
               <option value="">Select week</option>
               {weeks.map((week) => (
@@ -352,10 +325,10 @@ export default function CohortDetailClient({ cohortId, bootcampId }: { cohortId:
                   <p className="text-xs text-muted-foreground">{assignment.weekTitle} · {assignment.status}</p>
                 </div>
                 <div className="flex gap-2">
-                  <button className="btn btn-sm btn-outline" onClick={() => updateAssignmentStatus(weeks.find((week) => week.title === assignment.weekTitle)?.id || 0, assignment.id, "reviewed") }>
+                  <button className="btn btn-sm btn-outline" onClick={() => updateAssignmentStatus(weeks.find((week) => week.title === assignment.weekTitle)?.id || "", assignment.id, "reviewed") }>
                     Reviewed
                   </button>
-                  <button className="btn btn-sm btn-outline" onClick={() => updateAssignmentStatus(weeks.find((week) => week.title === assignment.weekTitle)?.id || 0, assignment.id, "approved") }>
+                  <button className="btn btn-sm btn-outline" onClick={() => updateAssignmentStatus(weeks.find((week) => week.title === assignment.weekTitle)?.id || "", assignment.id, "approved") }>
                     Approved
                   </button>
                 </div>

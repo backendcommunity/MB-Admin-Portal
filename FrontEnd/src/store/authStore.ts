@@ -8,7 +8,8 @@ import type { UserRole } from "@/lib/constants/roles";
 interface AuthState {
   token: string | null;
   userRole: UserRole | null;
-  login: (token: string, userRole: UserRole) => void;
+  login: (userRole: UserRole) => void;
+  setUserRole: (userRole: UserRole | null) => void;
   logout: () => void;
   tokenRefresh: (token: string) => void;
 }
@@ -24,25 +25,26 @@ const storage =
 export const useAuthStore = create<AuthState>()(
   persist(
     (set) => ({
-      token: isAuthDisabled ? "dev-token" : null,
+      token: null,
       userRole: isAuthDisabled ? "SUPER_ADMIN" : null,
-      login: (token, userRole) => set({ token, userRole }),
+      login: (userRole) => set({ userRole }),
+      setUserRole: (userRole) => set({ userRole }),
       logout: () => {
         if (typeof document !== "undefined") {
           document.cookie =
             "mb_token=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT";
         }
         set({
-          token: isAuthDisabled ? "dev-token" : null,
+          token: null,
           userRole: isAuthDisabled ? "SUPER_ADMIN" : null,
         });
       },
       tokenRefresh: (token) => set((state) => ({ ...state, token })),
     }),
     {
-      name: isAuthDisabled ? "mb_token_dev" : "mb_token",
+      name: isAuthDisabled ? "mb_role_dev" : "mb_role",
       storage,
-      partialize: (state) => ({ token: state.token, userRole: state.userRole }),
+      partialize: (state) => ({ userRole: state.userRole }),
     }
   )
 );

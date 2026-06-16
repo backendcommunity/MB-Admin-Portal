@@ -21,7 +21,7 @@ export default function EditCohortModal({ open, cohort, onClose, onUpdated }: Pr
     }
   }, [cohort]);
 
-  const mutation = useApiMutation<Cohort, { id: number; name?: string; startDate?: string; endDate?: string; active?: boolean }>({ url: "/cohorts", method: "put" });
+  const mutation = useApiMutation<Cohort, { id: string; name?: string; startDate?: string; endDate?: string; active?: boolean }>({ url: "/cohorts", method: "put" });
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();

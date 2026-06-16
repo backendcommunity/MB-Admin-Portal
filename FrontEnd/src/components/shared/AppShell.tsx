@@ -5,11 +5,23 @@ import { useState } from "react";
 
 import { Sidebar } from "@/components/shared/Sidebar";
 import { Topbar } from "@/components/shared/Topbar";
+import { useApiQuery } from "@/lib/api/query";
 import { cn } from "@/lib/utils";
+import { useAuthStore } from "@/store/authStore";
 
 export function AppShell({ children }: { children: ReactNode }) {
   const [mobileOpen, setMobileOpen] = useState(false);
   const [collapsed, setCollapsed] = useState(false);
+  const role = useAuthStore((state) => state.userRole);
+
+  const approvalsQuery = useApiQuery<{ total: number }>(
+    ["approvals-badge-count"],
+    "/admin/approvals?page=1&limit=1&type=all",
+    undefined,
+    {
+      enabled: role === "ADMIN" || role === "SUPER_ADMIN",
+    }
+  );
 
   return (
     <div className="min-h-screen bg-muted/30">
@@ -18,7 +30,7 @@ export function AppShell({ children }: { children: ReactNode }) {
         onToggleCollapse={() => setCollapsed((prev) => !prev)}
         mobileOpen={mobileOpen}
         onClose={() => setMobileOpen(false)}
-        approvalsCount={0}
+        approvalsCount={approvalsQuery.data?.total ?? 0}
       />
       <div
         className={cn(
