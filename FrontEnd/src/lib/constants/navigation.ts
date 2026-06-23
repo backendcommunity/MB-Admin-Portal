@@ -13,6 +13,9 @@ import {
   Settings,
   Users,
   Wallet,
+  Tag,
+  ClipboardList,
+  Briefcase
 } from "lucide-react";
 
 import type { UserRole } from "@/lib/constants/roles";
@@ -75,9 +78,27 @@ export const NAV_ITEMS: NavItem[] = [
     roles: ["SUPER_ADMIN", "ADMIN"],
   },
   {
+    label: "Offers",
+    href: "/offers",
+    icon: Tag,
+    roles: ["SUPER_ADMIN", "ADMIN"],
+  },
+  {
+    label: "Mock Interviews",
+    href: "/mock-interviews/templates",
+    icon: Briefcase,
+    roles: ["SUPER_ADMIN", "ADMIN"],
+  },
+  {
     label: "Analytics",
     href: "/analytics",
     icon: BarChart3,
+    roles: ["SUPER_ADMIN", "ADMIN"],
+  },
+  {
+    label: "Audit Logs",
+    href: "/audit-logs",
+    icon: ClipboardList,
     roles: ["SUPER_ADMIN", "ADMIN"],
   },
   {

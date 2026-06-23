@@ -9,7 +9,6 @@ export interface Offer {
   isPremium: boolean;
   isWaiting: boolean;
   amount: number;
-  totalDays: number;
   createdAt: string;
   updatedAt: string;
 }

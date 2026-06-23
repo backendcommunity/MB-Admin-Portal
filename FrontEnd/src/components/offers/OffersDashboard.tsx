@@ -27,7 +27,6 @@ export default function OffersDashboard() {
     slug: "",
     summary: "",
     amount: 0,
-    totalDays: 30,
     isPremium: false,
   });
 
@@ -66,12 +65,11 @@ export default function OffersDashboard() {
         slug: offer.slug,
         summary: offer.summary,
         amount: offer.amount,
-        totalDays: offer.totalDays,
         isPremium: offer.isPremium,
       });
     } else {
       setSelectedOffer(null);
-      setFormData({ title: "", slug: "", summary: "", amount: 0, totalDays: 30, isPremium: false });
+      setFormData({ title: "", slug: "", summary: "", amount: 0, isPremium: false });
     }
     setIsDialogOpen(true);
   };
