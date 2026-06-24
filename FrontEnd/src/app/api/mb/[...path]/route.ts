@@ -32,6 +32,8 @@ async function proxyToAcademy(request: NextRequest, context: RouteContext) {
   const authorization = request.headers.get("authorization");
   if (authorization) {
     headers.set("Authorization", authorization);
+  } else if (token) {
+    headers.set("Authorization", `Bearer ${token}`);
   }
 
   const method = request.method;
