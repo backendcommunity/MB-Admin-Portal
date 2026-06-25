@@ -40,7 +40,6 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { DataTable } from '@/components/shared/DataTable';
 import { PageHeader } from '@/components/shared/PageHeader';
-import { FilterBar } from '@/components/shared/FilterBar';
 import { StatusBadge } from '@/components/shared/StatusBadge';
 import { LoadingState, ErrorState } from '@/components/shared/LoadingState';
 import { EmptyState } from '@/components/shared/EmptyState';
@@ -214,117 +213,128 @@ export default function CoursesTable() {
   }, [selectedCourses, refetch]);
 
   return (
-    <Card className="p-6">
+    <div className="space-y-4">
       <PageHeader
         title="Courses"
+        description="Manage platform courses, categories, and publication status."
         actions={<Button onClick={() => setShowAdd(true)}>Add Course</Button>}
       />
 
-      <FilterBar className="mb-6">
-        <Input
-          placeholder="Search by title, category, or instructor..."
-          value={globalFilter}
-          onChange={(e) => {
-            setGlobalFilter(e.target.value);
-            setPageIndex(0);
-          }}
-          className="flex-1"
-        />
+      <Card className="p-4 sm:p-6">
+        <div className="mb-4 space-y-3">
+          <Input
+            placeholder="Search by title, category, or instructor..."
+            value={globalFilter}
+            onChange={(e) => {
+              setGlobalFilter(e.target.value);
+              setPageIndex(0);
+            }}
+            className="w-full"
+          />
 
-        <Select
-          value={statusFilter}
-          onValueChange={(v) => {
-            setStatusFilter(v);
-            setPageIndex(0);
-          }}
-        >
-          <SelectTrigger className="w-36">
-            <SelectValue placeholder="All status" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">All status</SelectItem>
-            <SelectItem value="PUBLISHED">Published</SelectItem>
-            <SelectItem value="DRAFT">Draft</SelectItem>
-            <SelectItem value="ARCHIVED">Archived</SelectItem>
-          </SelectContent>
-        </Select>
+          <div className="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap sm:items-center">
+            <Select
+              value={statusFilter}
+              onValueChange={(v) => {
+                setStatusFilter(v);
+                setPageIndex(0);
+              }}
+            >
+              <SelectTrigger className="w-full sm:w-36">
+                <SelectValue placeholder="All status" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All status</SelectItem>
+                <SelectItem value="PUBLISHED">Published</SelectItem>
+                <SelectItem value="DRAFT">Draft</SelectItem>
+                <SelectItem value="ARCHIVED">Archived</SelectItem>
+              </SelectContent>
+            </Select>
 
-        <Button onClick={() => refetch()} variant="outline" size="sm">
-          Refresh
-        </Button>
+            <Button
+              onClick={() => refetch()}
+              variant="outline"
+              className="col-span-2 sm:col-span-1"
+            >
+              Refresh
+            </Button>
 
-        {selectedCourses.length > 0 && (
-          <Button
-            onClick={bulkArchiveSelected}
-            disabled={isBulkBusy}
-            variant="outline"
-            size="sm"
-            className="text-amber-600"
-          >
-            Archive ({selectedCourses.length})
-          </Button>
-        )}
-      </FilterBar>
-
-      {isLoading ? (
-        <LoadingState label="Loading courses..." />
-      ) : isError ? (
-        <ErrorState message="Error loading courses. Please try again." onRetry={refetch} />
-      ) : courses.length === 0 ? (
-        <EmptyState title="No courses found" description="Try adjusting your search or filters." />
-      ) : (
-        <>
-          <DataTable table={table} mobileTitle={(r) => r.original.title} />
-
-          {/* Pagination */}
-          <div className="mt-6 flex flex-col gap-3 border-t border-border pt-4 sm:flex-row sm:items-center sm:justify-between">
-            <div className="text-sm text-muted-foreground">
-              Showing {Math.min(pageIndex * pageSize + 1, total)}–
-              {Math.min((pageIndex + 1) * pageSize, total)} of {total} courses
-            </div>
-            <div className="flex items-center gap-2">
-              <Select
-                value={String(pageSize)}
-                onValueChange={(v) => {
-                  table.setPageSize(Number(v));
-                  setPageIndex(0);
-                }}
-              >
-                <SelectTrigger className="w-28">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="10">10 / page</SelectItem>
-                  <SelectItem value="20">20 / page</SelectItem>
-                  <SelectItem value="50">50 / page</SelectItem>
-                </SelectContent>
-              </Select>
-
+            {selectedCourses.length > 0 && (
               <Button
+                onClick={bulkArchiveSelected}
+                disabled={isBulkBusy}
                 variant="outline"
-                size="sm"
-                onClick={() => setPageIndex(Math.max(0, pageIndex - 1))}
-                disabled={pageIndex === 0}
+                className="col-span-2 text-amber-600 sm:col-span-1"
               >
-                Previous
+                Archive ({selectedCourses.length})
               </Button>
-
-              <span className="text-sm text-muted-foreground">
-                Page {pageIndex + 1} of {Math.ceil(total / pageSize) || 1}
-              </span>
-
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => setPageIndex(pageIndex + 1)}
-                disabled={(pageIndex + 1) * pageSize >= total}
-              >
-                Next
-              </Button>
-            </div>
+            )}
           </div>
-        </>
-      )}
+        </div>
+
+        {isLoading ? (
+          <LoadingState label="Loading courses..." />
+        ) : isError ? (
+          <ErrorState message="Error loading courses. Please try again." onRetry={refetch} />
+        ) : courses.length === 0 ? (
+          <EmptyState
+            title="No courses found"
+            description="Try adjusting your search or filters."
+          />
+        ) : (
+          <>
+            <DataTable table={table} mobileTitle={(r) => r.original.title} />
+
+            {/* Pagination */}
+            <div className="mt-6 flex flex-col gap-3 border-t border-border pt-4 sm:flex-row sm:items-center sm:justify-between">
+              <div className="text-sm text-muted-foreground">
+                Showing {Math.min(pageIndex * pageSize + 1, total)}–
+                {Math.min((pageIndex + 1) * pageSize, total)} of {total} courses
+              </div>
+              <div className="flex items-center gap-2">
+                <Select
+                  value={String(pageSize)}
+                  onValueChange={(v) => {
+                    table.setPageSize(Number(v));
+                    setPageIndex(0);
+                  }}
+                >
+                  <SelectTrigger className="w-28">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="10">10 / page</SelectItem>
+                    <SelectItem value="20">20 / page</SelectItem>
+                    <SelectItem value="50">50 / page</SelectItem>
+                  </SelectContent>
+                </Select>
+
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setPageIndex(Math.max(0, pageIndex - 1))}
+                  disabled={pageIndex === 0}
+                >
+                  Previous
+                </Button>
+
+                <span className="text-sm text-muted-foreground">
+                  Page {pageIndex + 1} of {Math.ceil(total / pageSize) || 1}
+                </span>
+
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setPageIndex(pageIndex + 1)}
+                  disabled={(pageIndex + 1) * pageSize >= total}
+                >
+                  Next
+                </Button>
+              </div>
+            </div>
+          </>
+        )}
+      </Card>
 
       <AddCourseModal
         open={showAdd}
@@ -363,6 +373,6 @@ export default function CoursesTable() {
           }
         }}
       />
-    </Card>
+    </div>
   );
 }
