@@ -22,7 +22,9 @@ vi.mock('@/lib/api/query', () => ({
 describe('UsersTable', () => {
   it('renders a user row', () => {
     render(<UsersTable />);
-    expect(screen.getByText('Test User')).toBeInTheDocument();
-    expect(screen.getByText('t@example.com')).toBeInTheDocument();
+    // DataTable renders both desktop (table) and mobile (card) views simultaneously in jsdom,
+    // so the same cell content appears more than once — use getAllByText.
+    expect(screen.getAllByText('Test User').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('t@example.com').length).toBeGreaterThan(0);
   });
 });
