@@ -1,29 +1,46 @@
-"use client";
+'use client';
 
-import React, { useState } from "react";
+import React, { useState } from 'react';
 
-import { approvalAction, type ApprovalItem, type ApprovalType, type ApprovalsResponse } from "@/lib/api/approvals";
-import { useApiQuery } from "@/lib/api/query";
-import { Card } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
+import {
+  approvalAction,
+  type ApprovalItem,
+  type ApprovalType,
+  type ApprovalsResponse,
+} from '@/lib/api/approvals';
+import { useApiQuery } from '@/lib/api/query';
+import { Card } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
+import { FilterBar } from '@/components/shared/FilterBar';
+import { LoadingState, ErrorState } from '@/components/shared/LoadingState';
+import { EmptyState } from '@/components/shared/EmptyState';
+import { StatusBadge } from '@/components/shared/StatusBadge';
+import { ClipboardList } from 'lucide-react';
 
 export default function ApprovalsQueue() {
-  const [q, setQ] = useState("");
-  const [type, setType] = useState<"all" | ApprovalType>("all");
+  const [q, setQ] = useState('');
+  const [type, setType] = useState<'all' | ApprovalType>('all');
   const [pageIndex, setPageIndex] = useState(0);
   const [pageSize, setPageSize] = useState(20);
   const [feedbackById, setFeedbackById] = useState<Record<string, string>>({});
 
   const { data, isLoading, isError, refetch } = useApiQuery<ApprovalsResponse>(
-    ["approvals", q, type, pageIndex, pageSize],
-    `/admin/approvals?q=${encodeURIComponent(q)}&type=${type}&page=${pageIndex + 1}&limit=${pageSize}`
+    ['approvals', q, type, pageIndex, pageSize],
+    `/admin/approvals?q=${encodeURIComponent(q)}&type=${type}&page=${pageIndex + 1}&limit=${pageSize}`,
   );
 
   const rows = data?.data ?? [];
   const total = data?.total ?? 0;
 
-  async function runAction(item: ApprovalItem, action: "approve" | "reject" | "request-changes") {
+  async function runAction(item: ApprovalItem, action: 'approve' | 'reject' | 'request-changes') {
     await approvalAction({
       type: item.type,
       id: item.id,
@@ -35,7 +52,8 @@ export default function ApprovalsQueue() {
 
   return (
     <Card className="p-6 space-y-4">
-      <div className="flex flex-wrap items-center gap-2">
+      {/* ── Filter Toolbar ────────────────────────────────────────────────────── */}
+      <FilterBar>
         <Input
           value={q}
           onChange={(e) => {
@@ -45,69 +63,118 @@ export default function ApprovalsQueue() {
           placeholder="Search pending approvals"
           className="w-80"
         />
-        <select
-          className="select select-bordered"
+        <Select
           value={type}
-          onChange={(e) => {
-            setType(e.target.value as "all" | ApprovalType);
+          onValueChange={(val) => {
+            setType(val as 'all' | ApprovalType);
             setPageIndex(0);
           }}
         >
-          <option value="all">All types</option>
-          <option value="COURSE">Course</option>
-          <option value="PROJECT">Project</option>
-          <option value="ROADMAP">Roadmap</option>
-          <option value="OFFER">Offer</option>
-          <option value="SOLUTION">Solution</option>
-        </select>
+          <SelectTrigger className="w-40">
+            <SelectValue placeholder="All types" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All types</SelectItem>
+            <SelectItem value="COURSE">Course</SelectItem>
+            <SelectItem value="PROJECT">Project</SelectItem>
+            <SelectItem value="ROADMAP">Roadmap</SelectItem>
+            <SelectItem value="OFFER">Offer</SelectItem>
+            <SelectItem value="SOLUTION">Solution</SelectItem>
+          </SelectContent>
+        </Select>
         <Button variant="outline" size="sm" onClick={() => refetch()}>
           Refresh
         </Button>
-      </div>
+      </FilterBar>
 
+      {/* ── Content States ─────────────────────────────────────────────────────── */}
       {isLoading ? (
-        <p>Loading approvals...</p>
+        <LoadingState label="Loading approvals..." />
       ) : isError ? (
-        <p>Error loading approvals.</p>
+        <ErrorState message="Error loading approvals." onRetry={() => refetch()} />
       ) : rows.length === 0 ? (
-        <p className="text-sm text-muted-foreground">No pending approvals.</p>
+        <EmptyState
+          icon={ClipboardList}
+          title="No pending approvals"
+          description="All caught up! New submissions will appear here."
+        />
       ) : (
         <>
-          <div className="overflow-x-auto">
+          {/* ── Approvals Table ──────────────────────────────────────────────── */}
+          <div className="overflow-x-auto rounded-lg border border-border">
             <table className="w-full">
-              <thead className="bg-gray-100 border-b">
+              <thead className="border-b bg-muted">
                 <tr>
-                  <th className="text-left px-4 py-3 text-sm font-semibold">Type</th>
-                  <th className="text-left px-4 py-3 text-sm font-semibold">Title</th>
-                  <th className="text-left px-4 py-3 text-sm font-semibold">Submitted By</th>
-                  <th className="text-left px-4 py-3 text-sm font-semibold">Submitted</th>
-                  <th className="text-left px-4 py-3 text-sm font-semibold">Feedback</th>
-                  <th className="text-left px-4 py-3 text-sm font-semibold">Actions</th>
+                  <th className="text-left px-4 py-3 text-sm font-semibold text-foreground">
+                    Type
+                  </th>
+                  <th className="text-left px-4 py-3 text-sm font-semibold text-foreground">
+                    Title
+                  </th>
+                  <th className="text-left px-4 py-3 text-sm font-semibold text-foreground">
+                    Submitted By
+                  </th>
+                  <th className="text-left px-4 py-3 text-sm font-semibold text-foreground">
+                    Submitted
+                  </th>
+                  <th className="text-left px-4 py-3 text-sm font-semibold text-foreground">
+                    Feedback
+                  </th>
+                  <th className="text-left px-4 py-3 text-sm font-semibold text-foreground">
+                    Actions
+                  </th>
                 </tr>
               </thead>
               <tbody>
                 {rows.map((item) => (
-                  <tr key={`${item.type}-${item.id}`} className="border-b hover:bg-gray-50 align-top">
-                    <td className="px-4 py-3 text-sm">{item.type}</td>
+                  <tr
+                    key={`${item.type}-${item.id}`}
+                    className="border-b transition-colors hover:bg-muted/50 align-top"
+                  >
                     <td className="px-4 py-3 text-sm">
-                      <div className="font-medium">{item.title}</div>
-                      {item.feedback ? <div className="text-xs text-gray-500 mt-1">Last note: {item.feedback}</div> : null}
+                      <StatusBadge label={item.type} tone="info" />
                     </td>
-                    <td className="px-4 py-3 text-sm">{item.submittedBy || "-"}</td>
-                    <td className="px-4 py-3 text-sm">{item.submittedAt ? new Date(item.submittedAt).toLocaleString() : "-"}</td>
+                    <td className="px-4 py-3 text-sm text-foreground">
+                      <div className="font-medium">{item.title}</div>
+                      {item.feedback ? (
+                        <div className="text-xs text-muted-foreground mt-1">
+                          Last note: {item.feedback}
+                        </div>
+                      ) : null}
+                    </td>
+                    <td className="px-4 py-3 text-sm text-foreground">{item.submittedBy || '-'}</td>
+                    <td className="px-4 py-3 text-sm text-foreground">
+                      {item.submittedAt ? new Date(item.submittedAt).toLocaleString() : '-'}
+                    </td>
                     <td className="px-4 py-3 text-sm min-w-64">
                       <textarea
-                        className="textarea textarea-bordered w-full min-h-20"
+                        className="w-full min-h-20 rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 resize-y"
                         placeholder="Optional feedback"
-                        value={feedbackById[item.id] ?? ""}
-                        onChange={(e) => setFeedbackById((prev) => ({ ...prev, [item.id]: e.target.value }))}
+                        value={feedbackById[item.id] ?? ''}
+                        onChange={(e) =>
+                          setFeedbackById((prev) => ({ ...prev, [item.id]: e.target.value }))
+                        }
                       />
                     </td>
                     <td className="px-4 py-3 text-sm">
                       <div className="flex flex-col gap-2 min-w-36">
-                        <button className="btn btn-success btn-xs" onClick={() => runAction(item, "approve")}>Approve</button>
-                        <button className="btn btn-warning btn-xs" onClick={() => runAction(item, "request-changes")}>Request Changes</button>
-                        <button className="btn btn-error btn-xs" onClick={() => runAction(item, "reject")}>Reject</button>
+                        <Button size="sm" onClick={() => runAction(item, 'approve')}>
+                          Approve
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => runAction(item, 'request-changes')}
+                        >
+                          Request Changes
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="destructive"
+                          onClick={() => runAction(item, 'reject')}
+                        >
+                          Reject
+                        </Button>
                       </div>
                     </td>
                   </tr>
@@ -116,24 +183,35 @@ export default function ApprovalsQueue() {
             </table>
           </div>
 
-          <div className="mt-2 flex items-center justify-between">
-            <div className="text-sm text-gray-600">
-              Showing {Math.min(pageIndex * pageSize + 1, total)}-{Math.min((pageIndex + 1) * pageSize, total)} of {total}
+          {/* ── Pagination ────────────────────────────────────────────────────── */}
+          <div className="mt-2 flex flex-wrap items-center justify-between gap-3">
+            <div className="text-sm text-muted-foreground">
+              Showing {Math.min(pageIndex * pageSize + 1, total)}–
+              {Math.min((pageIndex + 1) * pageSize, total)} of {total}
             </div>
             <div className="flex items-center gap-2">
-              <select
-                value={pageSize}
-                onChange={(e) => {
-                  setPageSize(Number(e.target.value));
+              <Select
+                value={String(pageSize)}
+                onValueChange={(val) => {
+                  setPageSize(Number(val));
                   setPageIndex(0);
                 }}
-                className="select select-bordered select-sm"
               >
-                <option value={10}>10 / page</option>
-                <option value={20}>20 / page</option>
-                <option value={50}>50 / page</option>
-              </select>
-              <Button size="sm" variant="outline" disabled={pageIndex === 0} onClick={() => setPageIndex((p) => Math.max(0, p - 1))}>
+                <SelectTrigger className="w-32">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="10">10 / page</SelectItem>
+                  <SelectItem value="20">20 / page</SelectItem>
+                  <SelectItem value="50">50 / page</SelectItem>
+                </SelectContent>
+              </Select>
+              <Button
+                size="sm"
+                variant="outline"
+                disabled={pageIndex === 0}
+                onClick={() => setPageIndex((p) => Math.max(0, p - 1))}
+              >
                 Prev
               </Button>
               <Button
