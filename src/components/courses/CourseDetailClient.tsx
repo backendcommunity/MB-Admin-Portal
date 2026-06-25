@@ -21,6 +21,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Checkbox } from '@/components/ui/checkbox';
 import {
   Select,
   SelectContent,
@@ -264,11 +265,7 @@ export default function CourseDetailClient() {
                   />
                 </div>
                 <label className="flex items-center gap-2 text-sm cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={published}
-                    onChange={(e) => setPublished(e.target.checked)}
-                  />
+                  <Checkbox checked={published} onCheckedChange={(v) => setPublished(!!v)} />
                   Published
                 </label>
                 <div className="flex gap-2 flex-wrap">

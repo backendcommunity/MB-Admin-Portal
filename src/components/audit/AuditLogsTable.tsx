@@ -221,7 +221,7 @@ export default function AuditLogsTable() {
 
       {/* JSON Viewer Dialog */}
       <Dialog open={!!selectedLog} onOpenChange={(open) => !open && setSelectedLog(null)}>
-        <DialogContent className="max-w-2xl max-w-lg w-[calc(100vw-2rem)] sm:w-full sm:max-w-2xl">
+        <DialogContent className="max-w-lg w-[calc(100vw-2rem)] sm:w-full sm:max-w-2xl">
           <DialogHeader>
             <DialogTitle>Audit Log Details</DialogTitle>
           </DialogHeader>
