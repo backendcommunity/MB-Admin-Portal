@@ -1,7 +1,25 @@
-"use client";
+'use client';
 
-import React, { useState } from "react";
-import { useApiMutation } from "@/lib/api/query";
+import React, { useState } from 'react';
+import { useApiMutation } from '@/lib/api/query';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+} from '@/components/ui/dialog';
+import { Label } from '@/components/ui/label';
+import { Input } from '@/components/ui/input';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
+import { Checkbox } from '@/components/ui/checkbox';
+import { Button } from '@/components/ui/button';
 
 type Props = {
   open: boolean;
@@ -10,14 +28,15 @@ type Props = {
 };
 
 export default function AddUserModal({ open, onClose, onCreated }: Props) {
-  const [name, setName] = useState("");
-  const [email, setEmail] = useState("");
-  const [role, setRole] = useState("INSTRUCTOR");
+  const [name, setName] = useState('');
+  const [email, setEmail] = useState('');
+  const [role, setRole] = useState('INSTRUCTOR');
   const [active, setActive] = useState(true);
 
-  const mutation = useApiMutation<{ id: number; name: string }, { name: string; email: string; role: string; active: boolean }>(
-    { url: "/admin/users", method: "post" }
-  );
+  const mutation = useApiMutation<
+    { id: number; name: string },
+    { name: string; email: string; role: string; active: boolean }
+  >({ url: '/admin/users', method: 'post' });
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -31,43 +50,61 @@ export default function AddUserModal({ open, onClose, onCreated }: Props) {
     }
   }
 
-  if (!open) return null;
-
   return (
-    <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
-      <div className="bg-white rounded shadow p-6 w-[480px]">
-        <h2 className="text-lg font-semibold mb-4">Add User</h2>
-        <form onSubmit={handleSubmit} className="space-y-3">
-          <div>
-            <label className="block text-sm">Name</label>
-            <input value={name} onChange={(e) => setName(e.target.value)} className="input input-bordered w-full" />
+    <Dialog
+      open={open}
+      onOpenChange={(o) => {
+        if (!o) onClose();
+      }}
+    >
+      <DialogContent className="max-w-lg w-[calc(100vw-2rem)] sm:w-full">
+        <DialogHeader>
+          <DialogTitle>Add User</DialogTitle>
+        </DialogHeader>
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <div className="space-y-1.5">
+            <Label htmlFor="name">Name</Label>
+            <Input id="name" value={name} onChange={(e) => setName(e.target.value)} />
           </div>
-          <div>
-            <label className="block text-sm">Email</label>
-            <input value={email} onChange={(e) => setEmail(e.target.value)} className="input input-bordered w-full" />
+          <div className="space-y-1.5">
+            <Label htmlFor="email">Email</Label>
+            <Input
+              id="email"
+              type="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+            />
           </div>
-          <div>
-            <label className="block text-sm">Role</label>
-            <select value={role} onChange={(e) => setRole(e.target.value)} className="select select-bordered w-full">
-              <option value="ADMIN">ADMIN</option>
-              <option value="INSTRUCTOR">INSTRUCTOR</option>
-            </select>
+          <div className="space-y-1.5">
+            <Label htmlFor="role">Role</Label>
+            <Select value={role} onValueChange={setRole}>
+              <SelectTrigger id="role">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="ADMIN">ADMIN</SelectItem>
+                <SelectItem value="INSTRUCTOR">INSTRUCTOR</SelectItem>
+              </SelectContent>
+            </Select>
           </div>
           <div className="flex items-center gap-2">
-            <input id="active" type="checkbox" checked={active} onChange={(e) => setActive(e.target.checked)} />
-            <label htmlFor="active">Active</label>
+            <Checkbox
+              id="active"
+              checked={active}
+              onCheckedChange={(checked) => setActive(Boolean(checked))}
+            />
+            <Label htmlFor="active">Active</Label>
           </div>
-
-          <div className="flex justify-end gap-2 mt-4">
-            <button type="button" className="btn btn-ghost" onClick={onClose}>
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={onClose}>
               Cancel
-            </button>
-            <button type="submit" className="btn btn-primary">
+            </Button>
+            <Button type="submit" disabled={mutation.isPending}>
               Create
-            </button>
-          </div>
+            </Button>
+          </DialogFooter>
         </form>
-      </div>
-    </div>
+      </DialogContent>
+    </Dialog>
   );
 }
