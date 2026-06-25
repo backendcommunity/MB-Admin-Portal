@@ -76,6 +76,9 @@ export function DataTable<TData>({
                 {dataCells.map((cell) => (
                   <div key={cell.id} className="flex items-start justify-between gap-3 text-sm">
                     <dt className="text-muted-foreground">
+                      {/* `as never`: render the column header as the mobile label. flexRender ignores
+                          the context for string headers (the data-column case); render-fn headers that
+                          read HeaderContext-only fields are not used as data columns here. */}
                       {flexRender(cell.column.columnDef.header, cell.getContext() as never)}
                     </dt>
                     <dd className="text-right font-medium text-foreground">

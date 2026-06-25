@@ -17,9 +17,9 @@ function Harness() {
 describe('DataTable', () => {
   it('renders desktop table and mobile cards (both in DOM)', () => {
     render(<Harness />);
-    // value appears twice: once in <td>, once in mobile card
-    expect(screen.getAllByText('Ada').length).toBeGreaterThanOrEqual(1);
-    // mobile card shows the column header as a label
-    expect(screen.getAllByText('Email').length).toBeGreaterThanOrEqual(1);
+    // value appears twice: once in desktop <td>, once in mobile card — proves both layouts in DOM
+    expect(screen.getAllByText('Ada').length).toBeGreaterThanOrEqual(2);
+    // "Email" header renders as desktop <th> AND mobile card <dt> label
+    expect(screen.getAllByText('Email').length).toBeGreaterThanOrEqual(2);
   });
 });
