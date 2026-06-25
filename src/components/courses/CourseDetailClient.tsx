@@ -1,10 +1,11 @@
-"use client";
+'use client';
 
-import React, { useMemo, useState } from "react";
-import Link from "next/link";
-import { useParams, useRouter } from "next/navigation";
+import React, { useMemo, useState } from 'react';
+import Link from 'next/link';
+import { useParams, useRouter } from 'next/navigation';
+import { ChevronUp, ChevronDown } from 'lucide-react';
 
-import { useApiQuery } from "@/lib/api/query";
+import { useApiQuery } from '@/lib/api/query';
 import {
   createCourseChapter,
   deleteCourse,
@@ -14,46 +15,65 @@ import {
   updateCourseChapter,
   type Chapter,
   type Course,
-} from "@/lib/api/courses";
+} from '@/lib/api/courses';
+
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
+import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
+import { PageHeader } from '@/components/shared/PageHeader';
+import { StatusBadge } from '@/components/shared/StatusBadge';
+import { LoadingState, ErrorState } from '@/components/shared/LoadingState';
+import { EmptyState } from '@/components/shared/EmptyState';
 
 type CourseDetail = Course & { chapters?: Chapter[] };
 
-const lessonTypes = ["video", "article"] as const;
+const lessonTypes = ['video', 'article'] as const;
 
 export default function CourseDetailClient() {
   const params = useParams();
   const router = useRouter();
   const courseId = Array.isArray(params.id) ? params.id[0] : params.id;
-  const [title, setTitle] = useState("");
-  const [description, setDescription] = useState("");
-  const [category, setCategory] = useState("");
-  const [instructor, setInstructor] = useState("");
-  const [tags, setTags] = useState("");
-  const [thumbnail, setThumbnail] = useState("");
+  const [title, setTitle] = useState('');
+  const [description, setDescription] = useState('');
+  const [category, setCategory] = useState('');
+  const [instructor, setInstructor] = useState('');
+  const [tags, setTags] = useState('');
+  const [thumbnail, setThumbnail] = useState('');
   const [published, setPublished] = useState(false);
-  const [newChapterTitle, setNewChapterTitle] = useState("");
-  const [newChapterType, setNewChapterType] = useState<(typeof lessonTypes)[number]>("video");
-  const [newChapterVideoId, setNewChapterVideoId] = useState("");
-  const [newChapterContent, setNewChapterContent] = useState("");
-  const [message, setMessage] = useState("");
+  const [newChapterTitle, setNewChapterTitle] = useState('');
+  const [newChapterType, setNewChapterType] = useState<(typeof lessonTypes)[number]>('video');
+  const [newChapterVideoId, setNewChapterVideoId] = useState('');
+  const [newChapterContent, setNewChapterContent] = useState('');
+  const [message, setMessage] = useState('');
 
-  const { data: course, isLoading, isError, refetch } = useApiQuery<CourseDetail>(
-    ["course", courseId],
-    `/admin/courses/${courseId}`,
-    undefined,
-    { enabled: Boolean(courseId) }
-  );
+  const {
+    data: course,
+    isLoading,
+    isError,
+    refetch,
+  } = useApiQuery<CourseDetail>(['course', courseId], `/admin/courses/${courseId}`, undefined, {
+    enabled: Boolean(courseId),
+  });
 
   const initialised = useMemo(() => Boolean(course), [course]);
 
   React.useEffect(() => {
     if (!course || initialised === false) return;
-    setTitle(course.title || "");
-    setDescription(course.description || "");
-    setCategory(course.category || "");
-    setInstructor(course.instructor || "");
-    setTags((course.tags || []).join(", "));
-    setThumbnail(course.thumbnail || "");
+    setTitle(course.title || '');
+    setDescription(course.description || '');
+    setCategory(course.category || '');
+    setInstructor(course.instructor || '');
+    setTags((course.tags || []).join(', '));
+    setThumbnail(course.thumbnail || '');
     setPublished(Boolean(course.published));
   }, [course, initialised]);
 
@@ -66,21 +86,21 @@ export default function CourseDetailClient() {
       category,
       instructor,
       tags: tags
-        .split(",")
+        .split(',')
         .map((tag) => tag.trim())
         .filter(Boolean),
       thumbnail,
       published,
-      status: published ? "PUBLISHED" : "DRAFT",
+      status: published ? 'PUBLISHED' : 'DRAFT',
     });
-    setMessage("Course updated");
+    setMessage('Course updated');
     await refetch();
   }
 
   async function handleDelete() {
     if (!courseId) return;
     await deleteCourse(courseId);
-    router.push("/courses");
+    router.push('/courses');
   }
 
   async function handleAddChapter() {
@@ -91,9 +111,9 @@ export default function CourseDetailClient() {
       videoId: newChapterVideoId,
       content: newChapterContent,
     });
-    setNewChapterTitle("");
-    setNewChapterVideoId("");
-    setNewChapterContent("");
+    setNewChapterTitle('');
+    setNewChapterVideoId('');
+    setNewChapterContent('');
     await refetch();
   }
 
@@ -105,7 +125,10 @@ export default function CourseDetailClient() {
     const reordered = [...course.chapters];
     const [moved] = reordered.splice(index, 1);
     reordered.splice(nextIndex, 0, moved);
-    await reorderCourseChapters(courseId, reordered.map((chapter) => chapter.id));
+    await reorderCourseChapters(
+      courseId,
+      reordered.map((chapter) => chapter.id),
+    );
     await refetch();
   }
 
@@ -129,174 +152,268 @@ export default function CourseDetailClient() {
   }
 
   if (!courseId) {
-    return <div className="p-6">Invalid course id.</div>;
+    return <div className="p-6 text-sm text-muted-foreground">Invalid course id.</div>;
   }
 
   if (isLoading) {
-    return <div className="p-6">Loading course...</div>;
+    return <LoadingState label="Loading course..." />;
   }
 
   if (isError || !course) {
     return (
       <div className="p-6 space-y-4">
-        <p>Course not found.</p>
-        <Link href="/courses" className="btn btn-sm btn-primary">
-          Back to courses
-        </Link>
+        <ErrorState message="Course not found." />
+        <Button variant="outline" asChild>
+          <Link href="/courses">Back to courses</Link>
+        </Button>
       </div>
     );
   }
 
+  const headerActions = (
+    <>
+      <Button variant="outline" asChild>
+        <Link href="/courses">Back to courses</Link>
+      </Button>
+    </>
+  );
+
   return (
-    <div className="p-6 space-y-6">
-      <div className="flex items-start justify-between gap-4 flex-wrap">
-        <div>
-          <div className="flex items-center gap-3 flex-wrap">
-            <h1 className="text-2xl font-semibold">{course.title}</h1>
-            <span className={course.published ? "badge badge-success" : "badge badge-ghost"}>
-              {course.published ? "Published" : "Draft"}
-            </span>
-            <span className="badge badge-outline">{course.category}</span>
-          </div>
-          <p className="text-sm text-muted-foreground mt-1">
-            {course.instructor} · {course.chaptersCount || course.chapters?.length || 0} chapters · {course.enrolledCount || 0} enrolled
-          </p>
-        </div>
-        <Link href="/courses" className="btn btn-sm btn-ghost">
-          Back to courses
-        </Link>
+    <div className="space-y-6">
+      <PageHeader
+        title={course.title}
+        description={`${course.instructor} · ${course.chaptersCount || course.chapters?.length || 0} chapters · ${course.enrolledCount || 0} enrolled`}
+        actions={headerActions}
+      />
+
+      {/* Status badges */}
+      <div className="flex gap-2 flex-wrap">
+        <StatusBadge
+          label={course.published ? 'Published' : 'Draft'}
+          tone={course.published ? 'success' : 'neutral'}
+        />
+        {course.category ? <StatusBadge label={course.category} tone="info" /> : null}
       </div>
 
-      <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_320px]">
-        <div className="rounded-lg border bg-white p-4 space-y-4">
-          <h2 className="text-lg font-semibold">Rich Course Editor</h2>
-          <div className="grid gap-3 md:grid-cols-2">
-            <div>
-              <label className="block text-sm">Title</label>
-              <input className="input input-bordered w-full" value={title} onChange={(e) => setTitle(e.target.value)} />
-            </div>
-            <div>
-              <label className="block text-sm">Category</label>
-              <input className="input input-bordered w-full" value={category} onChange={(e) => setCategory(e.target.value)} />
-            </div>
-            <div>
-              <label className="block text-sm">Instructor</label>
-              <input className="input input-bordered w-full" value={instructor} onChange={(e) => setInstructor(e.target.value)} />
-            </div>
-            <div>
-              <label className="block text-sm">Thumbnail URL</label>
-              <input className="input input-bordered w-full" value={thumbnail} onChange={(e) => setThumbnail(e.target.value)} />
-            </div>
-          </div>
-          <div>
-            <label className="block text-sm">Tags</label>
-            <input
-              className="input input-bordered w-full"
-              value={tags}
-              onChange={(e) => setTags(e.target.value)}
-              placeholder="react, frontend, hooks"
-            />
-          </div>
-          <div>
-            <label className="block text-sm">Description</label>
-            <textarea
-              className="textarea textarea-bordered w-full min-h-40"
-              value={description}
-              onChange={(e) => setDescription(e.target.value)}
-              placeholder="Rich text placeholder for TipTap in Week 2"
-            />
-          </div>
-          <label className="flex items-center gap-2">
-            <input type="checkbox" checked={published} onChange={(e) => setPublished(e.target.checked)} />
-            Published
-          </label>
-          <div className="flex gap-2">
-            <button className="btn btn-primary" onClick={handleSave}>
-              Save changes
-            </button>
-            <button className="btn btn-ghost text-red-600" onClick={handleDelete}>
-              Delete course
-            </button>
-          </div>
-          {message ? <p className="text-sm text-sky-700">{message}</p> : null}
-        </div>
+      {/* Main tabs: Overview (editor) vs Chapters */}
+      <Tabs defaultValue="overview">
+        <TabsList>
+          <TabsTrigger value="overview">Overview</TabsTrigger>
+          <TabsTrigger value="chapters">Chapters</TabsTrigger>
+        </TabsList>
 
-        <div className="rounded-lg border bg-white p-4 space-y-4">
-          <h2 className="text-lg font-semibold">Course Summary</h2>
-          <div className="space-y-2 text-sm">
-            <p><span className="font-medium">Chapters:</span> {course.chaptersCount || course.chapters?.length || 0}</p>
-            <p><span className="font-medium">Enrolled:</span> {course.enrolledCount || 0}</p>
-            <p><span className="font-medium">Published:</span> {course.published ? "Yes" : "No"}</p>
-            <p><span className="font-medium">Tags:</span> {course.tags?.join(", ") || "—"}</p>
+        <TabsContent value="overview">
+          <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_320px]">
+            {/* Editor panel */}
+            <Card>
+              <CardHeader>
+                <CardTitle>Rich Course Editor</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="grid gap-3 md:grid-cols-2">
+                  <div className="space-y-1">
+                    <Label htmlFor="course-title">Title</Label>
+                    <Input
+                      id="course-title"
+                      value={title}
+                      onChange={(e) => setTitle(e.target.value)}
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <Label htmlFor="course-category">Category</Label>
+                    <Input
+                      id="course-category"
+                      value={category}
+                      onChange={(e) => setCategory(e.target.value)}
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <Label htmlFor="course-instructor">Instructor</Label>
+                    <Input
+                      id="course-instructor"
+                      value={instructor}
+                      onChange={(e) => setInstructor(e.target.value)}
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <Label htmlFor="course-thumbnail">Thumbnail URL</Label>
+                    <Input
+                      id="course-thumbnail"
+                      value={thumbnail}
+                      onChange={(e) => setThumbnail(e.target.value)}
+                    />
+                  </div>
+                </div>
+                <div className="space-y-1">
+                  <Label htmlFor="course-tags">Tags</Label>
+                  <Input
+                    id="course-tags"
+                    value={tags}
+                    onChange={(e) => setTags(e.target.value)}
+                    placeholder="react, frontend, hooks"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <Label htmlFor="course-description">Description</Label>
+                  <textarea
+                    id="course-description"
+                    className="flex min-h-20 w-full rounded-md border border-input bg-background px-3 py-2 text-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
+                    value={description}
+                    onChange={(e) => setDescription(e.target.value)}
+                    placeholder="Rich text placeholder for TipTap in Week 2"
+                  />
+                </div>
+                <label className="flex items-center gap-2 text-sm cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={published}
+                    onChange={(e) => setPublished(e.target.checked)}
+                  />
+                  Published
+                </label>
+                <div className="flex gap-2 flex-wrap">
+                  <Button onClick={handleSave}>Save changes</Button>
+                  <Button
+                    variant="ghost"
+                    className="text-destructive hover:text-destructive"
+                    onClick={handleDelete}
+                  >
+                    Delete course
+                  </Button>
+                </div>
+                {message ? <p className="text-sm text-primary">{message}</p> : null}
+              </CardContent>
+            </Card>
+
+            {/* Summary panel */}
+            <Card>
+              <CardHeader>
+                <CardTitle>Course Summary</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-2 text-sm text-foreground">
+                <p>
+                  <span className="font-medium">Chapters:</span>{' '}
+                  {course.chaptersCount || course.chapters?.length || 0}
+                </p>
+                <p>
+                  <span className="font-medium">Enrolled:</span> {course.enrolledCount || 0}
+                </p>
+                <p>
+                  <span className="font-medium">Published:</span> {course.published ? 'Yes' : 'No'}
+                </p>
+                <p>
+                  <span className="font-medium">Tags:</span> {course.tags?.join(', ') || '—'}
+                </p>
+              </CardContent>
+            </Card>
           </div>
-        </div>
-      </div>
+        </TabsContent>
 
-      <div className="rounded-lg border bg-white p-4 space-y-4">
-        <div className="flex items-center justify-between gap-4 flex-wrap">
-          <h2 className="text-lg font-semibold">Chapter Manager</h2>
-          <div className="text-sm text-muted-foreground">Use up/down controls to reorder chapters.</div>
-        </div>
-
-        <div className="grid gap-3 md:grid-cols-[2fr_160px_160px_1fr_auto]">
-          <input
-            className="input input-bordered"
-            value={newChapterTitle}
-            onChange={(e) => setNewChapterTitle(e.target.value)}
-            placeholder="Chapter title"
-          />
-          <select className="select select-bordered" value={newChapterType} onChange={(e) => setNewChapterType(e.target.value as "video" | "article") }>
-            <option value="video">Video</option>
-            <option value="article">Article</option>
-          </select>
-          <input
-            className="input input-bordered"
-            value={newChapterVideoId}
-            onChange={(e) => setNewChapterVideoId(e.target.value)}
-            placeholder="Vimeo ID"
-          />
-          <input
-            className="input input-bordered"
-            value={newChapterContent}
-            onChange={(e) => setNewChapterContent(e.target.value)}
-            placeholder="Article content placeholder"
-          />
-          <button className="btn btn-primary" onClick={handleAddChapter}>
-            Add chapter
-          </button>
-        </div>
-
-        <div className="space-y-3">
-          {(course.chapters || []).map((chapter, index) => (
-            <div key={chapter.id} className="flex items-center justify-between gap-3 rounded-md border p-3">
-              <div>
-                <p className="font-medium">{chapter.title}</p>
-                <p className="text-xs text-muted-foreground">
-                  {chapter.type} · {chapter.published ? "Published" : "Draft"}
+        <TabsContent value="chapters">
+          <Card>
+            <CardHeader>
+              <div className="flex items-center justify-between gap-4 flex-wrap">
+                <CardTitle>Chapter Manager</CardTitle>
+                <p className="text-sm text-muted-foreground">
+                  Use up/down controls to reorder chapters.
                 </p>
               </div>
-              <div className="flex gap-2 flex-wrap justify-end">
-                <button className="btn btn-sm" onClick={() => moveChapter(chapter.id, -1)} disabled={index === 0}>
-                  Up
-                </button>
-                <button
-                  className="btn btn-sm"
-                  onClick={() => moveChapter(chapter.id, 1)}
-                  disabled={index === (course.chapters?.length || 0) - 1}
+            </CardHeader>
+            <CardContent className="space-y-4">
+              {/* Add chapter form */}
+              <div className="grid gap-3 grid-cols-1 md:grid-cols-[2fr_160px_160px_1fr_auto]">
+                <Input
+                  value={newChapterTitle}
+                  onChange={(e) => setNewChapterTitle(e.target.value)}
+                  placeholder="Chapter title"
+                />
+                <Select
+                  value={newChapterType}
+                  onValueChange={(v) => setNewChapterType(v as 'video' | 'article')}
                 >
-                  Down
-                </button>
-                <button className="btn btn-sm btn-outline" onClick={() => toggleChapterPublished(chapter)}>
-                  {chapter.published ? "Unpublish" : "Publish"}
-                </button>
-                <button className="btn btn-sm btn-ghost text-red-600" onClick={() => deleteChapter(chapter.id)}>
-                  Delete
-                </button>
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="video">Video</SelectItem>
+                    <SelectItem value="article">Article</SelectItem>
+                  </SelectContent>
+                </Select>
+                <Input
+                  value={newChapterVideoId}
+                  onChange={(e) => setNewChapterVideoId(e.target.value)}
+                  placeholder="Vimeo ID"
+                />
+                <Input
+                  value={newChapterContent}
+                  onChange={(e) => setNewChapterContent(e.target.value)}
+                  placeholder="Article content placeholder"
+                />
+                <Button onClick={handleAddChapter}>Add chapter</Button>
               </div>
-            </div>
-          ))}
-        </div>
-      </div>
+
+              {/* Chapter list */}
+              {(course.chapters || []).length === 0 ? (
+                <EmptyState
+                  title="No chapters yet"
+                  description="Add the first chapter using the form above."
+                />
+              ) : (
+                <div className="space-y-3">
+                  {(course.chapters || []).map((chapter, index) => (
+                    <div
+                      key={chapter.id}
+                      className="flex items-center justify-between gap-3 rounded-md border border-border p-3"
+                    >
+                      <div>
+                        <p className="font-medium text-foreground">{chapter.title}</p>
+                        <p className="text-xs text-muted-foreground">
+                          {chapter.type} · {chapter.published ? 'Published' : 'Draft'}
+                        </p>
+                      </div>
+                      <div className="flex gap-2 flex-wrap justify-end">
+                        <Button
+                          variant="outline"
+                          size="icon"
+                          onClick={() => moveChapter(chapter.id, -1)}
+                          disabled={index === 0}
+                          aria-label="Move up"
+                        >
+                          <ChevronUp className="h-4 w-4" />
+                        </Button>
+                        <Button
+                          variant="outline"
+                          size="icon"
+                          onClick={() => moveChapter(chapter.id, 1)}
+                          disabled={index === (course.chapters?.length || 0) - 1}
+                          aria-label="Move down"
+                        >
+                          <ChevronDown className="h-4 w-4" />
+                        </Button>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => toggleChapterPublished(chapter)}
+                        >
+                          {chapter.published ? 'Unpublish' : 'Publish'}
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="text-destructive hover:text-destructive"
+                          onClick={() => deleteChapter(chapter.id)}
+                        >
+                          Delete
+                        </Button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </TabsContent>
+      </Tabs>
     </div>
   );
 }
