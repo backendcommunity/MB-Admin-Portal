@@ -1,5 +1,5 @@
 'use client';
-import type { ReactNode } from 'react';
+import { Fragment, type ReactNode } from 'react';
 import { flexRender, type Row, type Table as TanstackTable } from '@tanstack/react-table';
 
 export function DataTable<TData>({
@@ -59,7 +59,9 @@ export function DataTable<TData>({
         </table>
       </div>
 
-      {/* Mobile */}
+      {/* Mobile: each row is a card. First data column is the card heading (not
+          repeated as a labeled row); the rest render as a compact label/value grid;
+          the actions menu floats in the top-right. */}
       <div className="space-y-3 md:hidden">
         {rows.map((row) => {
           const cells = row.getVisibleCells();
@@ -67,15 +69,28 @@ export function DataTable<TData>({
           const dataCells = cells.filter(
             (c) => c.column.id !== 'actions' && c.column.id !== 'select',
           );
+          const [headCell, ...bodyCells] = dataCells;
           return (
-            <div key={row.id} className="rounded-lg border border-border bg-card p-4 shadow-sm">
-              {mobileTitle ? (
-                <div className="mb-2 font-semibold text-foreground">{mobileTitle(row)}</div>
+            <div
+              key={row.id}
+              className="relative rounded-xl border border-border bg-card p-4 shadow-sm"
+            >
+              {actionCell ? (
+                <div className="absolute right-1.5 top-2.5">
+                  {flexRender(actionCell.column.columnDef.cell, actionCell.getContext())}
+                </div>
               ) : null}
-              <dl className="space-y-1.5">
-                {dataCells.map((cell) => (
-                  <div key={cell.id} className="flex items-start justify-between gap-3 text-sm">
-                    <dt className="shrink-0 text-muted-foreground">
+              {headCell ? (
+                <div className="mb-2.5 pr-8 text-base font-semibold leading-tight text-foreground">
+                  {mobileTitle
+                    ? mobileTitle(row)
+                    : flexRender(headCell.column.columnDef.cell, headCell.getContext())}
+                </div>
+              ) : null}
+              <dl className="grid grid-cols-[minmax(4.5rem,auto)_1fr] gap-x-3 gap-y-2 text-sm">
+                {bodyCells.map((cell) => (
+                  <Fragment key={cell.id}>
+                    <dt className="truncate text-muted-foreground">
                       {/* `as never`: render the column header as the mobile label. flexRender ignores
                           the context for string headers (the data-column case); render-fn headers that
                           read HeaderContext-only fields are not used as data columns here. */}
@@ -84,14 +99,9 @@ export function DataTable<TData>({
                     <dd className="min-w-0 break-words text-right font-medium text-foreground">
                       {flexRender(cell.column.columnDef.cell, cell.getContext())}
                     </dd>
-                  </div>
+                  </Fragment>
                 ))}
               </dl>
-              {actionCell ? (
-                <div className="mt-3 flex justify-end border-t border-border pt-3">
-                  {flexRender(actionCell.column.columnDef.cell, actionCell.getContext())}
-                </div>
-              ) : null}
             </div>
           );
         })}
