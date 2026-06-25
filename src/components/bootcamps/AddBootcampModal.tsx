@@ -1,13 +1,23 @@
-"use client";
+'use client';
 
-import React, { useState } from "react";
-import { createBootcamp } from "@/lib/api/bootcamps";
+import React, { useState } from 'react';
+import { createBootcamp } from '@/lib/api/bootcamps';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+} from '@/components/ui/dialog';
+import { Label } from '@/components/ui/label';
+import { Input } from '@/components/ui/input';
+import { Button } from '@/components/ui/button';
 
 type Props = { open: boolean; onClose: () => void; onCreated?: () => void };
 
 export default function AddBootcampModal({ open, onClose, onCreated }: Props) {
-  const [name, setName] = useState("");
-  const [location, setLocation] = useState("");
+  const [name, setName] = useState('');
+  const [location, setLocation] = useState('');
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -20,27 +30,38 @@ export default function AddBootcampModal({ open, onClose, onCreated }: Props) {
     }
   }
 
-  if (!open) return null;
-
   return (
-    <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
-      <div className="bg-white rounded shadow p-6 w-[520px]">
-        <h2 className="text-lg font-semibold mb-4">New Bootcamp</h2>
-        <form onSubmit={handleSubmit} className="space-y-3">
-          <div>
-            <label className="block text-sm">Name</label>
-            <input value={name} onChange={(e) => setName(e.target.value)} className="input input-bordered w-full" />
+    <Dialog
+      open={open}
+      onOpenChange={(o) => {
+        if (!o) onClose();
+      }}
+    >
+      <DialogContent className="max-w-lg w-[calc(100vw-2rem)] sm:w-full">
+        <DialogHeader>
+          <DialogTitle>New Bootcamp</DialogTitle>
+        </DialogHeader>
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <div className="space-y-1.5">
+            <Label htmlFor="bootcamp-name">Name</Label>
+            <Input id="bootcamp-name" value={name} onChange={(e) => setName(e.target.value)} />
           </div>
-          <div>
-            <label className="block text-sm">Location</label>
-            <input value={location} onChange={(e) => setLocation(e.target.value)} className="input input-bordered w-full" />
+          <div className="space-y-1.5">
+            <Label htmlFor="bootcamp-location">Location</Label>
+            <Input
+              id="bootcamp-location"
+              value={location}
+              onChange={(e) => setLocation(e.target.value)}
+            />
           </div>
-          <div className="flex justify-end gap-2 mt-4">
-            <button type="button" className="btn btn-ghost" onClick={onClose}>Cancel</button>
-            <button type="submit" className="btn btn-primary">Create</button>
-          </div>
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={onClose}>
+              Cancel
+            </Button>
+            <Button type="submit">Create</Button>
+          </DialogFooter>
         </form>
-      </div>
-    </div>
+      </DialogContent>
+    </Dialog>
   );
 }

@@ -1,14 +1,24 @@
-"use client";
+'use client';
 
-import React, { useState } from "react";
-import { createCohort } from "@/lib/api/cohorts";
+import React, { useState } from 'react';
+import { createCohort } from '@/lib/api/cohorts';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+} from '@/components/ui/dialog';
+import { Label } from '@/components/ui/label';
+import { Input } from '@/components/ui/input';
+import { Button } from '@/components/ui/button';
 
 type Props = { open: boolean; bootcampId: string; onClose: () => void; onCreated?: () => void };
 
 export default function AddCohortModal({ open, bootcampId, onClose, onCreated }: Props) {
-  const [name, setName] = useState("");
-  const [startDate, setStartDate] = useState("");
-  const [endDate, setEndDate] = useState("");
+  const [name, setName] = useState('');
+  const [startDate, setStartDate] = useState('');
+  const [endDate, setEndDate] = useState('');
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -27,31 +37,48 @@ export default function AddCohortModal({ open, bootcampId, onClose, onCreated }:
     }
   }
 
-  if (!open) return null;
-
   return (
-    <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
-      <div className="bg-white rounded shadow p-6 w-[520px]">
-        <h2 className="text-lg font-semibold mb-4">New Cohort</h2>
-        <form onSubmit={handleSubmit} className="space-y-3">
-          <div>
-            <label className="block text-sm">Name</label>
-            <input value={name} onChange={(e) => setName(e.target.value)} className="input input-bordered w-full" />
+    <Dialog
+      open={open}
+      onOpenChange={(o) => {
+        if (!o) onClose();
+      }}
+    >
+      <DialogContent className="max-w-lg w-[calc(100vw-2rem)] sm:w-full">
+        <DialogHeader>
+          <DialogTitle>New Cohort</DialogTitle>
+        </DialogHeader>
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <div className="space-y-1.5">
+            <Label htmlFor="cohort-name">Name</Label>
+            <Input id="cohort-name" value={name} onChange={(e) => setName(e.target.value)} />
           </div>
-          <div>
-            <label className="block text-sm">Start Date</label>
-            <input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} className="input input-bordered w-full" />
+          <div className="space-y-1.5">
+            <Label htmlFor="cohort-start-date">Start Date</Label>
+            <Input
+              id="cohort-start-date"
+              type="date"
+              value={startDate}
+              onChange={(e) => setStartDate(e.target.value)}
+            />
           </div>
-          <div>
-            <label className="block text-sm">End Date</label>
-            <input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} className="input input-bordered w-full" />
+          <div className="space-y-1.5">
+            <Label htmlFor="cohort-end-date">End Date</Label>
+            <Input
+              id="cohort-end-date"
+              type="date"
+              value={endDate}
+              onChange={(e) => setEndDate(e.target.value)}
+            />
           </div>
-          <div className="flex justify-end gap-2 mt-4">
-            <button type="button" className="btn btn-ghost" onClick={onClose}>Cancel</button>
-            <button type="submit" className="btn btn-primary">Create</button>
-          </div>
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={onClose}>
+              Cancel
+            </Button>
+            <Button type="submit">Create</Button>
+          </DialogFooter>
         </form>
-      </div>
-    </div>
+      </DialogContent>
+    </Dialog>
   );
 }

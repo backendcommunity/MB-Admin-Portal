@@ -1,58 +1,82 @@
-"use client";
+'use client';
 
-import React, { useState, useMemo, useCallback } from "react";
-import { useApiQuery } from "@/lib/api/query";
-import type { User, UsersListResponse } from "@/lib/api/users";
+import React, { useState, useMemo, useCallback } from 'react';
+import { useApiQuery } from '@/lib/api/query';
+import type { User, UsersListResponse } from '@/lib/api/users';
 import {
-  flexRender,
   getCoreRowModel,
   useReactTable,
   type ColumnDef,
   type SortingState,
   type RowSelectionState,
-} from "@tanstack/react-table";
-import AddUserModal from "@/components/users/AddUserModal";
-import EditUserModal from "@/components/users/EditUserModal";
-import ConfirmDelete from "@/components/users/ConfirmDelete";
-import { deleteUser, suspendUserById } from "@/lib/api/users";
-import Link from "next/link";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Card } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
+} from '@tanstack/react-table';
+import AddUserModal from '@/components/users/AddUserModal';
+import EditUserModal from '@/components/users/EditUserModal';
+import ConfirmDelete from '@/components/users/ConfirmDelete';
+import { deleteUser, suspendUserById } from '@/lib/api/users';
+import Link from 'next/link';
+import { MoreHorizontal } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Card } from '@/components/ui/card';
+import { Checkbox } from '@/components/ui/checkbox';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
+import { DataTable } from '@/components/shared/DataTable';
+import { PageHeader } from '@/components/shared/PageHeader';
+import { StatusBadge } from '@/components/shared/StatusBadge';
+import { LoadingState, ErrorState } from '@/components/shared/LoadingState';
+import { EmptyState } from '@/components/shared/EmptyState';
+
+function roleTone(role: string): 'danger' | 'info' | 'success' | 'neutral' {
+  switch (role) {
+    case 'SUPER_ADMIN':
+      return 'danger';
+    case 'ADMIN':
+      return 'info';
+    case 'INSTRUCTOR':
+      return 'success';
+    default:
+      return 'neutral';
+  }
+}
 
 export default function UsersTable() {
   const [pageIndex, setPageIndex] = useState(0);
   const [pageSize, setPageSize] = useState(10);
-  const [globalFilter, setGlobalFilter] = useState("");
-  const [roleFilter, setRoleFilter] = useState("all");
-  const [statusFilter, setStatusFilter] = useState("all");
+  const [globalFilter, setGlobalFilter] = useState('');
+  const [roleFilter, setRoleFilter] = useState('all');
+  const [statusFilter, setStatusFilter] = useState('all');
   const [showAdd, setShowAdd] = useState(false);
   const [sorting, setSorting] = useState<SortingState>([]);
   const [rowSelection, setRowSelection] = useState<RowSelectionState>({});
   const [isBulkBusy, setIsBulkBusy] = useState(false);
 
-  const queryKey = [
-    "users",
-    pageIndex,
-    pageSize,
-    globalFilter,
-    roleFilter,
-    statusFilter,
-    sorting,
-  ];
+  const queryKey = ['users', pageIndex, pageSize, globalFilter, roleFilter, statusFilter, sorting];
 
   const sortParam = sorting[0]
-    ? `&sort=${sorting[0].id}&order=${sorting[0].desc ? "desc" : "asc"}`
-    : "";
+    ? `&sort=${sorting[0].id}&order=${sorting[0].desc ? 'desc' : 'asc'}`
+    : '';
 
-  const roleParam = roleFilter !== "all" ? `&role=${encodeURIComponent(roleFilter)}` : "";
+  const roleParam = roleFilter !== 'all' ? `&role=${encodeURIComponent(roleFilter)}` : '';
   const statusParam =
-    statusFilter !== "all" ? `&active=${statusFilter === "active" ? "true" : "false"}` : "";
+    statusFilter !== 'all' ? `&active=${statusFilter === 'active' ? 'true' : 'false'}` : '';
 
   const { data, isLoading, isError, refetch } = useApiQuery<UsersListResponse>(
     queryKey,
-    `/admin/users?page=${pageIndex + 1}&limit=${pageSize}&q=${encodeURIComponent(globalFilter)}${roleParam}${statusParam}${sortParam}`
+    `/admin/users?page=${pageIndex + 1}&limit=${pageSize}&q=${encodeURIComponent(globalFilter)}${roleParam}${statusParam}${sortParam}`,
   );
 
   const users: User[] = data?.data || [];
@@ -61,107 +85,94 @@ export default function UsersTable() {
   const [editingUser, setEditingUser] = useState<User | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
 
-  const getRoleBadgeColor = (role: string) => {
-    switch (role) {
-      case "SUPER_ADMIN":
-        return "bg-red-100 text-red-800";
-      case "ADMIN":
-        return "bg-blue-100 text-blue-800";
-      case "INSTRUCTOR":
-        return "bg-green-100 text-green-800";
-      default:
-        return "bg-gray-100 text-gray-800";
-    }
-  };
-
   const columns = useMemo<ColumnDef<User, any>[]>(
     () => [
       {
-        id: "select",
+        id: 'select',
         header: ({ table }) => (
-          <input
-            type="checkbox"
-            checked={table.getIsAllPageRowsSelected()}
-            ref={(input) => {
-              if (input) {
-                input.indeterminate = table.getIsSomePageRowsSelected();
-              }
-            }}
-            onChange={table.getToggleAllPageRowsSelectedHandler()}
-            className="checkbox checkbox-sm"
+          <Checkbox
+            checked={
+              table.getIsAllPageRowsSelected()
+                ? true
+                : table.getIsSomePageRowsSelected()
+                  ? 'indeterminate'
+                  : false
+            }
+            onCheckedChange={(v) => table.toggleAllPageRowsSelected(!!v)}
+            aria-label="Select all"
           />
         ),
         cell: ({ row }) => (
-          <input
-            type="checkbox"
+          <Checkbox
             checked={row.getIsSelected()}
-            onChange={row.getToggleSelectedHandler()}
-            className="checkbox checkbox-sm"
+            onCheckedChange={(v) => row.toggleSelected(!!v)}
+            aria-label="Select row"
           />
         ),
       },
-      { accessorKey: "name", header: "Name" },
-      { accessorKey: "email", header: "Email" },
+      { accessorKey: 'name', header: 'Name' },
+      { accessorKey: 'email', header: 'Email' },
       {
-        accessorKey: "role",
-        header: "Role",
+        accessorKey: 'role',
+        header: 'Role',
         cell: (info) => (
-          <Badge className={`${getRoleBadgeColor(info.getValue())} px-2 py-1 text-xs`}>
-            {info.getValue()}
-          </Badge>
+          <StatusBadge label={info.getValue<string>()} tone={roleTone(info.getValue<string>())} />
         ),
       },
       {
-        accessorKey: "plan",
-        header: "Plan",
-        cell: (info) => info.getValue() || "—",
+        accessorKey: 'plan',
+        header: 'Plan',
+        cell: (info) => info.getValue() || '—',
       },
       {
-        accessorKey: "active",
-        header: "Status",
+        accessorKey: 'active',
+        header: 'Status',
         cell: (info) => (
-          <Badge className={info.getValue() ? "bg-green-100 text-green-800" : "bg-red-100 text-red-800"}>
-            {info.getValue() ? "Active" : "Inactive"}
-          </Badge>
+          <StatusBadge
+            label={info.getValue<boolean>() ? 'Active' : 'Inactive'}
+            tone={info.getValue<boolean>() ? 'success' : 'neutral'}
+          />
         ),
       },
       {
-        accessorKey: "joinedAt",
-        header: "Joined",
+        accessorKey: 'joinedAt',
+        header: 'Joined',
         cell: (info) => {
           const date = info.getValue();
-          return date ? new Date(date as string).toLocaleDateString() : "—";
+          return date ? new Date(date as string).toLocaleDateString() : '—';
         },
       },
       {
-        id: "actions",
-        header: "Actions",
+        id: 'actions',
+        header: 'Actions',
         enableSorting: false,
         cell: ({ row }) => (
-          <div className="flex gap-2">
-            <Link
-              className="text-blue-600 hover:text-blue-800 text-sm font-medium"
-              href={`/users/${row.original.id}`}
-            >
-              View
-            </Link>
-            <button
-              className="text-blue-600 hover:text-blue-800 text-sm font-medium"
-              onClick={() => setEditingUser(row.original)}
-            >
-              Edit
-            </button>
-            <button
-              className="text-red-600 hover:text-red-800 text-sm font-medium"
-              onClick={() => setDeletingId(row.original.id)}
-            >
-              Delete
-            </button>
-          </div>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="ghost" size="icon" aria-label="Row actions">
+                <MoreHorizontal className="h-4 w-4" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem asChild>
+                <Link href={`/users/${row.original.id}`}>View</Link>
+              </DropdownMenuItem>
+              <DropdownMenuItem onSelect={() => setEditingUser(row.original)}>
+                Edit
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem
+                className="text-destructive focus:text-destructive"
+                onSelect={() => setDeletingId(row.original.id)}
+              >
+                Delete
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
         ),
       },
     ],
-    []
+    [],
   );
 
   const table = useReactTable({
@@ -173,7 +184,7 @@ export default function UsersTable() {
     onGlobalFilterChange: setGlobalFilter,
     onRowSelectionChange: setRowSelection,
     onPaginationChange: (updater) => {
-      const next = typeof updater === "function" ? updater({ pageIndex, pageSize }) : updater;
+      const next = typeof updater === 'function' ? updater({ pageIndex, pageSize }) : updater;
       setPageIndex(next.pageIndex ?? 0);
       setPageSize(next.pageSize ?? pageSize);
     },
@@ -186,32 +197,32 @@ export default function UsersTable() {
 
   const selectedUsers = useMemo(
     () => table.getSelectedRowModel().flatRows.map((row) => row.original),
-    [table, rowSelection, users]
+    [table, rowSelection, users],
   );
 
   const exportSelectedCsv = useCallback(() => {
     if (!selectedUsers.length) return;
 
     const rows = [
-      ["ID", "Name", "Email", "Role", "Plan", "Status", "Joined Date"],
+      ['ID', 'Name', 'Email', 'Role', 'Plan', 'Status', 'Joined Date'],
       ...selectedUsers.map((user) => [
         user.id,
         user.name,
         user.email,
         user.role,
-        user.plan || "",
-        user.active ? "Active" : "Inactive",
-        user.joinedAt || "",
+        user.plan || '',
+        user.active ? 'Active' : 'Inactive',
+        user.joinedAt || '',
       ]),
     ];
 
     const csv = rows
-      .map((row) => row.map((value) => `"${String(value).replaceAll('"', '""')}"`).join(","))
-      .join("\n");
+      .map((row) => row.map((value) => `"${String(value).replaceAll('"', '""')}"`).join(','))
+      .join('\n');
 
-    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
-    const anchor = document.createElement("a");
+    const anchor = document.createElement('a');
     anchor.href = url;
     anchor.download = `users-export-${new Date().toISOString().slice(0, 10)}.csv`;
     anchor.click();
@@ -227,197 +238,158 @@ export default function UsersTable() {
       setPageIndex(0);
       await refetch();
     } catch (error) {
-      console.error("Bulk suspend failed:", error);
+      console.error('Bulk suspend failed:', error);
     } finally {
       setIsBulkBusy(false);
     }
   }, [selectedUsers, refetch]);
 
   return (
-    <Card className="p-6">
-      {/* Filters & Actions */}
-      <div className="mb-6 space-y-4">
-        <div className="flex flex-col sm:flex-row gap-4 items-start sm:items-center justify-between">
-          <div className="flex-1 space-y-2">
-            <Input
-              placeholder="Search by name or email..."
-              value={globalFilter}
-              onChange={(e) => {
-                setGlobalFilter(e.target.value);
+    <div className="space-y-4">
+      <PageHeader
+        title="Users"
+        description="Manage platform users, roles and access."
+        actions={<Button onClick={() => setShowAdd(true)}>Add User</Button>}
+      />
+
+      <Card className="p-4 sm:p-6">
+        <div className="mb-4 space-y-3">
+          <Input
+            placeholder="Search by name or email..."
+            value={globalFilter}
+            onChange={(e) => {
+              setGlobalFilter(e.target.value);
+              setPageIndex(0);
+            }}
+            className="w-full"
+          />
+
+          <div className="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap sm:items-center">
+            <Select
+              value={roleFilter}
+              onValueChange={(v) => {
+                setRoleFilter(v);
                 setPageIndex(0);
               }}
-            />
+            >
+              <SelectTrigger className="w-full sm:w-36">
+                <SelectValue placeholder="All roles" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All roles</SelectItem>
+                <SelectItem value="SUPER_ADMIN">Super Admin</SelectItem>
+                <SelectItem value="ADMIN">Admin</SelectItem>
+                <SelectItem value="INSTRUCTOR">Instructor</SelectItem>
+              </SelectContent>
+            </Select>
+
+            <Select
+              value={statusFilter}
+              onValueChange={(v) => {
+                setStatusFilter(v);
+                setPageIndex(0);
+              }}
+            >
+              <SelectTrigger className="w-full sm:w-36">
+                <SelectValue placeholder="All status" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All status</SelectItem>
+                <SelectItem value="active">Active</SelectItem>
+                <SelectItem value="inactive">Inactive</SelectItem>
+              </SelectContent>
+            </Select>
+
+            <Button
+              onClick={() => refetch()}
+              variant="outline"
+              className="col-span-2 sm:col-span-1"
+            >
+              Refresh
+            </Button>
+
+            {selectedUsers.length > 0 && (
+              <>
+                <Button
+                  onClick={bulkSuspendSelected}
+                  disabled={isBulkBusy}
+                  variant="outline"
+                  className="col-span-2 text-amber-600 sm:col-span-1"
+                >
+                  Suspend ({selectedUsers.length})
+                </Button>
+                <Button
+                  onClick={exportSelectedCsv}
+                  variant="outline"
+                  className="col-span-2 sm:col-span-1"
+                >
+                  Export CSV ({selectedUsers.length})
+                </Button>
+              </>
+            )}
           </div>
-          <Button
-            onClick={() => setShowAdd(true)}
-            className="bg-blue-600 hover:bg-blue-700 text-white"
-          >
-            Add User
-          </Button>
         </div>
 
-        <div className="flex flex-wrap gap-2">
-          <select
-            value={roleFilter}
-            onChange={(e) => {
-              setRoleFilter(e.target.value);
-              setPageIndex(0);
-            }}
-            className="select select-bordered select-sm"
-          >
-            <option value="all">All roles</option>
-            <option value="SUPER_ADMIN">Super Admin</option>
-            <option value="ADMIN">Admin</option>
-            <option value="INSTRUCTOR">Instructor</option>
-          </select>
+        {isLoading ? (
+          <LoadingState label="Loading users..." />
+        ) : isError ? (
+          <ErrorState message="Error loading users. Please try again." onRetry={refetch} />
+        ) : users.length === 0 ? (
+          <EmptyState title="No users found" description="Try adjusting your search or filters." />
+        ) : (
+          <>
+            <DataTable table={table} mobileTitle={(r) => r.original.name} />
 
-          <select
-            value={statusFilter}
-            onChange={(e) => {
-              setStatusFilter(e.target.value);
-              setPageIndex(0);
-            }}
-            className="select select-bordered select-sm"
-          >
-            <option value="all">All status</option>
-            <option value="active">Active</option>
-            <option value="inactive">Inactive</option>
-          </select>
+            {/* Pagination */}
+            <div className="mt-6 flex flex-col gap-3 border-t border-border pt-4 sm:flex-row sm:items-center sm:justify-between">
+              <div className="text-sm text-muted-foreground">
+                Showing {Math.min(pageIndex * pageSize + 1, total)}–
+                {Math.min((pageIndex + 1) * pageSize, total)} of {total} users
+              </div>
+              <div className="flex items-center gap-2">
+                <Select
+                  value={String(pageSize)}
+                  onValueChange={(v) => {
+                    table.setPageSize(Number(v));
+                    setPageIndex(0);
+                  }}
+                >
+                  <SelectTrigger className="w-28">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="10">10 / page</SelectItem>
+                    <SelectItem value="20">20 / page</SelectItem>
+                    <SelectItem value="50">50 / page</SelectItem>
+                  </SelectContent>
+                </Select>
 
-          <Button
-            onClick={() => refetch()}
-            variant="outline"
-            size="sm"
-          >
-            Refresh
-          </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setPageIndex(Math.max(0, pageIndex - 1))}
+                  disabled={pageIndex === 0}
+                >
+                  Previous
+                </Button>
 
-          {selectedUsers.length > 0 && (
-            <>
-              <Button
-                onClick={bulkSuspendSelected}
-                disabled={isBulkBusy}
-                variant="outline"
-                size="sm"
-                className="text-yellow-600"
-              >
-                Suspend ({selectedUsers.length})
-              </Button>
-              <Button
-                onClick={exportSelectedCsv}
-                variant="outline"
-                size="sm"
-              >
-                Export CSV ({selectedUsers.length})
-              </Button>
-            </>
-          )}
-        </div>
-      </div>
+                <span className="text-sm text-muted-foreground">
+                  Page {pageIndex + 1} of {Math.ceil(total / pageSize) || 1}
+                </span>
 
-      {/* Table */}
-      {isLoading ? (
-        <div className="flex justify-center items-center h-64">
-          <span className="loading loading-spinner loading-lg"></span>
-        </div>
-      ) : isError ? (
-        <div className="alert alert-error">
-          <span>Error loading users. Please try again.</span>
-        </div>
-      ) : users.length === 0 ? (
-        <div className="text-center py-12">
-          <p className="text-gray-500">No users found</p>
-        </div>
-      ) : (
-        <>
-          <div className="overflow-x-auto">
-            <table className="w-full">
-              <thead className="bg-gray-100 border-b">
-                {table.getHeaderGroups().map((headerGroup) => (
-                  <tr key={headerGroup.id}>
-                    {headerGroup.headers.map((header) => (
-                      <th key={header.id} className="text-left px-4 py-3 text-sm font-semibold">
-                        {header.isPlaceholder ? null : (
-                          <div
-                            onClick={header.column.getToggleSortingHandler()}
-                            style={{
-                              cursor: header.column.getCanSort() ? "pointer" : undefined,
-                            }}
-                            className="flex items-center gap-2"
-                          >
-                            {flexRender(header.column.columnDef.header, header.getContext())}
-                            <span className="text-xs">
-                              {header.column.getIsSorted() === "asc"
-                                ? "↑"
-                                : header.column.getIsSorted() === "desc"
-                                  ? "↓"
-                                  : ""}
-                            </span>
-                          </div>
-                        )}
-                      </th>
-                    ))}
-                  </tr>
-                ))}
-              </thead>
-              <tbody>
-                {table.getRowModel().rows.map((row) => (
-                  <tr key={row.id} className="border-b hover:bg-gray-50">
-                    {row.getVisibleCells().map((cell) => (
-                      <td key={cell.id} className="px-4 py-3 text-sm">
-                        {flexRender(cell.column.columnDef.cell, cell.getContext())}
-                      </td>
-                    ))}
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-
-          {/* Pagination */}
-          <div className="flex items-center justify-between mt-6 pt-4 border-t">
-            <div className="text-sm text-gray-600">
-              Showing {Math.min(pageIndex * pageSize + 1, total)}-{Math.min((pageIndex + 1) * pageSize, total)} of {total} users
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setPageIndex(pageIndex + 1)}
+                  disabled={(pageIndex + 1) * pageSize >= total}
+                >
+                  Next
+                </Button>
+              </div>
             </div>
-            <div className="flex items-center gap-2">
-              <select
-                value={pageSize}
-                onChange={(e) => {
-                  table.setPageSize(Number(e.target.value));
-                  setPageIndex(0);
-                }}
-                className="select select-bordered select-sm"
-              >
-                <option value={10}>10 / page</option>
-                <option value={20}>20 / page</option>
-                <option value={50}>50 / page</option>
-              </select>
-
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => setPageIndex(Math.max(0, pageIndex - 1))}
-                disabled={pageIndex === 0}
-              >
-                Previous
-              </Button>
-
-              <span className="text-sm">
-                Page {pageIndex + 1} of {Math.ceil(total / pageSize) || 1}
-              </span>
-
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => setPageIndex(pageIndex + 1)}
-                disabled={(pageIndex + 1) * pageSize >= total}
-              >
-                Next
-              </Button>
-            </div>
-          </div>
-        </>
-      )}
+          </>
+        )}
+      </Card>
 
       {/* Modals */}
       <AddUserModal
@@ -454,11 +426,11 @@ export default function UsersTable() {
               setDeletingId(null);
               refetch();
             } catch (err) {
-              console.error("Delete failed:", err);
+              console.error('Delete failed:', err);
             }
           }}
         />
       )}
-    </Card>
+    </div>
   );
 }

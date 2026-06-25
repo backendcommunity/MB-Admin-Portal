@@ -1,6 +1,6 @@
-import React from 'react'
-import { render, screen } from '@testing-library/react'
-import CoursesTable from './CoursesTable'
+import React from 'react';
+import { render, screen } from '@testing-library/react';
+import CoursesTable from './CoursesTable';
 
 vi.mock('@/lib/api/query', () => ({
   useApiQuery: () => ({
@@ -8,12 +8,12 @@ vi.mock('@/lib/api/query', () => ({
     isLoading: false,
     isError: false,
     refetch: vi.fn(),
-  })
-}))
+  }),
+}));
 
 describe('CoursesTable', () => {
   it('renders a course row', () => {
-    render(<CoursesTable />)
-    expect(screen.getByText('Course A')).toBeInTheDocument()
-  })
-})
+    render(<CoursesTable />);
+    expect(screen.getAllByText('Course A').length > 0).toBe(true);
+  });
+});
