@@ -24,7 +24,18 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { FilterBar } from '@/components/shared/FilterBar';
+import { LoadingState, ErrorState } from '@/components/shared/LoadingState';
+import { EmptyState } from '@/components/shared/EmptyState';
 import { StatusBadge } from '@/components/shared/StatusBadge';
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table';
+import { CreditCard } from 'lucide-react';
 
 function exportCsv(rows: Record<string, unknown>[], filename: string) {
   if (!rows.length) return;
@@ -77,6 +88,8 @@ export default function SubscriptionsPanel() {
 
   const [grantUserId, setGrantUserId] = useState('');
   const [grantPlanId, setGrantPlanId] = useState('');
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   async function loadPlans() {
     const res = await fetchPlans({ page: 1, limit: 200 });
@@ -105,11 +118,20 @@ export default function SubscriptionsPanel() {
   }
 
   async function refreshAll() {
-    await Promise.all([loadPlans(), loadSubscriptions(), loadTransactions()]);
+    setIsLoading(true);
+    setError(null);
+    try {
+      await Promise.all([loadPlans(), loadSubscriptions(), loadTransactions()]);
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Failed to load subscription data');
+    } finally {
+      setIsLoading(false);
+    }
   }
 
   useEffect(() => {
     void refreshAll();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const subscriptionCsvRows = useMemo(
@@ -221,184 +243,213 @@ export default function SubscriptionsPanel() {
         </div>
       </div>
 
-      {/* ── Tab Content ──────────────────────────────────────────────────────── */}
-      {activeTab === 'subscriptions' ? (
-        <div className="space-y-3">
-          <FilterBar>
-            <Select value={statusFilter} onValueChange={setStatusFilter}>
-              <SelectTrigger className="w-40">
-                <SelectValue placeholder="All status" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All status</SelectItem>
-                <SelectItem value="ACTIVE">ACTIVE</SelectItem>
-                <SelectItem value="CANCELED">CANCELED</SelectItem>
-                <SelectItem value="PAUSED">PAUSED</SelectItem>
-              </SelectContent>
-            </Select>
-            <Select value={planFilter} onValueChange={setPlanFilter}>
-              <SelectTrigger className="w-44">
-                <SelectValue placeholder="All plans" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All plans</SelectItem>
-                {plans.map((p) => (
-                  <SelectItem key={p.id} value={p.id}>
-                    {p.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            <Button size="sm" variant="outline" onClick={() => loadSubscriptions()}>
-              Apply
-            </Button>
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={() => exportCsv(subscriptionCsvRows, 'subscriptions.csv')}
-            >
-              Export CSV
-            </Button>
-          </FilterBar>
-
-          <div className="overflow-x-auto rounded-lg border border-border">
-            <table className="w-full">
-              <thead className="border-b bg-muted">
-                <tr>
-                  <th className="text-left px-4 py-3 text-sm font-semibold text-foreground">
-                    User
-                  </th>
-                  <th className="text-left px-4 py-3 text-sm font-semibold text-foreground">
-                    Plan
-                  </th>
-                  <th className="text-left px-4 py-3 text-sm font-semibold text-foreground">
-                    Status
-                  </th>
-                  <th className="text-left px-4 py-3 text-sm font-semibold text-foreground">
-                    Amount
-                  </th>
-                  <th className="text-left px-4 py-3 text-sm font-semibold text-foreground">
-                    Started
-                  </th>
-                  <th className="text-left px-4 py-3 text-sm font-semibold text-foreground">
-                    Expiry
-                  </th>
-                  <th className="text-left px-4 py-3 text-sm font-semibold text-foreground">
-                    Actions
-                  </th>
-                </tr>
-              </thead>
-              <tbody>
-                {subscriptions.map((s) => (
-                  <tr key={s.id} className="border-b transition-colors hover:bg-muted/50">
-                    <td className="px-4 py-3 text-sm text-foreground">
-                      {s.userName || '-'}
-                      <div className="text-xs text-muted-foreground">{s.userEmail || ''}</div>
-                    </td>
-                    <td className="px-4 py-3 text-sm text-foreground">{s.planName || '-'}</td>
-                    <td className="px-4 py-3 text-sm">
-                      <StatusBadge label={s.status} tone={subscriptionTone(s.status)} />
-                    </td>
-                    <td className="px-4 py-3 text-sm text-foreground">{s.amount}</td>
-                    <td className="px-4 py-3 text-sm text-foreground">
-                      {s.startedAt ? new Date(s.startedAt).toLocaleDateString() : '-'}
-                    </td>
-                    <td className="px-4 py-3 text-sm text-foreground">
-                      {s.expiry ? new Date(s.expiry).toLocaleDateString() : '-'}
-                    </td>
-                    <td className="px-4 py-3 text-sm">
-                      <Button
-                        size="sm"
-                        variant="destructive"
-                        onClick={async () => {
-                          await cancelSubscription(s.id);
-                          await loadSubscriptions();
-                        }}
-                      >
-                        Cancel
-                      </Button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </div>
+      {/* ── Global Loading / Error States ────────────────────────────────────── */}
+      {isLoading ? (
+        <LoadingState label="Loading subscription data..." />
+      ) : error ? (
+        <ErrorState message={error} onRetry={() => refreshAll()} />
       ) : (
-        <div className="space-y-3">
-          <FilterBar>
-            <Select value={providerFilter} onValueChange={setProviderFilter}>
-              <SelectTrigger className="w-44">
-                <SelectValue placeholder="All providers" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All providers</SelectItem>
-                <SelectItem value="PADDLE">Paddle</SelectItem>
-                <SelectItem value="ASYNCPAY">AsyncPay</SelectItem>
-              </SelectContent>
-            </Select>
-            <Button size="sm" variant="outline" onClick={() => loadTransactions()}>
-              Apply
-            </Button>
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={() => exportCsv(transactionCsvRows, 'transactions.csv')}
-            >
-              Export CSV
-            </Button>
-          </FilterBar>
+        <>
+          {/* ── Tab Content ────────────────────────────────────────────────────── */}
+          {activeTab === 'subscriptions' ? (
+            <div className="space-y-3">
+              <FilterBar>
+                <Select value={statusFilter} onValueChange={setStatusFilter}>
+                  <SelectTrigger className="w-40">
+                    <SelectValue placeholder="All status" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All status</SelectItem>
+                    <SelectItem value="ACTIVE">ACTIVE</SelectItem>
+                    <SelectItem value="CANCELED">CANCELED</SelectItem>
+                    <SelectItem value="PAUSED">PAUSED</SelectItem>
+                  </SelectContent>
+                </Select>
+                <Select value={planFilter} onValueChange={setPlanFilter}>
+                  <SelectTrigger className="w-44">
+                    <SelectValue placeholder="All plans" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All plans</SelectItem>
+                    {plans.map((p) => (
+                      <SelectItem key={p.id} value={p.id}>
+                        {p.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <Button size="sm" variant="outline" onClick={() => loadSubscriptions()}>
+                  Apply
+                </Button>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => exportCsv(subscriptionCsvRows, 'subscriptions.csv')}
+                >
+                  Export CSV
+                </Button>
+              </FilterBar>
 
-          <div className="overflow-x-auto rounded-lg border border-border">
-            <table className="w-full">
-              <thead className="border-b bg-muted">
-                <tr>
-                  <th className="text-left px-4 py-3 text-sm font-semibold text-foreground">
-                    Invoice
-                  </th>
-                  <th className="text-left px-4 py-3 text-sm font-semibold text-foreground">
-                    Title
-                  </th>
-                  <th className="text-left px-4 py-3 text-sm font-semibold text-foreground">
-                    Provider
-                  </th>
-                  <th className="text-left px-4 py-3 text-sm font-semibold text-foreground">
-                    Status
-                  </th>
-                  <th className="text-left px-4 py-3 text-sm font-semibold text-foreground">
-                    Amount
-                  </th>
-                  <th className="text-left px-4 py-3 text-sm font-semibold text-foreground">
-                    User
-                  </th>
-                  <th className="text-left px-4 py-3 text-sm font-semibold text-foreground">
-                    Date
-                  </th>
-                </tr>
-              </thead>
-              <tbody>
-                {transactions.map((t) => (
-                  <tr key={t.id} className="border-b transition-colors hover:bg-muted/50">
-                    <td className="px-4 py-3 text-sm text-foreground">{t.invoice}</td>
-                    <td className="px-4 py-3 text-sm text-foreground">{t.title}</td>
-                    <td className="px-4 py-3 text-sm text-foreground">{t.provider || '-'}</td>
-                    <td className="px-4 py-3 text-sm">
-                      <StatusBadge label={t.status} tone={transactionTone(t.status)} />
-                    </td>
-                    <td className="px-4 py-3 text-sm text-foreground">{t.amount}</td>
-                    <td className="px-4 py-3 text-sm text-foreground">
-                      {t.userName || '-'}
-                      <div className="text-xs text-muted-foreground">{t.userEmail || ''}</div>
-                    </td>
-                    <td className="px-4 py-3 text-sm text-foreground">
-                      {t.createdAt ? new Date(t.createdAt).toLocaleDateString() : '-'}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </div>
+              {subscriptions.length === 0 ? (
+                <EmptyState
+                  icon={CreditCard}
+                  title="No subscriptions found"
+                  description="No subscriptions match the current filters."
+                />
+              ) : (
+                <div className="rounded-lg border border-border">
+                  <Table>
+                    <TableHeader className="bg-muted">
+                      <TableRow>
+                        <TableHead className="text-sm font-semibold text-foreground">
+                          User
+                        </TableHead>
+                        <TableHead className="text-sm font-semibold text-foreground">
+                          Plan
+                        </TableHead>
+                        <TableHead className="text-sm font-semibold text-foreground">
+                          Status
+                        </TableHead>
+                        <TableHead className="text-sm font-semibold text-foreground">
+                          Amount
+                        </TableHead>
+                        <TableHead className="text-sm font-semibold text-foreground">
+                          Started
+                        </TableHead>
+                        <TableHead className="text-sm font-semibold text-foreground">
+                          Expiry
+                        </TableHead>
+                        <TableHead className="text-sm font-semibold text-foreground">
+                          Actions
+                        </TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {subscriptions.map((s) => (
+                        <TableRow key={s.id}>
+                          <TableCell className="text-sm text-foreground">
+                            {s.userName || '-'}
+                            <div className="text-xs text-muted-foreground">{s.userEmail || ''}</div>
+                          </TableCell>
+                          <TableCell className="text-sm text-foreground">
+                            {s.planName || '-'}
+                          </TableCell>
+                          <TableCell className="text-sm">
+                            <StatusBadge label={s.status} tone={subscriptionTone(s.status)} />
+                          </TableCell>
+                          <TableCell className="text-sm text-foreground">{s.amount}</TableCell>
+                          <TableCell className="text-sm text-foreground">
+                            {s.startedAt ? new Date(s.startedAt).toLocaleDateString() : '-'}
+                          </TableCell>
+                          <TableCell className="text-sm text-foreground">
+                            {s.expiry ? new Date(s.expiry).toLocaleDateString() : '-'}
+                          </TableCell>
+                          <TableCell className="text-sm">
+                            <Button
+                              size="sm"
+                              variant="destructive"
+                              onClick={async () => {
+                                await cancelSubscription(s.id);
+                                await loadSubscriptions();
+                              }}
+                            >
+                              Cancel
+                            </Button>
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </div>
+              )}
+            </div>
+          ) : (
+            <div className="space-y-3">
+              <FilterBar>
+                <Select value={providerFilter} onValueChange={setProviderFilter}>
+                  <SelectTrigger className="w-44">
+                    <SelectValue placeholder="All providers" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All providers</SelectItem>
+                    <SelectItem value="PADDLE">Paddle</SelectItem>
+                    <SelectItem value="ASYNCPAY">AsyncPay</SelectItem>
+                  </SelectContent>
+                </Select>
+                <Button size="sm" variant="outline" onClick={() => loadTransactions()}>
+                  Apply
+                </Button>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => exportCsv(transactionCsvRows, 'transactions.csv')}
+                >
+                  Export CSV
+                </Button>
+              </FilterBar>
+
+              {transactions.length === 0 ? (
+                <EmptyState
+                  icon={CreditCard}
+                  title="No transactions found"
+                  description="No transactions match the current filters."
+                />
+              ) : (
+                <div className="rounded-lg border border-border">
+                  <Table>
+                    <TableHeader className="bg-muted">
+                      <TableRow>
+                        <TableHead className="text-sm font-semibold text-foreground">
+                          Invoice
+                        </TableHead>
+                        <TableHead className="text-sm font-semibold text-foreground">
+                          Title
+                        </TableHead>
+                        <TableHead className="text-sm font-semibold text-foreground">
+                          Provider
+                        </TableHead>
+                        <TableHead className="text-sm font-semibold text-foreground">
+                          Status
+                        </TableHead>
+                        <TableHead className="text-sm font-semibold text-foreground">
+                          Amount
+                        </TableHead>
+                        <TableHead className="text-sm font-semibold text-foreground">
+                          User
+                        </TableHead>
+                        <TableHead className="text-sm font-semibold text-foreground">
+                          Date
+                        </TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {transactions.map((t) => (
+                        <TableRow key={t.id}>
+                          <TableCell className="text-sm text-foreground">{t.invoice}</TableCell>
+                          <TableCell className="text-sm text-foreground">{t.title}</TableCell>
+                          <TableCell className="text-sm text-foreground">
+                            {t.provider || '-'}
+                          </TableCell>
+                          <TableCell className="text-sm">
+                            <StatusBadge label={t.status} tone={transactionTone(t.status)} />
+                          </TableCell>
+                          <TableCell className="text-sm text-foreground">{t.amount}</TableCell>
+                          <TableCell className="text-sm text-foreground">
+                            {t.userName || '-'}
+                            <div className="text-xs text-muted-foreground">{t.userEmail || ''}</div>
+                          </TableCell>
+                          <TableCell className="text-sm text-foreground">
+                            {t.createdAt ? new Date(t.createdAt).toLocaleDateString() : '-'}
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </div>
+              )}
+            </div>
+          )}
+        </>
       )}
     </Card>
   );

@@ -23,6 +23,14 @@ import { FilterBar } from '@/components/shared/FilterBar';
 import { LoadingState, ErrorState } from '@/components/shared/LoadingState';
 import { EmptyState } from '@/components/shared/EmptyState';
 import { StatusBadge } from '@/components/shared/StatusBadge';
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table';
 import { ClipboardList } from 'lucide-react';
 
 export default function ApprovalsQueue() {
@@ -101,52 +109,41 @@ export default function ApprovalsQueue() {
       ) : (
         <>
           {/* ── Approvals Table ──────────────────────────────────────────────── */}
-          <div className="overflow-x-auto rounded-lg border border-border">
-            <table className="w-full">
-              <thead className="border-b bg-muted">
-                <tr>
-                  <th className="text-left px-4 py-3 text-sm font-semibold text-foreground">
-                    Type
-                  </th>
-                  <th className="text-left px-4 py-3 text-sm font-semibold text-foreground">
-                    Title
-                  </th>
-                  <th className="text-left px-4 py-3 text-sm font-semibold text-foreground">
+          <div className="rounded-lg border border-border">
+            <Table>
+              <TableHeader className="bg-muted">
+                <TableRow>
+                  <TableHead className="text-sm font-semibold text-foreground">Type</TableHead>
+                  <TableHead className="text-sm font-semibold text-foreground">Title</TableHead>
+                  <TableHead className="text-sm font-semibold text-foreground">
                     Submitted By
-                  </th>
-                  <th className="text-left px-4 py-3 text-sm font-semibold text-foreground">
-                    Submitted
-                  </th>
-                  <th className="text-left px-4 py-3 text-sm font-semibold text-foreground">
-                    Feedback
-                  </th>
-                  <th className="text-left px-4 py-3 text-sm font-semibold text-foreground">
-                    Actions
-                  </th>
-                </tr>
-              </thead>
-              <tbody>
+                  </TableHead>
+                  <TableHead className="text-sm font-semibold text-foreground">Submitted</TableHead>
+                  <TableHead className="text-sm font-semibold text-foreground">Feedback</TableHead>
+                  <TableHead className="text-sm font-semibold text-foreground">Actions</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
                 {rows.map((item) => (
-                  <tr
-                    key={`${item.type}-${item.id}`}
-                    className="border-b transition-colors hover:bg-muted/50 align-top"
-                  >
-                    <td className="px-4 py-3 text-sm">
+                  <TableRow key={`${item.type}-${item.id}`} className="align-top">
+                    <TableCell className="text-sm">
                       <StatusBadge label={item.type} tone="info" />
-                    </td>
-                    <td className="px-4 py-3 text-sm text-foreground">
+                    </TableCell>
+                    <TableCell className="text-sm text-foreground">
                       <div className="font-medium">{item.title}</div>
                       {item.feedback ? (
                         <div className="text-xs text-muted-foreground mt-1">
                           Last note: {item.feedback}
                         </div>
                       ) : null}
-                    </td>
-                    <td className="px-4 py-3 text-sm text-foreground">{item.submittedBy || '-'}</td>
-                    <td className="px-4 py-3 text-sm text-foreground">
+                    </TableCell>
+                    <TableCell className="text-sm text-foreground">
+                      {item.submittedBy || '-'}
+                    </TableCell>
+                    <TableCell className="text-sm text-foreground">
                       {item.submittedAt ? new Date(item.submittedAt).toLocaleString() : '-'}
-                    </td>
-                    <td className="px-4 py-3 text-sm min-w-64">
+                    </TableCell>
+                    <TableCell className="text-sm min-w-64">
                       <textarea
                         className="w-full min-h-20 rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 resize-y"
                         placeholder="Optional feedback"
@@ -155,8 +152,8 @@ export default function ApprovalsQueue() {
                           setFeedbackById((prev) => ({ ...prev, [item.id]: e.target.value }))
                         }
                       />
-                    </td>
-                    <td className="px-4 py-3 text-sm">
+                    </TableCell>
+                    <TableCell className="text-sm">
                       <div className="flex flex-col gap-2 min-w-36">
                         <Button size="sm" onClick={() => runAction(item, 'approve')}>
                           Approve
@@ -176,11 +173,11 @@ export default function ApprovalsQueue() {
                           Reject
                         </Button>
                       </div>
-                    </td>
-                  </tr>
+                    </TableCell>
+                  </TableRow>
                 ))}
-              </tbody>
-            </table>
+              </TableBody>
+            </Table>
           </div>
 
           {/* ── Pagination ────────────────────────────────────────────────────── */}
