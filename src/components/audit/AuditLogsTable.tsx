@@ -136,7 +136,7 @@ export default function AuditLogsTable() {
         />
       ) : (
         <>
-          <div className="rounded-md border border-border bg-card">
+          <div className="overflow-x-auto rounded-md border border-border bg-card">
             <Table>
               <TableHeader>
                 <TableRow>
@@ -190,7 +190,7 @@ export default function AuditLogsTable() {
           </div>
 
           {data.total > 0 && (
-            <div className="mt-6 flex items-center justify-between border-t border-border pt-4">
+            <div className="mt-6 flex flex-col gap-3 border-t border-border pt-4 sm:flex-row sm:items-center sm:justify-between">
               <p className="text-sm text-muted-foreground">
                 Showing <span className="font-medium">{(page - 1) * 20 + 1}</span> to{' '}
                 <span className="font-medium">{Math.min(page * 20, data.total)}</span> of{' '}

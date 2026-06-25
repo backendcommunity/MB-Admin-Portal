@@ -75,13 +75,13 @@ export function DataTable<TData>({
               <dl className="space-y-1.5">
                 {dataCells.map((cell) => (
                   <div key={cell.id} className="flex items-start justify-between gap-3 text-sm">
-                    <dt className="text-muted-foreground">
+                    <dt className="shrink-0 text-muted-foreground">
                       {/* `as never`: render the column header as the mobile label. flexRender ignores
                           the context for string headers (the data-column case); render-fn headers that
                           read HeaderContext-only fields are not used as data columns here. */}
                       {flexRender(cell.column.columnDef.header, cell.getContext() as never)}
                     </dt>
-                    <dd className="text-right font-medium text-foreground">
+                    <dd className="min-w-0 break-words text-right font-medium text-foreground">
                       {flexRender(cell.column.columnDef.cell, cell.getContext())}
                     </dd>
                   </div>

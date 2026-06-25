@@ -277,7 +277,7 @@ export default function CoursesTable() {
           <DataTable table={table} mobileTitle={(r) => r.original.title} />
 
           {/* Pagination */}
-          <div className="mt-6 flex items-center justify-between border-t border-border pt-4">
+          <div className="mt-6 flex flex-col gap-3 border-t border-border pt-4 sm:flex-row sm:items-center sm:justify-between">
             <div className="text-sm text-muted-foreground">
               Showing {Math.min(pageIndex * pageSize + 1, total)}–
               {Math.min((pageIndex + 1) * pageSize, total)} of {total} courses
