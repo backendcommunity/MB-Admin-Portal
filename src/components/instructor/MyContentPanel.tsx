@@ -1,24 +1,60 @@
-"use client";
+'use client';
 
-import React, { useMemo, useState } from "react";
+import React, { useMemo, useState } from 'react';
 
-import { submitMyContentForReview, createInstructorContent, type MyContentItem } from "@/lib/api/instructor";
-import { useApiQuery } from "@/lib/api/query";
-import { Card } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
+import {
+  submitMyContentForReview,
+  createInstructorContent,
+  type MyContentItem,
+} from '@/lib/api/instructor';
+import { useApiQuery } from '@/lib/api/query';
+import { Card } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+} from '@/components/ui/dialog';
+import {
+  Table,
+  TableHeader,
+  TableBody,
+  TableRow,
+  TableHead,
+  TableCell,
+} from '@/components/ui/table';
+import { StatusBadge } from '@/components/shared/StatusBadge';
+import { LoadingState, ErrorState } from '@/components/shared/LoadingState';
+import { EmptyState } from '@/components/shared/EmptyState';
+
+function contentStatusTone(status: string): 'success' | 'warning' | 'neutral' {
+  if (status === 'APPROVED') return 'success';
+  if (status === 'PENDING_REVIEW') return 'warning';
+  return 'neutral';
+}
 
 export default function MyContentPanel() {
   const [notesById, setNotesById] = useState<Record<string, string>>({});
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
-  const [newContentType, setNewContentType] = useState("COURSE");
-  const [newContentTitle, setNewContentTitle] = useState("");
-  const [newContentDesc, setNewContentDesc] = useState("");
+  const [newContentType, setNewContentType] = useState('COURSE');
+  const [newContentTitle, setNewContentTitle] = useState('');
+  const [newContentDesc, setNewContentDesc] = useState('');
   const [isCreating, setIsCreating] = useState(false);
 
-  const { data, isLoading, isError, refetch } = useApiQuery<{ data: { courses: MyContentItem[]; projects: MyContentItem[]; roadmaps: MyContentItem[] } }>(
-    ["instructor-my-content"],
-    "/instructor/my-content"
-  );
+  const { data, isLoading, isError, refetch } = useApiQuery<{
+    data: { courses: MyContentItem[]; projects: MyContentItem[]; roadmaps: MyContentItem[] };
+  }>(['instructor-my-content'], '/instructor/my-content');
 
   const rows = useMemo(
     () => [
@@ -26,118 +62,141 @@ export default function MyContentPanel() {
       ...(data?.data?.projects || []),
       ...(data?.data?.roadmaps || []),
     ],
-    [data]
+    [data],
   );
 
   return (
     <Card className="p-6 space-y-4">
-      <div className="flex items-center justify-between">
-        <h2 className="text-lg font-semibold">My Content</h2>
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <h2 className="text-lg font-semibold text-foreground">My Content</h2>
         <div className="flex items-center gap-2">
-          <Button variant="default" size="sm" onClick={() => setIsCreateModalOpen(true)}>Create Content</Button>
-          <Button variant="outline" size="sm" onClick={() => refetch()}>Refresh</Button>
+          <Button variant="default" size="sm" onClick={() => setIsCreateModalOpen(true)}>
+            Create Content
+          </Button>
+          <Button variant="outline" size="sm" onClick={() => refetch()}>
+            Refresh
+          </Button>
         </div>
       </div>
 
       {isLoading ? (
-        <p>Loading your content...</p>
+        <LoadingState label="Loading your content..." />
       ) : isError ? (
-        <p>Failed to load your content.</p>
+        <ErrorState message="Failed to load your content." onRetry={() => refetch()} />
       ) : rows.length === 0 ? (
-        <p className="text-sm text-muted-foreground">No content found for your instructor account yet.</p>
+        <EmptyState
+          title="No content yet"
+          description="No content found for your instructor account yet."
+        />
       ) : (
-        <div className="overflow-x-auto">
-          <table className="w-full">
-            <thead className="bg-gray-100 border-b">
-              <tr>
-                <th className="text-left px-4 py-3 text-sm font-semibold">Type</th>
-                <th className="text-left px-4 py-3 text-sm font-semibold">Title</th>
-                <th className="text-left px-4 py-3 text-sm font-semibold">Difficulty</th>
-                <th className="text-left px-4 py-3 text-sm font-semibold">Status</th>
-                <th className="text-left px-4 py-3 text-sm font-semibold">Progress</th>
-                <th className="text-left px-4 py-3 text-sm font-semibold">Review Notes</th>
-                <th className="text-left px-4 py-3 text-sm font-semibold">Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {rows.map((row) => (
-                <tr key={`${row.type}-${row.id}`} className="border-b hover:bg-gray-50 align-top">
-                  <td className="px-4 py-3 text-sm">{row.type}</td>
-                  <td className="px-4 py-3 text-sm">
-                    <div className="font-medium">{row.title}</div>
-                    {row.feedback && row.status !== "APPROVED" && (
-                      <div className="text-xs text-red-500 mt-1">Feedback: {row.feedback}</div>
-                    )}
-                  </td>
-                  <td className="px-4 py-3 text-sm">{row.difficulty || "-"}</td>
-                  <td className="px-4 py-3 text-sm">
-                    <span className={`px-2 py-1 rounded-full text-xs font-semibold ${row.status === "APPROVED" ? "bg-green-100 text-green-700" : row.status === "PENDING_REVIEW" ? "bg-yellow-100 text-yellow-700" : "bg-gray-100 text-gray-700"}`}>
-                      {row.status.replace("_", " ")}
-                    </span>
-                  </td>
-                  <td className="px-4 py-3 text-sm">{row.progress}%</td>
-                  <td className="px-4 py-3 text-sm min-w-64">
-                    <textarea
-                      className="textarea textarea-bordered w-full min-h-20"
-                      placeholder="Optional note to reviewer"
-                      value={notesById[row.id] ?? ""}
-                      onChange={(e) => setNotesById((prev) => ({ ...prev, [row.id]: e.target.value }))}
-                    />
-                  </td>
-                  <td className="px-4 py-3 text-sm">
-                    <button
-                      className="btn btn-primary btn-sm"
-                      disabled={row.status === "PENDING_REVIEW" || row.status === "APPROVED"}
-                      onClick={async () => {
-                        if (!window.confirm("Are you sure you want to submit this content for review?")) return;
-                        
-                        try {
-                          await submitMyContentForReview({
-                            id: row.id,
-                            type: row.type,
-                            notes: notesById[row.id],
-                          });
-                          await refetch();
-                          alert("Successfully submitted for review!");
-                        } catch (err: any) {
-                          alert(err?.response?.data?.message || "Failed to submit for review.");
-                        }
-                      }}
-                    >
-                      {row.status === "PENDING_REVIEW" ? "Pending Review" : row.status === "APPROVED" ? "Approved" : "Submit for Review"}
-                    </button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+        <Table>
+          <TableHeader>
+            <TableRow className="bg-muted hover:bg-muted">
+              <TableHead>Type</TableHead>
+              <TableHead>Title</TableHead>
+              <TableHead>Difficulty</TableHead>
+              <TableHead>Status</TableHead>
+              <TableHead>Progress</TableHead>
+              <TableHead className="min-w-64">Review Notes</TableHead>
+              <TableHead>Actions</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {rows.map((row) => (
+              <TableRow key={`${row.type}-${row.id}`} className="align-top">
+                <TableCell className="text-sm text-foreground">{row.type}</TableCell>
+                <TableCell className="text-sm">
+                  <div className="font-medium text-foreground">{row.title}</div>
+                  {row.feedback && row.status !== 'APPROVED' && (
+                    <div className="text-xs text-destructive mt-1">Feedback: {row.feedback}</div>
+                  )}
+                </TableCell>
+                <TableCell className="text-sm text-foreground">{row.difficulty || '-'}</TableCell>
+                <TableCell className="text-sm">
+                  <StatusBadge
+                    label={row.status.replace('_', ' ')}
+                    tone={contentStatusTone(row.status)}
+                  />
+                </TableCell>
+                <TableCell className="text-sm text-foreground">{row.progress}%</TableCell>
+                <TableCell className="text-sm min-w-64">
+                  <textarea
+                    className="w-full min-h-20 rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring resize-none"
+                    placeholder="Optional note to reviewer"
+                    value={notesById[row.id] ?? ''}
+                    onChange={(e) =>
+                      setNotesById((prev) => ({ ...prev, [row.id]: e.target.value }))
+                    }
+                  />
+                </TableCell>
+                <TableCell className="text-sm">
+                  <Button
+                    size="sm"
+                    variant={
+                      row.status === 'PENDING_REVIEW' || row.status === 'APPROVED'
+                        ? 'outline'
+                        : 'default'
+                    }
+                    disabled={row.status === 'PENDING_REVIEW' || row.status === 'APPROVED'}
+                    onClick={async () => {
+                      if (
+                        !window.confirm('Are you sure you want to submit this content for review?')
+                      )
+                        return;
+
+                      try {
+                        await submitMyContentForReview({
+                          id: row.id,
+                          type: row.type,
+                          notes: notesById[row.id],
+                        });
+                        await refetch();
+                        alert('Successfully submitted for review!');
+                      } catch (err: unknown) {
+                        const apiErr = err as { response?: { data?: { message?: string } } };
+                        alert(apiErr?.response?.data?.message || 'Failed to submit for review.');
+                      }
+                    }}
+                  >
+                    {row.status === 'PENDING_REVIEW'
+                      ? 'Pending Review'
+                      : row.status === 'APPROVED'
+                        ? 'Approved'
+                        : 'Submit for Review'}
+                  </Button>
+                </TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
       )}
 
       {/* Create Content Modal */}
-      {isCreateModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50">
-          <div className="bg-white rounded-lg p-6 w-full max-w-md space-y-4">
-            <h3 className="text-xl font-semibold">Create Content</h3>
-            
+      <Dialog open={isCreateModalOpen} onOpenChange={setIsCreateModalOpen}>
+        <DialogContent className="w-full max-w-md">
+          <DialogHeader>
+            <DialogTitle>Create Content</DialogTitle>
+          </DialogHeader>
+
+          <div className="space-y-4">
             <div className="space-y-2">
-              <label className="text-sm font-medium">Type</label>
-              <select 
-                className="select select-bordered w-full"
-                value={newContentType}
-                onChange={(e) => setNewContentType(e.target.value)}
-              >
-                <option value="COURSE">Course</option>
-                <option value="PROJECT">Project</option>
-                <option value="ROADMAP">Roadmap</option>
-              </select>
+              <Label>Type</Label>
+              <Select value={newContentType} onValueChange={setNewContentType}>
+                <SelectTrigger className="w-full">
+                  <SelectValue placeholder="Select type" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="COURSE">Course</SelectItem>
+                  <SelectItem value="PROJECT">Project</SelectItem>
+                  <SelectItem value="ROADMAP">Roadmap</SelectItem>
+                </SelectContent>
+              </Select>
             </div>
 
             <div className="space-y-2">
-              <label className="text-sm font-medium">Title</label>
-              <input 
+              <Label>Title</Label>
+              <Input
                 type="text"
-                className="input input-bordered w-full"
                 placeholder="Enter title..."
                 value={newContentTitle}
                 onChange={(e) => setNewContentTitle(e.target.value)}
@@ -145,45 +204,48 @@ export default function MyContentPanel() {
             </div>
 
             <div className="space-y-2">
-              <label className="text-sm font-medium">Description</label>
-              <textarea 
-                className="textarea textarea-bordered w-full"
+              <Label>Description</Label>
+              <textarea
+                className="w-full min-h-20 rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring resize-none"
                 placeholder="Enter short description..."
                 value={newContentDesc}
                 onChange={(e) => setNewContentDesc(e.target.value)}
               />
             </div>
-
-            <div className="flex justify-end gap-2 pt-4">
-              <Button variant="outline" onClick={() => setIsCreateModalOpen(false)}>Cancel</Button>
-              <Button 
-                variant="default"
-                disabled={isCreating || !newContentTitle.trim()}
-                onClick={async () => {
-                  try {
-                    setIsCreating(true);
-                    await createInstructorContent({
-                      type: newContentType,
-                      title: newContentTitle,
-                      description: newContentDesc,
-                    });
-                    await refetch();
-                    setIsCreateModalOpen(false);
-                    setNewContentTitle("");
-                    setNewContentDesc("");
-                  } catch (err: any) {
-                    alert(err?.response?.data?.message || "Failed to create content");
-                  } finally {
-                    setIsCreating(false);
-                  }
-                }}
-              >
-                {isCreating ? "Creating..." : "Create"}
-              </Button>
-            </div>
           </div>
-        </div>
-      )}
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setIsCreateModalOpen(false)}>
+              Cancel
+            </Button>
+            <Button
+              variant="default"
+              disabled={isCreating || !newContentTitle.trim()}
+              onClick={async () => {
+                try {
+                  setIsCreating(true);
+                  await createInstructorContent({
+                    type: newContentType,
+                    title: newContentTitle,
+                    description: newContentDesc,
+                  });
+                  await refetch();
+                  setIsCreateModalOpen(false);
+                  setNewContentTitle('');
+                  setNewContentDesc('');
+                } catch (err: unknown) {
+                  const apiErr = err as { response?: { data?: { message?: string } } };
+                  alert(apiErr?.response?.data?.message || 'Failed to create content');
+                } finally {
+                  setIsCreating(false);
+                }
+              }}
+            >
+              {isCreating ? 'Creating...' : 'Create'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </Card>
   );
 }
