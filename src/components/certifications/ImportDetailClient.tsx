@@ -46,7 +46,8 @@ export function ImportDetailClient() {
     {
       enabled: Boolean(id),
       // Poll every 3 s while the batch is still processing; stop when settled.
-      refetchInterval: (query: any) => (query.state.data?.status === 'PROCESSING' ? 3000 : false),
+      refetchInterval: (query: { state: { data?: CertificateImportDetail } }) =>
+        query.state.data?.status === 'PROCESSING' ? 3000 : false,
     },
   );
 
