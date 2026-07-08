@@ -36,8 +36,8 @@ export function CertificateImportsTable() {
 
   // Backend returns { success, data: CertificateImport[], total, page, limit }
   // fetchCertificateImports returns res.data (the full JSON body)
-  const imports: CertificateImport[] = (data as any)?.data ?? [];
-  const total: number = (data as any)?.total ?? 0;
+  const imports: CertificateImport[] = data?.data ?? [];
+  const total: number = data?.total ?? 0;
 
   const columns: ColumnDef<CertificateImport, unknown>[] = [
     { accessorKey: 'filename', header: 'File' },
