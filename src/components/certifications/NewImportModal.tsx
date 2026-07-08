@@ -48,7 +48,8 @@ export function NewImportModal({ open, onClose }: { open: boolean; onClose: () =
   };
 
   const mutation = useMutation({
-    mutationFn: () => createCertificateImport({ courseId, filename, rows }),
+    mutationFn: (vars: { courseId: string; filename: string; rows: Attendee[] }) =>
+      createCertificateImport(vars),
     onSuccess: (data) => {
       toast.success(`Queued ${data.queued} attendees (${data.skippedInvalid} skipped)`);
       onClose();
@@ -86,8 +87,9 @@ export function NewImportModal({ open, onClose }: { open: boolean; onClose: () =
         </div>
 
         <div className="space-y-2">
-          <Label>Attendee CSV (name,email)</Label>
+          <Label htmlFor="csv-file">Attendee CSV (name,email)</Label>
           <input
+            id="csv-file"
             type="file"
             accept=".csv"
             className="block w-full text-sm file:mr-4 file:py-2 file:px-4 file:rounded file:border-0 file:text-sm file:font-semibold file:bg-primary/10 file:text-primary"
@@ -111,7 +113,10 @@ export function NewImportModal({ open, onClose }: { open: boolean; onClose: () =
           <Button variant="outline" onClick={onClose}>
             Cancel
           </Button>
-          <Button disabled={!canSubmit} onClick={() => mutation.mutate()}>
+          <Button
+            disabled={!canSubmit}
+            onClick={() => mutation.mutate({ courseId, filename, rows })}
+          >
             {mutation.isPending ? 'Importing…' : `Import ${rows.length}`}
           </Button>
         </DialogFooter>
