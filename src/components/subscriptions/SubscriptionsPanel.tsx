@@ -2,6 +2,20 @@
 
 import React, { useEffect, useMemo, useState } from 'react';
 
+// ─── Currency helpers ─────────────────────────────────────────────────────────
+const CURRENCY_SYMBOLS: Record<string, string> = {
+  USD: '$',
+  NGN: '₦',
+};
+
+function fmtTransactionAmount(amount: number, currency?: string): string {
+  const cur = currency ?? 'USD';
+  const sym = CURRENCY_SYMBOLS[cur] ?? cur + ' ';
+  if (amount >= 1_000_000) return `${sym}${(amount / 1_000_000).toFixed(1)}M`;
+  if (amount >= 1_000) return `${sym}${(amount / 1_000).toFixed(1)}k`;
+  return `${sym}${amount.toFixed(2)}`;
+}
+
 import {
   cancelSubscription,
   fetchPlans,
@@ -130,6 +144,7 @@ export default function SubscriptionsPanel() {
   }
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     void refreshAll();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -158,6 +173,7 @@ export default function SubscriptionsPanel() {
         provider: t.provider,
         status: t.status,
         amount: t.amount,
+        currency: t.currency ?? 'USD',
         userName: t.userName || '',
         userEmail: t.userEmail || '',
         createdAt: t.createdAt || '',
@@ -433,7 +449,14 @@ export default function SubscriptionsPanel() {
                           <TableCell className="text-sm">
                             <StatusBadge label={t.status} tone={transactionTone(t.status)} />
                           </TableCell>
-                          <TableCell className="text-sm text-foreground">{t.amount}</TableCell>
+                          <TableCell className="text-sm text-foreground font-medium">
+                            {fmtTransactionAmount(t.amount, t.currency)}
+                            {t.currency && (
+                              <span className="ml-1 text-xs text-muted-foreground">
+                                {t.currency}
+                              </span>
+                            )}
+                          </TableCell>
                           <TableCell className="text-sm text-foreground">
                             {t.userName || '-'}
                             <div className="text-xs text-muted-foreground">{t.userEmail || ''}</div>
