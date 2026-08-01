@@ -82,7 +82,11 @@ export default function EditProjectModal({ open, project, onClose, onUpdated }: 
         liveUrl,
         thumbnail,
         playgroundConfig:
-          mode === 'terminal' ? { mode, language, entrypoint: entrypoint.trim() } : { mode },
+          mode === 'terminal'
+            ? { mode, language, entrypoint: entrypoint.trim() }
+            : mode === 'frontend'
+              ? { mode, frontendPreview: true }
+              : { mode },
       });
       onUpdated?.();
       onClose();

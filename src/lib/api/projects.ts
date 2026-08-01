@@ -16,6 +16,7 @@ export type Project = {
     mode?: 'rest-api' | 'frontend' | 'terminal';
     language?: 'node' | 'python';
     entrypoint?: string;
+    frontendPreview?: boolean;
   };
   submissionsCount?: number;
   createdAt?: string;

@@ -62,7 +62,11 @@ export default function AddProjectModal({ open, onClose, onCreated }: Props) {
         liveUrl,
         thumbnail,
         playgroundConfig:
-          mode === 'terminal' ? { mode, language, entrypoint: entrypoint.trim() } : { mode },
+          mode === 'terminal'
+            ? { mode, language, entrypoint: entrypoint.trim() }
+            : mode === 'frontend'
+              ? { mode, frontendPreview: true }
+              : { mode },
       });
       onCreated?.();
       onClose();
