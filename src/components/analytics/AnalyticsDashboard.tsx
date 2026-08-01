@@ -21,6 +21,9 @@ import {
   Minus,
   RefreshCcw,
   Loader2,
+  CheckCircle2,
+  AlertTriangle,
+  Clock,
 } from 'lucide-react';
 
 import {
@@ -28,11 +31,14 @@ import {
   fetchSignupTrend,
   fetchRevenueBreakdown,
   fetchTopCourses,
+  fetchReconciliationStatus,
   type AnalyticsSummary,
   type SignupDataPoint,
   type RevenuePlanPoint,
   type TopCourse,
   type AnalyticsPeriod,
+  type ReconciliationStatus,
+  type RevenueBreakdown,
 } from '@/lib/api/analytics';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -41,18 +47,79 @@ import { Button } from '@/components/ui/button';
 const CHART_COLORS = ['#13AECE', '#0E9AB8', '#0C86A0', '#0A7288', '#085E70'];
 const ACCENT = '#13AECE';
 
+// ─── Currency helpers ─────────────────────────────────────────────────────────
+const CURRENCY_SYMBOLS: Record<string, string> = {
+  USD: '$',
+  NGN: '₦',
+};
+
+function currencySymbol(currency: string): string {
+  return CURRENCY_SYMBOLS[currency] ?? currency + ' ';
+}
+
+function fmtMoney(amount: number, currency: string): string {
+  const sym = currencySymbol(currency);
+  if (amount >= 1_000_000) return `${sym}${(amount / 1_000_000).toFixed(1)}M`;
+  if (amount >= 1_000) return `${sym}${(amount / 1_000).toFixed(1)}k`;
+  return `${sym}${amount.toFixed(2)}`;
+}
+
+// ─── Relative time helper ─────────────────────────────────────────────────────
+function relativeTime(iso: string): string {
+  const diff = Date.now() - new Date(iso).getTime();
+  const mins = Math.floor(diff / 60_000);
+  if (mins < 1) return 'just now';
+  if (mins < 60) return `${mins}m ago`;
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24) return `${hrs}h ago`;
+  const days = Math.floor(hrs / 24);
+  return `${days}d ago`;
+}
+
+// ─── Reconciliation Badge ─────────────────────────────────────────────────────
+function ReconciliationBadge({ status }: { status: ReconciliationStatus | null }) {
+  if (!status) return null;
+
+  if (status.lastRanAt === null) {
+    return (
+      <div className="flex items-center gap-1.5 text-xs text-muted-foreground bg-muted px-3 py-1.5 rounded-full">
+        <Clock className="h-3.5 w-3.5" />
+        <span>Not yet reconciled</span>
+      </div>
+    );
+  }
+
+  if (status.healthy) {
+    return (
+      <div className="flex items-center gap-1.5 text-xs text-emerald-700 bg-emerald-50 dark:bg-emerald-950/40 dark:text-emerald-400 px-3 py-1.5 rounded-full border border-emerald-200 dark:border-emerald-800">
+        <CheckCircle2 className="h-3.5 w-3.5" />
+        <span>Synced with Paddle/Paystack · {relativeTime(status.lastRanAt)}</span>
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex items-center gap-1.5 text-xs text-amber-700 bg-amber-50 dark:bg-amber-950/40 dark:text-amber-400 px-3 py-1.5 rounded-full border border-amber-200 dark:border-amber-800">
+      <AlertTriangle className="h-3.5 w-3.5" />
+      <span>Discrepancy detected</span>
+    </div>
+  );
+}
+
 // ─── KPI Card ─────────────────────────────────────────────────────────────────
 type KpiCardProps = {
   title: string;
   value: string;
-  delta: number;
+  delta: number | null;
   icon: React.ElementType;
   prefix?: string;
+  subLine?: React.ReactNode;
 };
 
-function KpiCard({ title, value, delta, icon: Icon, prefix = '' }: KpiCardProps) {
-  const isUp = delta > 0;
-  const isFlat = delta === 0;
+function KpiCard({ title, value, delta, icon: Icon, prefix = '', subLine }: KpiCardProps) {
+  const isNull = delta === null;
+  const isUp = !isNull && delta > 0;
+  const isFlat = !isNull && delta === 0;
 
   return (
     <Card className="p-5 flex flex-col gap-3">
@@ -69,21 +136,29 @@ function KpiCard({ title, value, delta, icon: Icon, prefix = '' }: KpiCardProps)
           {value}
         </p>
         <div className="flex items-center gap-1 text-xs font-medium">
-          {isFlat ? (
-            <Minus className="h-3 w-3 text-muted-foreground" />
+          {isNull ? (
+            <>
+              <Minus className="h-3 w-3 text-muted-foreground" />
+              <span className="text-muted-foreground">—</span>
+            </>
+          ) : isFlat ? (
+            <>
+              <Minus className="h-3 w-3 text-muted-foreground" />
+              <span className="text-muted-foreground">No change</span>
+            </>
           ) : isUp ? (
-            <ArrowUpRight className="h-3 w-3 text-emerald-500" />
+            <>
+              <ArrowUpRight className="h-3 w-3 text-emerald-500" />
+              <span className="text-emerald-600">{Math.abs(delta)}% vs last 30d</span>
+            </>
           ) : (
-            <ArrowDownRight className="h-3 w-3 text-red-500" />
+            <>
+              <ArrowDownRight className="h-3 w-3 text-red-500" />
+              <span className="text-red-500">{Math.abs(delta)}% vs last 30d</span>
+            </>
           )}
-          <span
-            className={
-              isFlat ? 'text-muted-foreground' : isUp ? 'text-emerald-600' : 'text-red-500'
-            }
-          >
-            {isFlat ? 'No change' : `${Math.abs(delta)}% vs last 30d`}
-          </span>
         </div>
+        {subLine && <p className="text-xs text-muted-foreground pt-0.5">{subLine}</p>}
       </div>
     </Card>
   );
@@ -119,12 +194,53 @@ function Skeleton({ className = '' }: { className?: string }) {
   return <div className={`animate-pulse rounded-md bg-muted ${className}`} />;
 }
 
+// ─── Per-currency breakdown row ───────────────────────────────────────────────
+function CurrencyBreakdownTable({
+  byCurrency,
+}: {
+  byCurrency: Record<string, { gross: number; net: number; fees: number }>;
+}) {
+  const entries = Object.entries(byCurrency);
+  if (entries.length === 0) return null;
+
+  return (
+    <div className="mt-3 rounded-lg border border-border overflow-hidden">
+      <table className="w-full text-xs">
+        <thead>
+          <tr className="bg-muted text-muted-foreground">
+            <th className="px-3 py-2 text-left font-medium">Currency</th>
+            <th className="px-3 py-2 text-right font-medium">Gross</th>
+            <th className="px-3 py-2 text-right font-medium">Fees</th>
+            <th className="px-3 py-2 text-right font-medium">Net</th>
+          </tr>
+        </thead>
+        <tbody>
+          {entries.map(([currency, { gross, net, fees }]) => (
+            <tr key={currency} className="border-t border-border">
+              <td className="px-3 py-2 font-semibold text-foreground">{currency}</td>
+              <td className="px-3 py-2 text-right text-foreground">{fmtMoney(gross, currency)}</td>
+              <td className="px-3 py-2 text-right text-muted-foreground">
+                {fmtMoney(fees, currency)}
+              </td>
+              <td className="px-3 py-2 text-right font-semibold text-foreground">
+                {fmtMoney(net, currency)}
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
 // ─── Main Component ───────────────────────────────────────────────────────────
 export default function AnalyticsDashboard() {
   const [summary, setSummary] = useState<AnalyticsSummary | null>(null);
   const [signupData, setSignupData] = useState<SignupDataPoint[]>([]);
   const [revenuePlan, setRevenuePlan] = useState<RevenuePlanPoint[]>([]);
+  const [revenueBreakdown, setRevenueBreakdown] = useState<RevenueBreakdown | null>(null);
   const [topCourses, setTopCourses] = useState<TopCourse[]>([]);
+  const [reconciliation, setReconciliation] = useState<ReconciliationStatus | null>(null);
   const [period, setPeriod] = useState<AnalyticsPeriod>('30d');
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -137,16 +253,19 @@ export default function AnalyticsDashboard() {
       setError(null);
 
       try {
-        const [summaryData, signupTrend, revenue, courses] = await Promise.all([
+        const [summaryData, signupTrend, revenue, courses, recon] = await Promise.all([
           fetchAnalyticsSummary(),
           fetchSignupTrend(period),
           fetchRevenueBreakdown(period),
           fetchTopCourses(),
+          fetchReconciliationStatus().catch(() => null),
         ]);
         setSummary(summaryData);
         setSignupData(signupTrend.data);
         setRevenuePlan(revenue.byPlan);
+        setRevenueBreakdown(revenue);
         setTopCourses(courses.data);
+        setReconciliation(recon);
       } catch (err: unknown) {
         const msg = err instanceof Error ? err.message : 'Failed to load analytics';
         setError(msg);
@@ -159,6 +278,7 @@ export default function AnalyticsDashboard() {
   );
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     void loadAll();
   }, [loadAll]);
 
@@ -174,8 +294,17 @@ export default function AnalyticsDashboard() {
     );
   }
 
+  // ── MRR per-currency sub-line ──────────────────────────────────────────────
+  const mrrByCurrency = summary?.mrr.byCurrency;
+  const mrrSubLine =
+    mrrByCurrency && Object.keys(mrrByCurrency).length > 0
+      ? Object.entries(mrrByCurrency)
+          .map(([cur, val]) => `${cur} ${fmtMoney(val, cur)}`)
+          .join(' · ')
+      : undefined;
+
   // ── KPI values ─────────────────────────────────────────────────────────────
-  const kpis = [
+  const kpis: KpiCardProps[] = [
     {
       title: 'Total Users',
       value: summary ? fmtNum(summary.totalUsers.value) : '—',
@@ -191,9 +320,10 @@ export default function AnalyticsDashboard() {
     {
       title: 'MRR',
       value: summary ? fmtNum(summary.mrr.value) : '—',
-      delta: summary?.mrr.delta ?? 0,
+      delta: summary ? (summary.mrr.delta ?? null) : 0,
       icon: TrendingUp,
       prefix: '$',
+      subLine: mrrSubLine,
     },
     {
       title: 'Courses Enrolled',
@@ -209,7 +339,9 @@ export default function AnalyticsDashboard() {
     <div className="space-y-8">
       {/* ── Toolbar ────────────────────────────────────────────────────────── */}
       <div className="flex items-center justify-between flex-wrap gap-3">
-        <div />
+        <div className="flex items-center gap-2">
+          {!loading && <ReconciliationBadge status={reconciliation} />}
+        </div>
         <div className="flex items-center gap-2">
           <div className="flex rounded-lg border overflow-hidden">
             {PERIODS.map(({ label, value }) => (
@@ -299,9 +431,9 @@ export default function AnalyticsDashboard() {
           )}
         </Card>
 
-        {/* Revenue by Plan */}
+        {/* Revenue by Plan (net) */}
         <Card className="p-5">
-          <SectionTitle>Revenue by Plan</SectionTitle>
+          <SectionTitle>Revenue by Plan (Net)</SectionTitle>
           {loading ? (
             <Skeleton className="h-56 w-full" />
           ) : revenuePlan.length === 0 ? (
@@ -331,7 +463,7 @@ export default function AnalyticsDashboard() {
                     borderRadius: 8,
                     fontSize: 12,
                   }}
-                  formatter={(v) => [`$${Number(v).toFixed(2)}`, 'Revenue']}
+                  formatter={(v) => [`$${Number(v).toFixed(2)}`, 'Net Revenue']}
                 />
                 <Bar dataKey="revenue" radius={[4, 4, 0, 0]} maxBarSize={40}>
                   {revenuePlan.map((_, i) => (
@@ -343,6 +475,28 @@ export default function AnalyticsDashboard() {
           )}
         </Card>
       </div>
+
+      {/* ── Revenue Summary ─────────────────────────────────────────────────── */}
+      {!loading &&
+        revenueBreakdown &&
+        (revenueBreakdown.usd !== undefined || revenueBreakdown.byCurrency) && (
+          <Card className="p-5">
+            <div className="flex items-start justify-between flex-wrap gap-3 mb-2">
+              <SectionTitle>Revenue Summary</SectionTitle>
+              {revenueBreakdown.usd !== undefined && (
+                <div className="text-right">
+                  <p className="text-xs text-muted-foreground">Net USD Headline</p>
+                  <p className="text-2xl font-bold text-foreground">
+                    {fmtMoney(revenueBreakdown.usd, 'USD')}
+                  </p>
+                </div>
+              )}
+            </div>
+            {revenueBreakdown.byCurrency && (
+              <CurrencyBreakdownTable byCurrency={revenueBreakdown.byCurrency} />
+            )}
+          </Card>
+        )}
 
       {/* ── Top Courses ─────────────────────────────────────────────────────── */}
       <Card className="p-5">
