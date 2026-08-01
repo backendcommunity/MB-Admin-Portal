@@ -53,7 +53,10 @@ export default function EditProjectModal({ open, project, onClose, onUpdated }: 
     setGithubUrl(project.githubUrl || '');
     setLiveUrl(project.liveUrl || '');
     setThumbnail(project.thumbnail || '');
-    setMode(project.playgroundConfig?.mode || 'rest-api');
+    setMode(
+      project.playgroundConfig?.mode ||
+        (project.playgroundConfig?.frontendPreview ? 'frontend' : 'rest-api'),
+    );
     setLanguage(project.playgroundConfig?.language || 'node');
     setEntrypoint(project.playgroundConfig?.entrypoint || '');
   }, [project]);
