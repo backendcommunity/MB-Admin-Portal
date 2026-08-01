@@ -93,8 +93,11 @@ export default function EditProjectModal({ open, project, onClose, onUpdated }: 
       });
       onUpdated?.();
       onClose();
-    } catch (err) {
-      console.error(err);
+    } catch (err: unknown) {
+      const apiErr = err as { response?: { data?: { message?: string } } };
+      setEntrypointError(
+        apiErr?.response?.data?.message || 'Failed to save — check the entrypoint value.',
+      );
     }
   }
 
