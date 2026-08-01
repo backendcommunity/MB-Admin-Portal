@@ -4,10 +4,10 @@ import userEvent from '@testing-library/user-event';
 import TaskTerminalSpecEditor from '../TaskTerminalSpecEditor';
 
 describe('TaskTerminalSpecEditor', () => {
-  it('renders one row per existing test case with stdin lines and expected output', () => {
+  it('renders the stdin lines and expected output for the given test case', () => {
     render(
       <TaskTerminalSpecEditor
-        value={[{ stdin: ['Solomon'], expectedOutput: 'Hello, Solomon!\n' }]}
+        value={{ stdin: ['Solomon'], expectedOutput: 'Hello, Solomon!\n' }}
         onChange={() => {}}
       />,
     );
@@ -19,27 +19,33 @@ describe('TaskTerminalSpecEditor', () => {
     ).toBeInTheDocument();
   });
 
-  it('Add case appends a new empty row via onChange', async () => {
-    const user = userEvent.setup();
-    const onChange = vi.fn();
-    render(<TaskTerminalSpecEditor value={[]} onChange={onChange} />);
-    await user.click(screen.getByRole('button', { name: /add test case/i }));
-    expect(onChange).toHaveBeenCalledWith([{ stdin: [''], expectedOutput: '' }]);
-  });
-
-  it('Remove case drops that row via onChange', async () => {
+  it('editing stdin calls onChange with the updated single object, not an array', async () => {
     const user = userEvent.setup();
     const onChange = vi.fn();
     render(
       <TaskTerminalSpecEditor
-        value={[
-          { stdin: ['a'], expectedOutput: '1' },
-          { stdin: ['b'], expectedOutput: '2' },
-        ]}
+        value={{ stdin: ['Solomon'], expectedOutput: 'Hello, Solomon!' }}
         onChange={onChange}
       />,
     );
-    await user.click(screen.getAllByRole('button', { name: /remove/i })[0]);
-    expect(onChange).toHaveBeenCalledWith([{ stdin: ['b'], expectedOutput: '2' }]);
+    await user.type(screen.getByLabelText(/stdin/i), '!');
+    const lastCall = onChange.mock.calls[onChange.mock.calls.length - 1][0];
+    expect(Array.isArray(lastCall)).toBe(false);
+    expect(lastCall).toEqual({ stdin: ['Solomon!'], expectedOutput: 'Hello, Solomon!' });
+  });
+
+  it('editing expected output calls onChange with the updated single object, not an array', async () => {
+    const user = userEvent.setup();
+    const onChange = vi.fn();
+    render(
+      <TaskTerminalSpecEditor
+        value={{ stdin: ['Solomon'], expectedOutput: 'Hi' }}
+        onChange={onChange}
+      />,
+    );
+    await user.type(screen.getByLabelText(/expected output/i), '!');
+    const lastCall = onChange.mock.calls[onChange.mock.calls.length - 1][0];
+    expect(Array.isArray(lastCall)).toBe(false);
+    expect(lastCall).toEqual({ stdin: ['Solomon'], expectedOutput: 'Hi!' });
   });
 });
