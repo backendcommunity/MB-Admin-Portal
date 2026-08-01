@@ -1,6 +1,6 @@
-import { axiosInstance } from "@/lib/api/axios";
+import { axiosInstance } from '@/lib/api/axios';
 
-export type ProjectStatus = "DRAFT" | "PUBLISHED";
+export type ProjectStatus = 'DRAFT' | 'PUBLISHED';
 
 export type Project = {
   id: string;
@@ -12,6 +12,11 @@ export type Project = {
   githubUrl?: string;
   liveUrl?: string;
   thumbnail?: string;
+  playgroundConfig?: {
+    mode?: 'rest-api' | 'frontend' | 'terminal';
+    language?: 'node' | 'python';
+    entrypoint?: string;
+  };
   submissionsCount?: number;
   createdAt?: string;
   updatedAt?: string;
@@ -25,7 +30,7 @@ export type ProjectsListResponse = {
 };
 
 export async function createProject(payload: Partial<Project>) {
-  const response = await axiosInstance.post<Project>("/admin/projects", payload);
+  const response = await axiosInstance.post<Project>('/admin/projects', payload);
   return response.data;
 }
 
@@ -40,8 +45,15 @@ export async function deleteProject(id: string) {
 }
 
 export async function fetchProjectSubmissions(id: string) {
-  const response = await axiosInstance.get<{ data: Array<{ id: string; userName: string; userEmail: string; status: string; submittedAt: string }>; total: number }>(
-    `/admin/projects/${id}/submissions`
-  );
+  const response = await axiosInstance.get<{
+    data: Array<{
+      id: string;
+      userName: string;
+      userEmail: string;
+      status: string;
+      submittedAt: string;
+    }>;
+    total: number;
+  }>(`/admin/projects/${id}/submissions`);
   return response.data;
 }

@@ -36,9 +36,18 @@ export default function AddProjectModal({ open, onClose, onCreated }: Props) {
   const [githubUrl, setGithubUrl] = useState('');
   const [liveUrl, setLiveUrl] = useState('');
   const [thumbnail, setThumbnail] = useState('');
+  const [mode, setMode] = useState<'rest-api' | 'frontend' | 'terminal'>('rest-api');
+  const [language, setLanguage] = useState<'node' | 'python'>('node');
+  const [entrypoint, setEntrypoint] = useState('');
+  const [entrypointError, setEntrypointError] = useState('');
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
+    if (mode === 'terminal' && !entrypoint.trim()) {
+      setEntrypointError('Entrypoint is required for Terminal projects.');
+      return;
+    }
+    setEntrypointError('');
     try {
       await createProject({
         title,
@@ -52,6 +61,8 @@ export default function AddProjectModal({ open, onClose, onCreated }: Props) {
         githubUrl,
         liveUrl,
         thumbnail,
+        playgroundConfig:
+          mode === 'terminal' ? { mode, language, entrypoint: entrypoint.trim() } : { mode },
       });
       onCreated?.();
       onClose();
@@ -112,6 +123,46 @@ export default function AddProjectModal({ open, onClose, onCreated }: Props) {
               </Select>
             </div>
           </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="mode">Playground Mode</Label>
+            <Select value={mode} onValueChange={(v) => setMode(v as typeof mode)}>
+              <SelectTrigger id="mode">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="rest-api">REST API</SelectItem>
+                <SelectItem value="frontend">Frontend</SelectItem>
+                <SelectItem value="terminal">Terminal</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          {mode === 'terminal' && (
+            <>
+              <div className="space-y-1.5">
+                <Label htmlFor="language">Language</Label>
+                <Select value={language} onValueChange={(v) => setLanguage(v as typeof language)}>
+                  <SelectTrigger id="language">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="node">Node.js</SelectItem>
+                    <SelectItem value="python">Python</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="entrypoint">Entrypoint</Label>
+                <Input
+                  id="entrypoint"
+                  value={entrypoint}
+                  onChange={(e) => setEntrypoint(e.target.value)}
+                  placeholder="src/index.js"
+                  required
+                />
+                {entrypointError && <p className="text-sm text-destructive">{entrypointError}</p>}
+              </div>
+            </>
+          )}
           <div className="space-y-1.5">
             <Label htmlFor="tags">Tags</Label>
             <Input
