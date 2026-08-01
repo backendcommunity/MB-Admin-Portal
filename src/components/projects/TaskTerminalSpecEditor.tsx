@@ -35,7 +35,10 @@ export default function TaskTerminalSpecEditor({ value, onChange }: Props) {
   return (
     <div className="space-y-4 rounded-md border border-input p-3">
       <div className="space-y-1.5">
-        <Label>stdin — one field per input the program will prompt for, in order</Label>
+        <Label>
+          stdin — one field per input the program will prompt for, in order. Shown to the learner
+          pre-filled and editable before they run the test.
+        </Label>
         {value.stdin.length === 0 ? (
           <p className="text-sm text-muted-foreground">
             No inputs. Add one if the program reads from stdin.
@@ -70,10 +73,18 @@ export default function TaskTerminalSpecEditor({ value, onChange }: Props) {
       </div>
       <div className="space-y-1.5">
         <Label htmlFor="terminal-expected">Expected output</Label>
+        <p className="text-sm text-muted-foreground">
+          Use <code>{'{1}'}</code>, <code>{'{2}'}</code>, ... to reference input 1, input 2, etc. —
+          the learner can type a different value than shown above, and it's substituted in here
+          before comparing to what their program actually printed.
+        </p>
         <textarea
           id="terminal-expected"
           value={value.expectedOutput}
           onChange={(e) => onChange({ ...value, expectedOutput: e.target.value })}
+          placeholder={
+            value.stdin.length ? 'e.g. Hello, {1}!' : 'e.g. static output with no inputs'
+          }
           className="flex min-h-16 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
         />
       </div>

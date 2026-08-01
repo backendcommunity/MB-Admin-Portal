@@ -104,4 +104,15 @@ describe('TaskTerminalSpecEditor', () => {
     expect(screen.getByLabelText('stdin input 3')).toHaveValue('c');
     expect(screen.getByLabelText('stdin input 4')).toHaveValue('d');
   });
+
+  it('explains the {1}/{2} template syntax so an instructor knows how to reference each input', () => {
+    render(
+      <TaskTerminalSpecEditor
+        value={{ stdin: ['Solomon'], expectedOutput: '' }}
+        onChange={() => {}}
+      />,
+    );
+    expect(screen.getByText(/substituted in here before comparing/i)).toBeInTheDocument();
+    expect(screen.getByPlaceholderText('e.g. Hello, {1}!')).toBeInTheDocument();
+  });
 });
