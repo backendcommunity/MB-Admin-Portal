@@ -261,10 +261,10 @@ export default function AnalyticsDashboard() {
           fetchReconciliationStatus().catch(() => null),
         ]);
         setSummary(summaryData);
-        setSignupData(signupTrend.data);
-        setRevenuePlan(revenue.byPlan);
+        setSignupData(signupTrend?.data ?? []);
+        setRevenuePlan(revenue?.byPlan ?? []);
         setRevenueBreakdown(revenue);
-        setTopCourses(courses.data);
+        setTopCourses(courses?.data ?? []);
         setReconciliation(recon);
       } catch (err: unknown) {
         const msg = err instanceof Error ? err.message : 'Failed to load analytics';
