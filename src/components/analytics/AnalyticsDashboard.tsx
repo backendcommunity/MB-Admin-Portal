@@ -307,28 +307,28 @@ export default function AnalyticsDashboard() {
   const kpis: KpiCardProps[] = [
     {
       title: 'Total Users',
-      value: summary ? fmtNum(summary.totalUsers.value) : '—',
-      delta: summary?.totalUsers.delta ?? 0,
+      value: summary ? fmtNum(summary?.totalUsers?.value ?? 0) : '—',
+      delta: summary?.totalUsers?.delta ?? 0,
       icon: Users,
     },
     {
       title: 'Active Subscribers',
-      value: summary ? fmtNum(summary.activeSubscribers.value) : '—',
-      delta: summary?.activeSubscribers.delta ?? 0,
+      value: summary ? fmtNum(summary?.activeSubscribers?.value ?? 0) : '—',
+      delta: summary?.activeSubscribers?.delta ?? 0,
       icon: CreditCard,
     },
     {
       title: 'MRR',
-      value: summary ? fmtNum(summary.mrr.value) : '—',
-      delta: summary ? (summary.mrr.delta ?? null) : 0,
+      value: summary ? fmtNum(summary?.mrr?.value ?? 0) : '—',
+      delta: summary ? (summary?.mrr?.delta ?? null) : 0,
       icon: TrendingUp,
       prefix: '$',
       subLine: mrrSubLine,
     },
     {
       title: 'Courses Enrolled',
-      value: summary ? fmtNum(summary.coursesEnrolled.value) : '—',
-      delta: summary?.coursesEnrolled.delta ?? 0,
+      value: summary ? fmtNum(summary?.coursesEnrolled?.value ?? 0) : '—',
+      delta: summary?.coursesEnrolled?.delta ?? 0,
       icon: BookOpen,
     },
   ];
