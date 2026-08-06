@@ -295,7 +295,7 @@ export default function AnalyticsDashboard() {
   }
 
   // ── MRR per-currency sub-line ──────────────────────────────────────────────
-  const mrrByCurrency = summary?.mrr.byCurrency;
+  const mrrByCurrency = summary?.mrr?.byCurrency;
   const mrrSubLine =
     mrrByCurrency && Object.keys(mrrByCurrency).length > 0
       ? Object.entries(mrrByCurrency)
