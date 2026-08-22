@@ -13,6 +13,7 @@ import {
   Receipt,
   Settings,
   Users,
+  Users2,
   Wallet,
   Tag,
   ClipboardList,
@@ -76,6 +77,12 @@ export const NAV_ITEMS: NavItem[] = [
     label: 'Subscriptions',
     href: '/subscriptions',
     icon: Receipt,
+    roles: ['SUPER_ADMIN', 'ADMIN'],
+  },
+  {
+    label: 'Teams',
+    href: '/teams',
+    icon: Users2,
     roles: ['SUPER_ADMIN', 'ADMIN'],
   },
   {
