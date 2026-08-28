@@ -91,7 +91,7 @@ function ReconciliationBadge({ status }: { status: ReconciliationStatus | null }
 
   if (status.healthy) {
     return (
-      <div className="flex items-center gap-1.5 text-xs text-emerald-700 bg-emerald-50 dark:bg-emerald-950/40 dark:text-emerald-400 px-3 py-1.5 rounded-full border border-emerald-200 dark:border-emerald-800">
+      <div className="flex items-center gap-1.5 rounded-full border border-success/30 bg-success-wash px-3 py-1.5 text-xs text-success">
         <CheckCircle2 className="h-3.5 w-3.5" />
         <span>Synced with Paddle/Paystack · {relativeTime(status.lastRanAt)}</span>
       </div>
@@ -99,7 +99,7 @@ function ReconciliationBadge({ status }: { status: ReconciliationStatus | null }
   }
 
   return (
-    <div className="flex items-center gap-1.5 text-xs text-amber-700 bg-amber-50 dark:bg-amber-950/40 dark:text-amber-400 px-3 py-1.5 rounded-full border border-amber-200 dark:border-amber-800">
+    <div className="flex items-center gap-1.5 rounded-full border border-warning/30 bg-warning-wash px-3 py-1.5 text-xs text-warning">
       <AlertTriangle className="h-3.5 w-3.5" />
       <span>Discrepancy detected</span>
     </div>
@@ -148,13 +148,13 @@ function KpiCard({ title, value, delta, icon: Icon, prefix = '', subLine }: KpiC
             </>
           ) : isUp ? (
             <>
-              <ArrowUpRight className="h-3 w-3 text-emerald-500" />
-              <span className="text-emerald-600">{Math.abs(delta)}% vs last 30d</span>
+              <ArrowUpRight className="h-3 w-3 text-success" />
+              <span className="text-success">{Math.abs(delta)}% vs last 30d</span>
             </>
           ) : (
             <>
-              <ArrowDownRight className="h-3 w-3 text-red-500" />
-              <span className="text-red-500">{Math.abs(delta)}% vs last 30d</span>
+              <ArrowDownRight className="h-3 w-3 text-danger" />
+              <span className="text-danger">{Math.abs(delta)}% vs last 30d</span>
             </>
           )}
         </div>
@@ -286,7 +286,7 @@ export default function AnalyticsDashboard() {
   if (error) {
     return (
       <Card className="p-8 flex flex-col items-center gap-3 text-center">
-        <p className="text-red-500 font-medium">{error}</p>
+        <p className="font-medium text-danger">{error}</p>
         <Button variant="outline" size="sm" onClick={() => loadAll()}>
           Retry
         </Button>
@@ -400,25 +400,25 @@ export default function AnalyticsDashboard() {
           ) : (
             <ResponsiveContainer width="100%" height={224}>
               <BarChart data={signupData} margin={{ top: 4, right: 8, left: -16, bottom: 0 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
+                <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
                 <XAxis
                   dataKey="date"
                   tickFormatter={(d) => fmtDate(d, period)}
-                  tick={{ fontSize: 11, fill: 'hsl(var(--muted-foreground))' }}
+                  tick={{ fontSize: 11, fill: 'var(--muted-foreground)' }}
                   axisLine={false}
                   tickLine={false}
                   interval={period === '7d' ? 0 : period === '30d' ? 4 : 13}
                 />
                 <YAxis
                   allowDecimals={false}
-                  tick={{ fontSize: 11, fill: 'hsl(var(--muted-foreground))' }}
+                  tick={{ fontSize: 11, fill: 'var(--muted-foreground)' }}
                   axisLine={false}
                   tickLine={false}
                 />
                 <Tooltip
                   contentStyle={{
-                    backgroundColor: 'hsl(var(--card))',
-                    border: '1px solid hsl(var(--border))',
+                    backgroundColor: 'var(--card)',
+                    border: '1px solid var(--border)',
                     borderRadius: 8,
                     fontSize: 12,
                   }}
@@ -443,23 +443,23 @@ export default function AnalyticsDashboard() {
           ) : (
             <ResponsiveContainer width="100%" height={224}>
               <BarChart data={revenuePlan} margin={{ top: 4, right: 8, left: -8, bottom: 0 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
+                <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
                 <XAxis
                   dataKey="plan"
-                  tick={{ fontSize: 11, fill: 'hsl(var(--muted-foreground))' }}
+                  tick={{ fontSize: 11, fill: 'var(--muted-foreground)' }}
                   axisLine={false}
                   tickLine={false}
                 />
                 <YAxis
                   tickFormatter={(v) => `$${fmtNum(v)}`}
-                  tick={{ fontSize: 11, fill: 'hsl(var(--muted-foreground))' }}
+                  tick={{ fontSize: 11, fill: 'var(--muted-foreground)' }}
                   axisLine={false}
                   tickLine={false}
                 />
                 <Tooltip
                   contentStyle={{
-                    backgroundColor: 'hsl(var(--card))',
-                    border: '1px solid hsl(var(--border))',
+                    backgroundColor: 'var(--card)',
+                    border: '1px solid var(--border)',
                     borderRadius: 8,
                     fontSize: 12,
                   }}

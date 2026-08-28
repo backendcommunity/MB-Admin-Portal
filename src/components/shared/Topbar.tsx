@@ -1,12 +1,13 @@
-"use client";
+'use client';
 
-import Link from "next/link";
-import { usePathname } from "next/navigation";
-import { Bell, ChevronRight, Menu, Search } from "lucide-react";
+import Link from 'next/link';
+import { usePathname } from 'next/navigation';
+import { Bell, ChevronRight, Menu, Search } from 'lucide-react';
 
-import { Input } from "@/components/ui/input";
-import { NAV_ITEMS } from "@/lib/constants/navigation";
-import { cn } from "@/lib/utils";
+import { Input } from '@/components/ui/input';
+import { ThemeToggle } from '@/components/shared/ThemeToggle';
+import { NAV_ITEMS } from '@/lib/constants/navigation';
+import { cn } from '@/lib/utils';
 
 type TopbarProps = {
   onMenuClick: () => void;
@@ -14,19 +15,17 @@ type TopbarProps = {
 
 const toTitleCase = (value: string) =>
   value
-    .split("-")
+    .split('-')
     .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
-    .join(" ");
+    .join(' ');
 
 export function Topbar({ onMenuClick }: TopbarProps) {
   const pathname = usePathname();
-  const segments = pathname.split("/").filter(Boolean);
+  const segments = pathname.split('/').filter(Boolean);
 
   const crumbs = segments.map((segment, index) => {
-    const href = `/${segments.slice(0, index + 1).join("/")}`;
-    const label =
-      NAV_ITEMS.find((item) => item.href === href)?.label ??
-      toTitleCase(segment);
+    const href = `/${segments.slice(0, index + 1).join('/')}`;
+    const label = NAV_ITEMS.find((item) => item.href === href)?.label ?? toTitleCase(segment);
 
     return { href, label };
   });
@@ -48,8 +47,8 @@ export function Topbar({ onMenuClick }: TopbarProps) {
             <Link
               href={crumb.href}
               className={cn(
-                "transition hover:text-foreground",
-                index === crumbs.length - 1 && "text-foreground"
+                'transition hover:text-foreground',
+                index === crumbs.length - 1 && 'text-foreground',
               )}
             >
               {crumb.label}
@@ -62,13 +61,10 @@ export function Topbar({ onMenuClick }: TopbarProps) {
       </nav>
 
       <div className="ml-auto flex items-center gap-3">
+        <ThemeToggle />
         <div className="relative hidden md:block">
           <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-          <Input
-            className="w-64 pl-9"
-            placeholder="Search..."
-            aria-label="Search"
-          />
+          <Input className="w-64 pl-9" placeholder="Search..." aria-label="Search" />
         </div>
         <button
           type="button"

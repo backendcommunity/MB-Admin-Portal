@@ -1,27 +1,14 @@
 'use client';
 
-import React, { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
-import { ChevronUp, ChevronDown } from 'lucide-react';
+import { useQuery } from '@tanstack/react-query';
+import { ChevronDown, ChevronUp, Pencil, Plus, X } from 'lucide-react';
 
-import { useApiQuery } from '@/lib/api/query';
-import {
-  createCourseChapter,
-  deleteCourse,
-  deleteCourseChapter,
-  reorderCourseChapters,
-  updateCourse,
-  updateCourseChapter,
-  type Chapter,
-  type Course,
-} from '@/lib/api/courses';
-
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import { Checkbox } from '@/components/ui/checkbox';
+import { Card } from '@/components/ui/card';
+import { Switch } from '@/components/ui/switch';
 import {
   Select,
   SelectContent,
@@ -29,388 +16,1000 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { PageHeader } from '@/components/shared/PageHeader';
 import { StatusBadge } from '@/components/shared/StatusBadge';
 import { LoadingState, ErrorState } from '@/components/shared/LoadingState';
 import { EmptyState } from '@/components/shared/EmptyState';
+import { ReadinessPanel } from '@/components/shared/form/ReadinessPanel';
+import {
+  AccessSection,
+  ClassificationSection,
+  IdentitySection,
+  MediaSection,
+  type CourseDraft,
+} from '@/components/courses/CourseFormSections';
+import ItemDrawer, { type DrawerTarget } from '@/components/courses/ItemDrawer';
+import ImportCourseModal from '@/components/courses/ImportCourseModal';
+import CapstoneAttachDialog, { type CapstoneKind } from '@/components/courses/CapstoneAttachDialog';
+import { PayloadDialog } from '@/components/shared/PayloadDialog';
+import { Input } from '@/components/ui/input';
+import { itemComplete, itemMissing } from '@/lib/courses/items';
+import { useDragReorder, moved } from '@/lib/courses/useDragReorder';
+import { GripVertical } from 'lucide-react';
+import ConfirmDelete from '@/components/users/ConfirmDelete';
+import {
+  addCapstoneMedia,
+  attachExercise,
+  attachQuiz,
+  deleteArticle,
+  deleteChapter,
+  deleteCourse,
+  deleteVideo,
+  detachExercise,
+  detachMockInterview,
+  detachProject,
+  detachQuiz,
+  fetchCategories,
+  fetchCourse,
+  fetchLearners,
+  reorderCapstone,
+  reorderChapterItems,
+  reorderChapters,
+  removeCapstoneMedia,
+  setCourseStatus,
+  updateCourse,
+  updateArticle,
+  updateChapter,
+  updateMockLink,
+  updateProjectLink,
+  updateVideo,
+  type Category,
+  type Chapter,
+  type ChapterItem,
+  type CourseDetail,
+  type Modality,
+} from '@/lib/api/courses';
+import { evaluateReadiness } from '@/lib/courses/readiness';
+import { cn } from '@/lib/utils';
+import { toast } from 'sonner';
 
-type CourseDetail = Course & { chapters?: Chapter[] };
+const TABS = [
+  ['overview', 'Overview'],
+  ['curriculum', 'Curriculum'],
+  ['access', 'Access & pricing'],
+  ['learners', 'Learners'],
+] as const;
 
-const lessonTypes = ['video', 'article'] as const;
+type TabId = (typeof TABS)[number][0];
+
+function toDraft(course: CourseDetail): CourseDraft {
+  return {
+    title: course.title,
+    slug: course.slug,
+    summary: course.summary ?? '',
+    description: course.description ?? '',
+    type: course.type,
+    categoryId: course.categoryId,
+    level: course.level,
+    tags: course.tags,
+    languages: course.languages,
+    isPremium: course.isPremium,
+    amount: course.amount,
+    paddle_price_id: course.paddle_price_id,
+    paddlePlanCode: course.paddlePlanCode,
+    banner: course.banner ?? '',
+    preview: course.preview,
+    vimeoFolderId: course.vimeoFolderId,
+    isWaiting: course.isWaiting,
+    waitingLink: course.waitingLink,
+  };
+}
+
+function runtime(seconds: number): string {
+  if (!seconds) return '0m';
+  const hours = Math.floor(seconds / 3600);
+  const minutes = Math.round((seconds % 3600) / 60);
+  return hours ? `${hours}h ${minutes}m` : `${minutes}m`;
+}
+
+function chapterRuntime(chapter: Chapter): number {
+  return chapter.items.reduce(
+    (total, item) => total + (item.kind === 'video' ? Number(item.duration ?? 0) : 0),
+    0,
+  );
+}
+
+function itemMeta(item: ChapterItem): string {
+  if (item.kind === 'video') {
+    const seconds = Number(item.duration ?? 0);
+    return seconds ? runtime(seconds) : 'no duration';
+  }
+  if (item.kind === 'article') return `${item.readingTime ?? 0} min read`;
+  return item.meta ?? '';
+}
 
 export default function CourseDetailClient() {
-  const params = useParams();
   const router = useRouter();
-  const courseId = Array.isArray(params.id) ? params.id[0] : params.id;
-  const [title, setTitle] = useState('');
-  const [description, setDescription] = useState('');
-  const [category, setCategory] = useState('');
-  const [instructor, setInstructor] = useState('');
-  const [tags, setTags] = useState('');
-  const [thumbnail, setThumbnail] = useState('');
-  const [published, setPublished] = useState(false);
-  const [newChapterTitle, setNewChapterTitle] = useState('');
-  const [newChapterType, setNewChapterType] = useState<(typeof lessonTypes)[number]>('video');
-  const [newChapterVideoId, setNewChapterVideoId] = useState('');
-  const [newChapterContent, setNewChapterContent] = useState('');
-  const [message, setMessage] = useState('');
+  const params = useParams();
+  const courseId = String(params?.id ?? '');
+  const [tab, setTab] = useState<TabId>('overview');
+  const [draft, setDraft] = useState<CourseDraft | null>(null);
+  const [categories, setCategories] = useState<Category[]>([]);
+  const [drawer, setDrawer] = useState<DrawerTarget | null>(null);
+  const [importOpen, setImportOpen] = useState(false);
+  const [confirming, setConfirming] = useState<null | {
+    kind: 'course' | 'chapter' | 'item';
+    id?: string;
+    chapterId?: string;
+    itemKind?: string;
+    label: string;
+  }>(null);
+  const [saving, setSaving] = useState(false);
+  const [payloadOpen, setPayloadOpen] = useState(false);
+  const [attaching, setAttaching] = useState<CapstoneKind | null>(null);
 
   const {
     data: course,
     isLoading,
     isError,
     refetch,
-  } = useApiQuery<CourseDetail>(['course', courseId], `/admin/courses/${courseId}`, undefined, {
-    enabled: Boolean(courseId),
+  } = useQuery({
+    queryKey: ['admin-course', courseId],
+    queryFn: () => fetchCourse(courseId),
   });
 
-  const initialised = useMemo(() => Boolean(course), [course]);
+  // Chapters and each chapter's items are separate ordered lists; the scope string
+  // is what stops a drag crossing between them. Declared after the query so it
+  // closes over the current render's data.
+  const drag = useDragReorder({
+    onReorder: async (from, to, scope) => {
+      if (!course) return;
+      if (scope === 'chapters') {
+        const next = moved(course.chapters, from, to);
+        await reorderChapters(
+          courseId,
+          next.map((chapter) => chapter.id),
+        );
+      } else {
+        const chapter = course.chapters.find((row) => row.id === scope);
+        if (!chapter) return;
+        const owned = chapter.items.filter(
+          (item) => item.kind === 'video' || item.kind === 'article',
+        );
+        const next = moved(owned, from, to);
+        await reorderChapterItems(
+          courseId,
+          chapter.id,
+          next.map((item) => item.id),
+        );
+      }
+      await refetch();
+    },
+  });
 
-  React.useEffect(() => {
-    if (!course || initialised === false) return;
-    setTitle(course.title || '');
-    setDescription(course.description || '');
-    setCategory(course.category || '');
-    setInstructor(course.instructor || '');
-    setTags((course.tags || []).join(', '));
-    setThumbnail(course.thumbnail || '');
-    setPublished(Boolean(course.published));
-  }, [course, initialised]);
+  useEffect(() => {
+    fetchCategories()
+      .then(setCategories)
+      .catch(() => setCategories([]));
+  }, []);
 
-  async function handleSave() {
-    if (!course || !courseId) return;
-    await updateCourse({
-      id: course.id,
-      title,
-      description,
-      category,
-      instructor,
-      tags: tags
-        .split(',')
-        .map((tag) => tag.trim())
-        .filter(Boolean),
-      thumbnail,
-      published,
-      status: published ? 'PUBLISHED' : 'DRAFT',
-    });
-    setMessage('Course updated');
-    await refetch();
+  // Adjusting state during render (rather than in an effect) is the pattern React
+  // recommends for "reset local state when the row changes": no cascading render,
+  // and edits in progress survive a background refetch of the same course.
+  const [draftFor, setDraftFor] = useState<string | null>(null);
+  if (course && draftFor !== course.id) {
+    setDraftFor(course.id);
+    setDraft(toDraft(course));
   }
 
-  async function handleDelete() {
-    if (!courseId) return;
-    await deleteCourse(courseId);
-    router.push('/courses');
-  }
-
-  async function handleAddChapter() {
-    if (!courseId) return;
-    await createCourseChapter(courseId, {
-      title: newChapterTitle,
-      type: newChapterType,
-      videoId: newChapterVideoId,
-      content: newChapterContent,
-    });
-    setNewChapterTitle('');
-    setNewChapterVideoId('');
-    setNewChapterContent('');
-    await refetch();
-  }
-
-  async function moveChapter(chapterId: string, direction: -1 | 1) {
-    if (!course || !course.chapters || !courseId) return;
-    const index = course.chapters.findIndex((chapter) => chapter.id === chapterId);
-    const nextIndex = index + direction;
-    if (index < 0 || nextIndex < 0 || nextIndex >= course.chapters.length) return;
-    const reordered = [...course.chapters];
-    const [moved] = reordered.splice(index, 1);
-    reordered.splice(nextIndex, 0, moved);
-    await reorderCourseChapters(
-      courseId,
-      reordered.map((chapter) => chapter.id),
-    );
-    await refetch();
-  }
-
-  async function toggleChapterPublished(chapter: Chapter) {
-    if (!courseId) return;
-    await updateCourseChapter(courseId, {
-      chapterId: chapter.id,
-      published: !chapter.published,
-      title: chapter.title,
-      type: chapter.type,
-      videoId: chapter.videoId,
-      content: chapter.content,
-    });
-    await refetch();
-  }
-
-  async function deleteChapter(chapterId: string) {
-    if (!courseId) return;
-    await deleteCourseChapter(courseId, chapterId);
-    await refetch();
-  }
-
-  if (!courseId) {
-    return <div className="p-6 text-sm text-muted-foreground">Invalid course id.</div>;
-  }
-
-  if (isLoading) {
-    return <LoadingState label="Loading course..." />;
-  }
-
-  if (isError || !course) {
-    return (
-      <div className="p-6 space-y-4">
-        <ErrorState message="Course not found." />
-        <Button variant="outline" asChild>
-          <Link href="/courses">Back to courses</Link>
-        </Button>
-      </div>
-    );
-  }
-
-  const headerActions = (
-    <>
-      <Button variant="outline" asChild>
-        <Link href="/courses">Back to courses</Link>
-      </Button>
-    </>
+  const rules = useMemo(
+    () => (course && draft ? evaluateReadiness({ ...draft, chapters: course.chapters }) : []),
+    [course, draft],
   );
+  const ready = rules.every((rule) => rule.ok);
+
+  if (isLoading) return <LoadingState label="Loading course…" />;
+  if (isError || !course || !draft) return <ErrorState onRetry={() => refetch()} />;
+
+  const patch = (next: Partial<CourseDraft>) =>
+    setDraft((current) => (current ? { ...current, ...next } : current));
+
+  const save = async () => {
+    setSaving(true);
+    try {
+      await updateCourse(course.id, { ...draft });
+      await refetch();
+      toast.success('Saved.');
+    } catch (error) {
+      const message =
+        (error as { response?: { data?: { message?: string } } }).response?.data?.message ??
+        (error as Error).message;
+      toast.error('Could not save', { description: message });
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const changeStatus = async (action: 'publish' | 'unpublish' | 'archive' | 'restore') => {
+    try {
+      await setCourseStatus(course.id, action);
+      await refetch();
+      toast.success(`${action.charAt(0).toUpperCase()}${action.slice(1)}ed.`);
+    } catch (error) {
+      const failures = (error as { failures?: Array<{ message: string }> }).failures;
+      toast.error('Not ready to publish', {
+        description:
+          failures?.map((failure) => failure.message).join(' · ') ?? (error as Error).message,
+      });
+    }
+  };
+
+  const moveChapter = async (index: number, direction: -1 | 1) => {
+    const next = [...course.chapters];
+    const target = index + direction;
+    if (target < 0 || target >= next.length) return;
+    const [moved] = next.splice(index, 1);
+    next.splice(target, 0, moved);
+    await reorderChapters(
+      course.id,
+      next.map((chapter) => chapter.id),
+    );
+    await refetch();
+  };
+
+  const moveItem = async (chapter: Chapter, index: number, direction: -1 | 1) => {
+    // Only owned items carry an order column; attached quizzes and exercises
+    // render after them and are not part of the sequence.
+    const owned = chapter.items.filter((item) => item.kind === 'video' || item.kind === 'article');
+    const target = index + direction;
+    if (target < 0 || target >= owned.length) return;
+    const next = [...owned];
+    const [moved] = next.splice(index, 1);
+    next.splice(target, 0, moved);
+    await reorderChapterItems(
+      course.id,
+      chapter.id,
+      next.map((item) => item.id),
+    );
+    await refetch();
+  };
+
+  const capstone = [
+    ...course.capstone.projects.map((row) => ({ ...row, kind: 'project' as const })),
+    ...course.capstone.mockInterviews.map((row) => ({ ...row, kind: 'mock' as const })),
+    ...(course.capstone.quizzes ?? []).map((row) => ({ ...row, kind: 'quiz' as const })),
+    ...(course.capstone.exercises ?? []).map((row) => ({ ...row, kind: 'exercise' as const })),
+    ...(course.capstone.videos ?? []).map((row) => ({ ...row, kind: 'video' as const })),
+    ...(course.capstone.articles ?? []).map((row) => ({ ...row, kind: 'article' as const })),
+  ].sort((a, b) => a.order - b.order);
+
+  const sectionProps = {
+    draft,
+    patch,
+    categories,
+    courseId: course.id,
+    slugLocked: course.isPublic,
+    onCategoryCreated: (category: Category) => setCategories((all) => [...all, category]),
+  };
 
   return (
-    <div className="space-y-6">
+    <div>
+      <p className="mb-1 text-sm text-muted-foreground">
+        <Link href="/courses" className="text-primary hover:underline">
+          Courses
+        </Link>{' '}
+        / {course.title}
+      </p>
+
       <PageHeader
         title={course.title}
-        description={`${course.instructor} · ${course.chaptersCount || course.chapters?.length || 0} chapters · ${course.enrolledCount || 0} enrolled`}
-        actions={headerActions}
+        description={`${course.slug} · updated ${new Date(course.updatedAt).toLocaleDateString()}`}
+        actions={
+          <>
+            <StatusBadge
+              label={course.status}
+              tone={
+                course.status === 'PUBLISHED'
+                  ? 'success'
+                  : course.status === 'DRAFT'
+                    ? 'neutral'
+                    : 'warning'
+              }
+            />
+            {course.archivedAt ? (
+              <Button variant="outline" onClick={() => changeStatus('restore')}>
+                Restore
+              </Button>
+            ) : course.isPublic ? (
+              <Button variant="outline" onClick={() => changeStatus('unpublish')}>
+                Unpublish
+              </Button>
+            ) : (
+              <Button onClick={() => changeStatus('publish')} disabled={!ready}>
+                Publish
+              </Button>
+            )}
+            <Button variant="outline" onClick={() => changeStatus('archive')}>
+              Archive
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={() => setConfirming({ kind: 'course', label: course.title })}
+            >
+              Delete
+            </Button>
+          </>
+        }
       />
 
-      {/* Status badges */}
-      <div className="flex gap-2 flex-wrap">
-        <StatusBadge
-          label={course.published ? 'Published' : 'Draft'}
-          tone={course.published ? 'success' : 'neutral'}
-        />
-        {course.category ? <StatusBadge label={course.category} tone="info" /> : null}
+      <div className="mb-5 flex flex-wrap gap-3">
+        <Stat label="enrolled" value={course.stats.enrolled.toLocaleString()} />
+        <Stat label="completion" value={`${course.stats.completionRate}%`} />
+        <Stat label="chapters" value={String(course.counts.chapters)} />
+        <Stat label="items" value={String(course.counts.items)} />
+        <Stat label="runtime" value={runtime(course.totalDuration)} />
       </div>
 
-      {/* Main tabs: Overview (editor) vs Chapters */}
-      <Tabs defaultValue="overview">
-        <TabsList>
-          <TabsTrigger value="overview">Overview</TabsTrigger>
-          <TabsTrigger value="chapters">Chapters</TabsTrigger>
-        </TabsList>
+      <div className="mb-5 flex flex-wrap gap-1 border-b border-border">
+        {TABS.map(([id, label]) => (
+          <button
+            key={id}
+            type="button"
+            onClick={() => setTab(id)}
+            className={cn(
+              'border-b-2 px-3 py-2 text-sm transition-colors',
+              tab === id
+                ? 'border-primary font-semibold text-foreground'
+                : 'border-transparent text-muted-foreground hover:text-foreground',
+            )}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
 
-        <TabsContent value="overview">
-          <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_320px]">
-            {/* Editor panel */}
-            <Card>
-              <CardHeader>
-                <CardTitle>Rich Course Editor</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="grid gap-3 md:grid-cols-2">
-                  <div className="space-y-1">
-                    <Label htmlFor="course-title">Title</Label>
-                    <Input
-                      id="course-title"
-                      value={title}
-                      onChange={(e) => setTitle(e.target.value)}
-                    />
-                  </div>
-                  <div className="space-y-1">
-                    <Label htmlFor="course-category">Category</Label>
-                    <Input
-                      id="course-category"
-                      value={category}
-                      onChange={(e) => setCategory(e.target.value)}
-                    />
-                  </div>
-                  <div className="space-y-1">
-                    <Label htmlFor="course-instructor">Instructor</Label>
-                    <Input
-                      id="course-instructor"
-                      value={instructor}
-                      onChange={(e) => setInstructor(e.target.value)}
-                    />
-                  </div>
-                  <div className="space-y-1">
-                    <Label htmlFor="course-thumbnail">Thumbnail URL</Label>
-                    <Input
-                      id="course-thumbnail"
-                      value={thumbnail}
-                      onChange={(e) => setThumbnail(e.target.value)}
-                    />
-                  </div>
-                </div>
-                <div className="space-y-1">
-                  <Label htmlFor="course-tags">Tags</Label>
-                  <Input
-                    id="course-tags"
-                    value={tags}
-                    onChange={(e) => setTags(e.target.value)}
-                    placeholder="react, frontend, hooks"
-                  />
-                </div>
-                <div className="space-y-1">
-                  <Label htmlFor="course-description">Description</Label>
-                  <textarea
-                    id="course-description"
-                    className="flex min-h-20 w-full rounded-md border border-input bg-background px-3 py-2 text-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
-                    value={description}
-                    onChange={(e) => setDescription(e.target.value)}
-                    placeholder="Rich text placeholder for TipTap in Week 2"
-                  />
-                </div>
-                <label className="flex items-center gap-2 text-sm cursor-pointer">
-                  <Checkbox checked={published} onCheckedChange={(v) => setPublished(!!v)} />
-                  Published
-                </label>
-                <div className="flex gap-2 flex-wrap">
-                  <Button onClick={handleSave}>Save changes</Button>
-                  <Button
-                    variant="ghost"
-                    className="text-destructive hover:text-destructive"
-                    onClick={handleDelete}
-                  >
-                    Delete course
+      {tab === 'overview' ? (
+        <div className="grid gap-4 lg:grid-cols-[1fr_280px]">
+          <div className="space-y-4">
+            <IdentitySection {...sectionProps} />
+            <ClassificationSection {...sectionProps} />
+            <MediaSection {...sectionProps} />
+            <Button onClick={save} disabled={saving}>
+              {saving ? 'Saving…' : 'Save changes'}
+            </Button>
+          </div>
+          <aside className="space-y-4 lg:sticky lg:top-4 lg:self-start">
+            <ReadinessPanel rules={rules} />
+          </aside>
+        </div>
+      ) : null}
+
+      {tab === 'access' ? (
+        <div className="grid gap-4 lg:grid-cols-[1fr_280px]">
+          <div className="space-y-4">
+            <AccessSection {...sectionProps} />
+            <Button onClick={save} disabled={saving}>
+              {saving ? 'Saving…' : 'Save changes'}
+            </Button>
+          </div>
+          <aside className="space-y-4 lg:sticky lg:top-4 lg:self-start">
+            <ReadinessPanel rules={rules} />
+          </aside>
+        </div>
+      ) : null}
+
+      {tab === 'curriculum' ? (
+        <div className="space-y-3">
+          {course.chapters.length === 0 ? (
+            <EmptyState
+              title="No chapters yet"
+              description="A course needs one chapter with a video or article before it can publish."
+              action={
+                <div className="flex flex-wrap justify-center gap-2">
+                  <Button onClick={() => setDrawer({ kind: 'chapter' })}>
+                    + Add the first chapter
+                  </Button>
+                  <Button variant="outline" onClick={() => setImportOpen(true)}>
+                    Import chapters JSON
                   </Button>
                 </div>
-                {message ? <p className="text-sm text-primary">{message}</p> : null}
-              </CardContent>
-            </Card>
-
-            {/* Summary panel */}
-            <Card>
-              <CardHeader>
-                <CardTitle>Course Summary</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-2 text-sm text-foreground">
-                <p>
-                  <span className="font-medium">Chapters:</span>{' '}
-                  {course.chaptersCount || course.chapters?.length || 0}
-                </p>
-                <p>
-                  <span className="font-medium">Enrolled:</span> {course.enrolledCount || 0}
-                </p>
-                <p>
-                  <span className="font-medium">Published:</span> {course.published ? 'Yes' : 'No'}
-                </p>
-                <p>
-                  <span className="font-medium">Tags:</span> {course.tags?.join(', ') || '—'}
-                </p>
-              </CardContent>
-            </Card>
-          </div>
-        </TabsContent>
-
-        <TabsContent value="chapters">
-          <Card>
-            <CardHeader>
-              <div className="flex items-center justify-between gap-4 flex-wrap">
-                <CardTitle>Chapter Manager</CardTitle>
-                <p className="text-sm text-muted-foreground">
-                  Use up/down controls to reorder chapters.
-                </p>
-              </div>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              {/* Add chapter form */}
-              <div className="grid gap-3 grid-cols-1 md:grid-cols-[2fr_160px_160px_1fr_auto]">
-                <Input
-                  value={newChapterTitle}
-                  onChange={(e) => setNewChapterTitle(e.target.value)}
-                  placeholder="Chapter title"
-                />
-                <Select
-                  value={newChapterType}
-                  onValueChange={(v) => setNewChapterType(v as 'video' | 'article')}
+              }
+            />
+          ) : (
+            course.chapters.map((chapter, chapterIndex) => {
+              const owned = chapter.items.filter(
+                (item) => item.kind === 'video' || item.kind === 'article',
+              );
+              return (
+                <Card
+                  key={chapter.id}
+                  {...drag.handlers(chapterIndex, 'chapters')}
+                  className="overflow-hidden p-0 data-[dragging=true]:opacity-50 data-[dragover=true]:border-primary data-[dragover=true]:ring-2 data-[dragover=true]:ring-primary/30"
                 >
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="video">Video</SelectItem>
-                    <SelectItem value="article">Article</SelectItem>
-                  </SelectContent>
-                </Select>
-                <Input
-                  value={newChapterVideoId}
-                  onChange={(e) => setNewChapterVideoId(e.target.value)}
-                  placeholder="Vimeo ID"
-                />
-                <Input
-                  value={newChapterContent}
-                  onChange={(e) => setNewChapterContent(e.target.value)}
-                  placeholder="Article content placeholder"
-                />
-                <Button onClick={handleAddChapter}>Add chapter</Button>
-              </div>
-
-              {/* Chapter list */}
-              {(course.chapters || []).length === 0 ? (
-                <EmptyState
-                  title="No chapters yet"
-                  description="Add the first chapter using the form above."
-                />
-              ) : (
-                <div className="space-y-3">
-                  {(course.chapters || []).map((chapter, index) => (
-                    <div
-                      key={chapter.id}
-                      className="flex items-center justify-between gap-3 rounded-md border border-border p-3"
+                  <div className="flex flex-wrap items-center gap-2 border-b border-border bg-muted/40 px-3 py-2">
+                    <GripVertical
+                      className="h-4 w-4 shrink-0 cursor-grab text-muted-foreground active:cursor-grabbing"
+                      aria-hidden
+                    />
+                    <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                      Chapter {chapterIndex + 1}
+                    </span>
+                    <Input
+                      // Inline rename for the common edit; everything else lives
+                      // behind Edit. Committing on blur keeps it a single request.
+                      defaultValue={chapter.title}
+                      aria-label="Chapter title"
+                      className="h-8 flex-1 border-transparent bg-transparent px-1.5 text-sm font-semibold shadow-none hover:border-border focus:border-ring"
+                      onBlur={async (event) => {
+                        const next = event.target.value.trim();
+                        if (!next || next === chapter.title) return;
+                        await updateChapter(course.id, chapter.id, { title: next });
+                        await refetch();
+                      }}
+                      // Enter is the natural way to finish a rename; without this
+                      // it does nothing and the edit is lost on the next click.
+                      onKeyDown={(event) => {
+                        if (event.key === 'Enter') {
+                          event.preventDefault();
+                          event.currentTarget.blur();
+                        } else if (event.key === 'Escape') {
+                          event.preventDefault();
+                          event.currentTarget.value = chapter.title;
+                          event.currentTarget.blur();
+                        }
+                      }}
+                    />
+                    <span className="whitespace-nowrap text-xs text-muted-foreground">
+                      {chapter.items.length} items · {runtime(chapterRuntime(chapter))}
+                    </span>
+                    <label className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                      <Switch
+                        checked={!chapter.isPremium}
+                        onCheckedChange={async (free) => {
+                          await import('@/lib/api/courses').then(({ updateChapter }) =>
+                            updateChapter(course.id, chapter.id, { isPremium: !free }),
+                          );
+                          await refetch();
+                        }}
+                        aria-label="Free preview chapter"
+                      />
+                      free
+                    </label>
+                    <Button
+                      size="icon"
+                      variant="ghost"
+                      aria-label="Move chapter up"
+                      disabled={chapterIndex === 0}
+                      onClick={() => moveChapter(chapterIndex, -1)}
                     >
-                      <div>
-                        <p className="font-medium text-foreground">{chapter.title}</p>
-                        <p className="text-xs text-muted-foreground">
-                          {chapter.type} · {chapter.published ? 'Published' : 'Draft'}
-                        </p>
-                      </div>
-                      <div className="flex gap-2 flex-wrap justify-end">
+                      <ChevronUp className="h-4 w-4" />
+                    </Button>
+                    <Button
+                      size="icon"
+                      variant="ghost"
+                      aria-label="Move chapter down"
+                      disabled={chapterIndex === course.chapters.length - 1}
+                      onClick={() => moveChapter(chapterIndex, 1)}
+                    >
+                      <ChevronDown className="h-4 w-4" />
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => setDrawer({ kind: 'chapter', chapter })}
+                    >
+                      <Pencil className="mr-1 h-3.5 w-3.5" /> Edit
+                    </Button>
+                    <Button
+                      size="icon"
+                      variant="ghost"
+                      aria-label="Delete chapter"
+                      onClick={() =>
+                        setConfirming({ kind: 'chapter', id: chapter.id, label: chapter.title })
+                      }
+                    >
+                      <X className="h-4 w-4" />
+                    </Button>
+                  </div>
+
+                  <div className="space-y-1.5 px-3 py-3">
+                    {chapter.items.length === 0 ? (
+                      <p className="text-xs text-muted-foreground">
+                        Empty chapter — add a video or article.
+                      </p>
+                    ) : (
+                      chapter.items.map((item) => {
+                        const ownedIndex = owned.findIndex((candidate) => candidate.id === item.id);
+                        const isOwned = ownedIndex !== -1;
+                        return (
+                          <div
+                            key={item.id}
+                            {...(isOwned ? drag.handlers(ownedIndex, chapter.id) : {})}
+                            className="flex flex-wrap items-center gap-2 rounded-md border border-border bg-muted/30 px-2.5 py-1.5 text-sm data-[dragging=true]:opacity-50 data-[dragover=true]:border-primary"
+                          >
+                            {isOwned ? (
+                              <GripVertical
+                                className="h-3.5 w-3.5 shrink-0 cursor-grab text-muted-foreground active:cursor-grabbing"
+                                aria-hidden
+                              />
+                            ) : null}
+                            <span className="rounded border border-border px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+                              {item.kind}
+                            </span>
+                            {isOwned ? (
+                              <Input
+                                defaultValue={item.title}
+                                aria-label="Item title"
+                                className="h-7 flex-1 border-transparent bg-transparent px-1.5 text-sm shadow-none hover:border-border focus:border-ring"
+                                onBlur={async (event) => {
+                                  const next = event.target.value.trim();
+                                  if (!next || next === item.title) return;
+                                  if (item.kind === 'video') {
+                                    await updateVideo(course.id, chapter.id, item.id, {
+                                      title: next,
+                                    });
+                                  } else {
+                                    await updateArticle(course.id, chapter.id, item.id, {
+                                      title: next,
+                                    });
+                                  }
+                                  await refetch();
+                                }}
+                                // Committing on blur alone silently loses the edit
+                                // for anyone who types a name and presses Enter.
+                                onKeyDown={(event) => {
+                                  if (event.key === 'Enter') {
+                                    event.preventDefault();
+                                    event.currentTarget.blur();
+                                  } else if (event.key === 'Escape') {
+                                    event.preventDefault();
+                                    event.currentTarget.value = item.title;
+                                    event.currentTarget.blur();
+                                  }
+                                }}
+                              />
+                            ) : (
+                              <span className="min-w-0 flex-1 truncate">{item.title}</span>
+                            )}
+                            {itemComplete(item) ? null : (
+                              <span
+                                title={`Missing: ${itemMissing(item).join(', ')}`}
+                                className="rounded bg-warning-wash px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide text-warning"
+                              >
+                                incomplete
+                              </span>
+                            )}
+                            <span className="whitespace-nowrap text-xs text-muted-foreground">
+                              {itemMeta(item)}
+                            </span>
+                            {isOwned ? (
+                              <>
+                                <Button
+                                  size="icon"
+                                  variant="ghost"
+                                  aria-label="Move item up"
+                                  disabled={ownedIndex === 0}
+                                  onClick={() => moveItem(chapter, ownedIndex, -1)}
+                                >
+                                  <ChevronUp className="h-4 w-4" />
+                                </Button>
+                                <Button
+                                  size="icon"
+                                  variant="ghost"
+                                  aria-label="Move item down"
+                                  disabled={ownedIndex === owned.length - 1}
+                                  onClick={() => moveItem(chapter, ownedIndex, 1)}
+                                >
+                                  <ChevronDown className="h-4 w-4" />
+                                </Button>
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  onClick={() =>
+                                    setDrawer({
+                                      kind: item.kind as 'video' | 'article',
+                                      chapterId: chapter.id,
+                                      item,
+                                    })
+                                  }
+                                >
+                                  Edit
+                                </Button>
+                              </>
+                            ) : null}
+                            <Button
+                              size="icon"
+                              variant="ghost"
+                              aria-label={`Remove ${item.title}`}
+                              onClick={() =>
+                                setConfirming({
+                                  kind: 'item',
+                                  id: item.refId ?? item.id,
+                                  chapterId: chapter.id,
+                                  itemKind: item.kind,
+                                  label: item.title,
+                                })
+                              }
+                            >
+                              <X className="h-4 w-4" />
+                            </Button>
+                          </div>
+                        );
+                      })
+                    )}
+
+                    <div className="flex flex-wrap items-center gap-2 pt-1">
+                      {(['video', 'article', 'quiz', 'exercise'] as const).map((kind) => (
                         <Button
-                          variant="outline"
-                          size="icon"
-                          onClick={() => moveChapter(chapter.id, -1)}
-                          disabled={index === 0}
-                          aria-label="Move up"
-                        >
-                          <ChevronUp className="h-4 w-4" />
-                        </Button>
-                        <Button
-                          variant="outline"
-                          size="icon"
-                          onClick={() => moveChapter(chapter.id, 1)}
-                          disabled={index === (course.chapters?.length || 0) - 1}
-                          aria-label="Move down"
-                        >
-                          <ChevronDown className="h-4 w-4" />
-                        </Button>
-                        <Button
-                          variant="outline"
+                          key={kind}
                           size="sm"
-                          onClick={() => toggleChapterPublished(chapter)}
+                          variant="outline"
+                          onClick={() => setDrawer({ kind, chapterId: chapter.id })}
                         >
-                          {chapter.published ? 'Unpublish' : 'Publish'}
+                          <Plus className="mr-1 h-3.5 w-3.5" />
+                          {kind}
                         </Button>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          className="text-destructive hover:text-destructive"
-                          onClick={() => deleteChapter(chapter.id)}
-                        >
-                          Delete
-                        </Button>
-                      </div>
+                      ))}
                     </div>
-                  ))}
-                </div>
+                  </div>
+                </Card>
+              );
+            })
+          )}
+
+          {course.chapters.length ? (
+            <Card className="space-y-2 border-dashed p-4">
+              <div className="flex items-center gap-2">
+                <span className="rounded border border-border px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+                  capstone
+                </span>
+                <strong className="text-sm">After the last chapter</strong>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                What learners meet once the chapters are done — projects, mock interviews, quizzes
+                and exercises attached to the whole course rather than to one chapter. They appear
+                in the order below.
+              </p>
+              {capstone.length === 0 ? (
+                <p className="text-xs text-muted-foreground">
+                  Nothing yet — a course can ship without a capstone.
+                </p>
+              ) : (
+                capstone.map((link, index) => (
+                  <div
+                    key={`${link.kind}-${link.id}`}
+                    className="flex flex-wrap items-center gap-2 rounded-md border border-border bg-muted/30 px-2.5 py-1.5 text-sm"
+                  >
+                    <span className="rounded border border-border px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+                      {link.kind}
+                    </span>
+                    <span className="min-w-0 flex-1 truncate">
+                      {link.title}
+                      {'meta' in link && link.meta ? (
+                        <span className="ml-2 text-xs text-muted-foreground">{link.meta}</span>
+                      ) : null}
+                    </span>
+                    {link.kind === 'mock' ? (
+                      <Select
+                        value={(link as { type: Modality }).type}
+                        onValueChange={async (value) => {
+                          await updateMockLink(course.id, link.id, { type: value as Modality });
+                          await refetch();
+                        }}
+                      >
+                        <SelectTrigger className="h-8 w-24 text-xs">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {(['CHAT', 'AUDIO', 'VIDEO'] as Modality[]).map((modality) => (
+                            <SelectItem key={modality} value={modality}>
+                              {modality.toLowerCase()}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    ) : null}
+                    <label className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                      <Switch
+                        checked={link.isOptional}
+                        aria-label="Optional step"
+                        onCheckedChange={async (isOptional) => {
+                          if (link.kind === 'project') {
+                            await updateProjectLink(course.id, link.id, { isOptional });
+                          } else if (link.kind === 'mock') {
+                            await updateMockLink(course.id, link.id, { isOptional });
+                          } else if (link.kind === 'video' || link.kind === 'article') {
+                            await addCapstoneMedia(course.id, link.kind, {
+                              id: link.id,
+                              isOptional,
+                            });
+                          } else {
+                            // The quiz/exercise join stores `required`, so the
+                            // capstone's "optional" is its inverse.
+                            const attach = link.kind === 'quiz' ? attachQuiz : attachExercise;
+                            await attach(course.id, {
+                              ...(link.kind === 'quiz'
+                                ? { quizId: link.id }
+                                : { exerciseId: link.id }),
+                              required: !isOptional,
+                              order: link.order,
+                            } as never);
+                          }
+                          await refetch();
+                        }}
+                      />
+                      optional
+                    </label>
+                    <Button
+                      size="icon"
+                      variant="ghost"
+                      aria-label="Move up"
+                      disabled={index === 0}
+                      onClick={async () => {
+                        const next = [...capstone];
+                        const [moved] = next.splice(index, 1);
+                        next.splice(index - 1, 0, moved);
+                        await reorderCapstone(
+                          course.id,
+                          next.map((entry, position) => ({
+                            kind: entry.kind,
+                            id: entry.id,
+                            order: position,
+                          })),
+                        );
+                        await refetch();
+                      }}
+                    >
+                      <ChevronUp className="h-4 w-4" />
+                    </Button>
+                    <Button
+                      size="icon"
+                      variant="ghost"
+                      aria-label="Detach"
+                      onClick={async () => {
+                        if (link.kind === 'project') await detachProject(course.id, link.id);
+                        else if (link.kind === 'mock')
+                          await detachMockInterview(course.id, link.id);
+                        // scope=course: if the same quiz is also attached to a
+                        // chapter, that link stays put.
+                        else if (link.kind === 'quiz')
+                          await detachQuiz(course.id, link.id, 'course');
+                        else if (link.kind === 'exercise')
+                          await detachExercise(course.id, link.id, 'course');
+                        else await removeCapstoneMedia(course.id, link.kind, link.id);
+                        await refetch();
+                        toast.success('Detached — the original is untouched.');
+                      }}
+                    >
+                      <X className="h-4 w-4" />
+                    </Button>
+                  </div>
+                ))
               )}
-            </CardContent>
-          </Card>
-        </TabsContent>
-      </Tabs>
+
+              <div className="flex flex-wrap gap-2 pt-1">
+                {(
+                  [
+                    ['project', '+ Attach project'],
+                    ['mock', '+ Attach mock interview'],
+                    ['quiz', '+ Attach quiz'],
+                    ['exercise', '+ Attach exercise'],
+                    ['video', '+ Video'],
+                    ['article', '+ Article'],
+                  ] as Array<[CapstoneKind | 'video' | 'article', string]>
+                ).map(([kind, label]) => (
+                  <Button
+                    key={kind}
+                    size="sm"
+                    variant="outline"
+                    onClick={() =>
+                      // Media uses the same drawer a chapter does — one form, two
+                      // destinations — so authoring is identical wherever you are.
+                      kind === 'video' || kind === 'article'
+                        ? setDrawer({ kind, capstone: true })
+                        : setAttaching(kind as CapstoneKind)
+                    }
+                  >
+                    {label}
+                  </Button>
+                ))}
+              </div>
+            </Card>
+          ) : null}
+
+          <div className="flex flex-wrap gap-2">
+            <Button onClick={() => setDrawer({ kind: 'chapter' })}>+ Add chapter</Button>
+            <Button variant="outline" onClick={() => setImportOpen(true)}>
+              Import chapters JSON
+            </Button>
+            <Button variant="outline" onClick={() => setPayloadOpen(true)}>
+              Inspect payload
+            </Button>
+          </div>
+        </div>
+      ) : null}
+
+      {tab === 'learners' ? <LearnersTab courseId={course.id} /> : null}
+
+      <ItemDrawer
+        open={Boolean(drawer)}
+        target={drawer}
+        courseId={course.id}
+        onClose={() => setDrawer(null)}
+        onSaved={() => refetch()}
+      />
+
+      <PayloadDialog
+        open={payloadOpen}
+        onClose={() => setPayloadOpen(false)}
+        method="PUT"
+        path={`/admin/courses/${course.id}`}
+        body={draft}
+      />
+
+      <CapstoneAttachDialog
+        open={Boolean(attaching)}
+        kind={attaching}
+        courseId={course.id}
+        onClose={() => setAttaching(null)}
+        onAttached={() => refetch()}
+      />
+
+      <ImportCourseModal
+        open={importOpen}
+        mode="curriculum"
+        courseId={course.id}
+        onClose={() => setImportOpen(false)}
+        onImported={() => refetch()}
+      />
+
+      <ConfirmDelete
+        open={Boolean(confirming)}
+        title={
+          confirming?.kind === 'course'
+            ? course.stats.enrolled
+              ? 'Cannot delete'
+              : 'Delete course'
+            : `Remove ${confirming?.kind === 'chapter' ? 'chapter' : confirming?.itemKind}`
+        }
+        description={
+          confirming?.kind === 'course'
+            ? course.stats.enrolled
+              ? `“${course.title}” has ${course.stats.enrolled.toLocaleString()} enrolments, so the API refuses. Archive it instead.`
+              : `Delete “${course.title}”? Nobody is enrolled, so this is permanent.`
+            : confirming?.itemKind === 'quiz' || confirming?.itemKind === 'exercise'
+              ? `Detach “${confirming?.label}”? The ${confirming?.itemKind} itself stays in the library.`
+              : `Delete “${confirming?.label}”? This cannot be undone.`
+        }
+        onCancel={() => setConfirming(null)}
+        onConfirm={async () => {
+          if (!confirming) return;
+          try {
+            if (confirming.kind === 'course') {
+              await deleteCourse(course.id);
+              toast.success('Deleted.');
+              router.push('/courses');
+              return;
+            }
+            if (confirming.kind === 'chapter' && confirming.id) {
+              await deleteChapter(course.id, confirming.id);
+            }
+            if (confirming.kind === 'item' && confirming.id && confirming.chapterId) {
+              if (confirming.itemKind === 'video') {
+                await deleteVideo(course.id, confirming.chapterId, confirming.id);
+              } else if (confirming.itemKind === 'article') {
+                await deleteArticle(course.id, confirming.chapterId, confirming.id);
+              } else if (confirming.itemKind === 'quiz') {
+                await detachQuiz(course.id, confirming.id);
+              } else {
+                await detachExercise(course.id, confirming.id);
+              }
+            }
+            await refetch();
+            toast.success('Removed.');
+          } catch (error) {
+            const message =
+              (error as { response?: { data?: { message?: string } } }).response?.data?.message ??
+              (error as Error).message;
+            toast.error('Could not remove', { description: message });
+          } finally {
+            setConfirming(null);
+          }
+        }}
+      />
+    </div>
+  );
+}
+
+function Stat({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-lg border border-border bg-card px-3.5 py-2">
+      <div className="text-xl font-semibold tabular-nums">{value}</div>
+      <div className="text-[10px] uppercase tracking-wider text-muted-foreground">{label}</div>
+    </div>
+  );
+}
+
+function LearnersTab({ courseId }: { courseId: string }) {
+  const [page, setPage] = useState(1);
+  const { data, isLoading, isError, refetch } = useQuery({
+    queryKey: ['course-learners', courseId, page],
+    queryFn: () => fetchLearners(courseId, page),
+  });
+
+  if (isLoading) return <LoadingState label="Loading learners…" />;
+  if (isError) return <ErrorState onRetry={() => refetch()} />;
+  if (!data?.data.length) {
+    return (
+      <EmptyState
+        title="No learners yet"
+        description="Enrolments appear here once the course is live."
+      />
+    );
+  }
+
+  const pages = Math.max(1, Math.ceil(data.total / data.limit));
+
+  return (
+    <div className="space-y-3">
+      <Card className="overflow-x-auto p-0">
+        <table className="w-full text-sm">
+          <thead className="border-b border-border bg-muted">
+            <tr>
+              <th className="px-4 py-2.5 text-left font-semibold">Learner</th>
+              <th className="px-4 py-2.5 text-left font-semibold">Email</th>
+              <th className="px-4 py-2.5 text-left font-semibold">Items done</th>
+              <th className="px-4 py-2.5 text-left font-semibold">State</th>
+              <th className="px-4 py-2.5 text-left font-semibold">Started</th>
+            </tr>
+          </thead>
+          <tbody>
+            {data.data.map((learner) => (
+              <tr key={learner.id} className="border-b border-border last:border-0">
+                <td className="px-4 py-2.5">{learner.user?.name ?? '—'}</td>
+                <td className="px-4 py-2.5 font-mono text-xs text-muted-foreground">
+                  {learner.user?.email ?? '—'}
+                </td>
+                <td className="px-4 py-2.5 tabular-nums">{learner.completedItems}</td>
+                <td className="px-4 py-2.5">
+                  <StatusBadge
+                    label={learner.isCompleted ? 'Completed' : 'In progress'}
+                    tone={learner.isCompleted ? 'success' : 'neutral'}
+                  />
+                </td>
+                <td className="px-4 py-2.5">{new Date(learner.startedAt).toLocaleDateString()}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </Card>
+      <div className="flex items-center justify-between text-sm text-muted-foreground">
+        <span>
+          Showing {(page - 1) * data.limit + 1}–{Math.min(page * data.limit, data.total)} of{' '}
+          {data.total}
+        </span>
+        <div className="flex items-center gap-2">
+          <Button
+            size="sm"
+            variant="outline"
+            disabled={page <= 1}
+            onClick={() => setPage(page - 1)}
+          >
+            Prev
+          </Button>
+          <span className="tabular-nums">
+            {page} / {pages}
+          </span>
+          <Button
+            size="sm"
+            variant="outline"
+            disabled={page >= pages}
+            onClick={() => setPage(page + 1)}
+          >
+            Next
+          </Button>
+        </div>
+      </div>
     </div>
   );
 }

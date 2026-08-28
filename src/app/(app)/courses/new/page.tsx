@@ -1,10 +1,10 @@
 import { ProtectedPage } from '@/components/shared/ProtectedPage';
-import CourseDetailClient from '@/components/courses/CourseDetailClient';
+import NewCourseClient from '@/components/courses/NewCourseClient';
 
-export default function CourseDetailPage() {
+export default function NewCoursePage() {
   return (
     <ProtectedPage allowedRoles={['SUPER_ADMIN', 'ADMIN']}>
-      <CourseDetailClient />
+      <NewCourseClient />
     </ProtectedPage>
   );
 }

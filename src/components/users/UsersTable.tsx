@@ -314,7 +314,7 @@ export default function UsersTable() {
                   onClick={bulkSuspendSelected}
                   disabled={isBulkBusy}
                   variant="outline"
-                  className="col-span-2 text-amber-600 sm:col-span-1"
+                  className="col-span-2 text-warning sm:col-span-1"
                 >
                   Suspend ({selectedUsers.length})
                 </Button>

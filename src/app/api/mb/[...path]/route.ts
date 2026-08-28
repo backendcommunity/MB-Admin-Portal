@@ -38,7 +38,10 @@ async function proxyToAcademy(request: NextRequest, context: RouteContext) {
 
   const method = request.method;
   const needsBody = !['GET', 'HEAD'].includes(method.toUpperCase());
-  const body = needsBody ? await request.text() : undefined;
+  // Reading the body as text would UTF-8 decode it, corrupting any binary
+  // payload — image uploads arrive here as raw bytes. ArrayBuffer passes both
+  // JSON and binary through untouched.
+  const body = needsBody ? await request.arrayBuffer() : undefined;
 
   const upstream = await fetch(url.toString(), {
     method,
