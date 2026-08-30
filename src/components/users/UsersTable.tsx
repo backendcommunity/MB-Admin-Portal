@@ -1,25 +1,21 @@
 'use client';
 
-import React, { useState, useMemo, useCallback } from 'react';
-import { useApiQuery } from '@/lib/api/query';
-import type { User, UsersListResponse } from '@/lib/api/users';
-import {
-  getCoreRowModel,
-  useReactTable,
-  type ColumnDef,
-  type SortingState,
-  type RowSelectionState,
-} from '@tanstack/react-table';
-import AddUserModal from '@/components/users/AddUserModal';
-import EditUserModal from '@/components/users/EditUserModal';
-import ConfirmDelete from '@/components/users/ConfirmDelete';
-import { deleteUser, suspendUserById } from '@/lib/api/users';
-import Link from 'next/link';
+import { useMemo, useState } from 'react';
+import { useRouter } from 'next/navigation';
+import { useQuery } from '@tanstack/react-query';
+import { getCoreRowModel, useReactTable, type ColumnDef } from '@tanstack/react-table';
 import { MoreHorizontal } from 'lucide-react';
+import { toast } from 'sonner';
+
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
 import { Card } from '@/components/ui/card';
-import { Checkbox } from '@/components/ui/checkbox';
+import { Input } from '@/components/ui/input';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 import {
   Select,
   SelectContent,
@@ -27,143 +23,171 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu';
-import { DataTable } from '@/components/shared/DataTable';
 import { PageHeader } from '@/components/shared/PageHeader';
-import { StatusBadge } from '@/components/shared/StatusBadge';
+import { DataTable } from '@/components/shared/DataTable';
 import { LoadingState, ErrorState } from '@/components/shared/LoadingState';
 import { EmptyState } from '@/components/shared/EmptyState';
+import { StatusBadge } from '@/components/shared/StatusBadge';
+import AddUserModal from '@/components/users/AddUserModal';
+import { Avatar, Streak, accessTone, roleTone, statusTone } from '@/components/users/bits';
+import {
+  ACCESS,
+  ROLES,
+  SIGNUP_SOURCES,
+  STATUSES,
+  deleteUser,
+  fetchUsers,
+  type UserRow,
+} from '@/lib/api/users';
 
-function roleTone(role: string): 'danger' | 'info' | 'success' | 'neutral' {
-  switch (role) {
-    case 'SUPER_ADMIN':
-      return 'danger';
-    case 'ADMIN':
-      return 'info';
-    case 'INSTRUCTOR':
-      return 'success';
-    default:
-      return 'neutral';
-  }
+const PAGE = 25;
+
+function fmt(iso: string) {
+  return new Date(iso).toLocaleDateString(undefined, {
+    day: 'numeric',
+    month: 'short',
+    year: 'numeric',
+  });
 }
 
 export default function UsersTable() {
-  const [pageIndex, setPageIndex] = useState(0);
-  const [pageSize, setPageSize] = useState(10);
-  const [globalFilter, setGlobalFilter] = useState('');
-  const [roleFilter, setRoleFilter] = useState('all');
-  const [statusFilter, setStatusFilter] = useState('all');
-  const [showAdd, setShowAdd] = useState(false);
-  const [sorting, setSorting] = useState<SortingState>([]);
-  const [rowSelection, setRowSelection] = useState<RowSelectionState>({});
-  const [isBulkBusy, setIsBulkBusy] = useState(false);
+  const router = useRouter();
+  const [q, setQ] = useState('');
+  const [role, setRole] = useState('ALL');
+  const [status, setStatus] = useState('ALL');
+  const [access, setAccess] = useState('ALL');
+  const [source, setSource] = useState('ALL');
+  const [page, setPage] = useState(1);
+  const [adding, setAdding] = useState(false);
 
-  const queryKey = ['users', pageIndex, pageSize, globalFilter, roleFilter, statusFilter, sorting];
-
-  const sortParam = sorting[0]
-    ? `&sort=${sorting[0].id}&order=${sorting[0].desc ? 'desc' : 'asc'}`
-    : '';
-
-  const roleParam = roleFilter !== 'all' ? `&role=${encodeURIComponent(roleFilter)}` : '';
-  const statusParam =
-    statusFilter !== 'all' ? `&active=${statusFilter === 'active' ? 'true' : 'false'}` : '';
-
-  const { data, isLoading, isError, refetch } = useApiQuery<UsersListResponse>(
-    queryKey,
-    `/admin/users?page=${pageIndex + 1}&limit=${pageSize}&q=${encodeURIComponent(globalFilter)}${roleParam}${statusParam}${sortParam}`,
+  const params = useMemo(
+    () => ({
+      page,
+      limit: PAGE,
+      ...(q.trim() ? { q: q.trim() } : {}),
+      ...(role !== 'ALL' ? { role } : {}),
+      ...(status !== 'ALL' ? { status } : {}),
+      ...(access !== 'ALL' ? { access } : {}),
+      ...(source !== 'ALL' ? { source } : {}),
+    }),
+    [q, role, status, access, source, page],
   );
 
-  const users: User[] = data?.data || [];
-  const total: number = data?.total || 0;
+  const { data, isLoading, isError, refetch } = useQuery({
+    queryKey: ['admin-users', params],
+    queryFn: () => fetchUsers(params),
+  });
 
-  const [editingUser, setEditingUser] = useState<User | null>(null);
-  const [deletingId, setDeletingId] = useState<string | null>(null);
+  const rows = useMemo(() => data?.data ?? [], [data]);
+  const total = data?.total ?? 0;
+  const pages = Math.max(1, Math.ceil(total / PAGE));
 
-  const columns = useMemo<ColumnDef<User, any>[]>(
-    () => [
+  const columns = useMemo<ColumnDef<UserRow>[]>(() => {
+    const remove = async (user: UserRow) => {
+      try {
+        await deleteUser(user.id);
+        toast.success(`Deleted ${user.email}.`, {
+          description:
+            'A soft delete — the account can be restored until the purge job removes it.',
+        });
+        refetch();
+      } catch (error) {
+        toast.error('Could not delete it', { description: (error as Error).message });
+      }
+    };
+
+    return [
       {
-        id: 'select',
-        header: ({ table }) => (
-          <Checkbox
-            checked={
-              table.getIsAllPageRowsSelected()
-                ? true
-                : table.getIsSomePageRowsSelected()
-                  ? 'indeterminate'
-                  : false
-            }
-            onCheckedChange={(v) => table.toggleAllPageRowsSelected(!!v)}
-            aria-label="Select all"
-          />
-        ),
+        id: 'user',
+        header: 'User',
         cell: ({ row }) => (
-          <Checkbox
-            checked={row.getIsSelected()}
-            onCheckedChange={(v) => row.toggleSelected(!!v)}
-            aria-label="Select row"
-          />
+          <button
+            type="button"
+            className="flex max-w-xs items-center gap-2.5 text-left"
+            onClick={() => router.push(`/users/${row.original.id}`)}
+          >
+            <Avatar name={row.original.name} src={row.original.avatar} />
+            <span className="min-w-0">
+              <span className="block truncate font-medium">{row.original.name || 'No name'}</span>
+              <span className="block truncate text-xs text-muted-foreground">
+                {row.original.email}
+              </span>
+            </span>
+          </button>
         ),
       },
-      { accessorKey: 'name', header: 'Name' },
-      { accessorKey: 'email', header: 'Email' },
       {
-        accessorKey: 'role',
+        id: 'role',
         header: 'Role',
-        cell: (info) => (
-          <StatusBadge label={info.getValue<string>()} tone={roleTone(info.getValue<string>())} />
+        cell: ({ row }) => (
+          <StatusBadge label={row.original.role} tone={roleTone(row.original.role)} />
         ),
       },
       {
-        accessorKey: 'plan',
-        header: 'Plan',
-        cell: (info) => info.getValue() || '—',
+        id: 'access',
+        header: 'Access',
+        cell: ({ row }) => (
+          <span className="flex items-center gap-2">
+            <StatusBadge label={row.original.access} tone={accessTone(row.original.access)} />
+            {row.original.plan ? (
+              <span className="truncate text-xs text-muted-foreground">{row.original.plan}</span>
+            ) : null}
+          </span>
+        ),
       },
       {
-        accessorKey: 'active',
+        id: 'points',
+        header: 'Points',
+        meta: { align: 'right' as const },
+        cell: ({ row }) => (
+          <span className="tabular-nums">{row.original.points.toLocaleString()}</span>
+        ),
+      },
+      {
+        id: 'streak',
+        header: 'Streak',
+        meta: { align: 'right' as const },
+        cell: ({ row }) => (
+          <Streak current={row.original.currentStreak} longest={row.original.longestStreak} />
+        ),
+      },
+      {
+        id: 'joined',
+        header: 'Signed up',
+        cell: ({ row }) => (
+          <span>
+            <span className="block text-sm">{fmt(row.original.createdAt)}</span>
+            <span className="block text-xs lowercase text-muted-foreground">
+              {row.original.signedUpThrough}
+            </span>
+          </span>
+        ),
+      },
+      {
+        id: 'status',
         header: 'Status',
-        cell: (info) => (
-          <StatusBadge
-            label={info.getValue<boolean>() ? 'Active' : 'Inactive'}
-            tone={info.getValue<boolean>() ? 'success' : 'neutral'}
-          />
+        cell: ({ row }) => (
+          <StatusBadge label={row.original.status} tone={statusTone(row.original.status)} />
         ),
-      },
-      {
-        accessorKey: 'joinedAt',
-        header: 'Joined',
-        cell: (info) => {
-          const date = info.getValue();
-          return date ? new Date(date as string).toLocaleDateString() : '—';
-        },
       },
       {
         id: 'actions',
-        header: 'Actions',
-        enableSorting: false,
+        header: '',
         cell: ({ row }) => (
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <Button variant="ghost" size="icon" aria-label="Row actions">
-                <MoreHorizontal className="h-4 w-4" />
+              <Button variant="ghost" size="icon" aria-label={`Actions for ${row.original.email}`}>
+                <MoreHorizontal className="size-4" />
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
-              <DropdownMenuItem asChild>
-                <Link href={`/users/${row.original.id}`}>View</Link>
+              <DropdownMenuItem onClick={() => router.push(`/users/${row.original.id}`)}>
+                Open
               </DropdownMenuItem>
-              <DropdownMenuItem onSelect={() => setEditingUser(row.original)}>
-                Edit
-              </DropdownMenuItem>
-              <DropdownMenuSeparator />
               <DropdownMenuItem
-                className="text-destructive focus:text-destructive"
-                onSelect={() => setDeletingId(row.original.id)}
+                className="text-destructive"
+                onClick={() => remove(row.original)}
+                disabled={Boolean(row.original.deletedAt)}
               >
                 Delete
               </DropdownMenuItem>
@@ -171,266 +195,115 @@ export default function UsersTable() {
           </DropdownMenu>
         ),
       },
-    ],
-    [],
-  );
-
-  const table = useReactTable({
-    data: users,
-    columns,
-    pageCount: Math.ceil(total / pageSize) || -1,
-    state: { pagination: { pageIndex, pageSize }, sorting, globalFilter, rowSelection },
-    onSortingChange: setSorting,
-    onGlobalFilterChange: setGlobalFilter,
-    onRowSelectionChange: setRowSelection,
-    onPaginationChange: (updater) => {
-      const next = typeof updater === 'function' ? updater({ pageIndex, pageSize }) : updater;
-      setPageIndex(next.pageIndex ?? 0);
-      setPageSize(next.pageSize ?? pageSize);
-    },
-    manualPagination: true,
-    manualSorting: true,
-    manualFiltering: true,
-    enableRowSelection: true,
-    getCoreRowModel: getCoreRowModel(),
-  });
-
-  const selectedUsers = useMemo(
-    () => table.getSelectedRowModel().flatRows.map((row) => row.original),
-    [table, rowSelection, users],
-  );
-
-  const exportSelectedCsv = useCallback(() => {
-    if (!selectedUsers.length) return;
-
-    const rows = [
-      ['ID', 'Name', 'Email', 'Role', 'Plan', 'Status', 'Joined Date'],
-      ...selectedUsers.map((user) => [
-        user.id,
-        user.name,
-        user.email,
-        user.role,
-        user.plan || '',
-        user.active ? 'Active' : 'Inactive',
-        user.joinedAt || '',
-      ]),
     ];
+  }, [router, refetch]);
 
-    const csv = rows
-      .map((row) => row.map((value) => `"${String(value).replaceAll('"', '""')}"`).join(','))
-      .join('\n');
+  const table = useReactTable({ data: rows, columns, getCoreRowModel: getCoreRowModel() });
 
-    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
-    const anchor = document.createElement('a');
-    anchor.href = url;
-    anchor.download = `users-export-${new Date().toISOString().slice(0, 10)}.csv`;
-    anchor.click();
-    URL.revokeObjectURL(url);
-  }, [selectedUsers]);
-
-  const bulkSuspendSelected = useCallback(async () => {
-    if (!selectedUsers.length) return;
-    setIsBulkBusy(true);
-    try {
-      await Promise.all(selectedUsers.map((user) => suspendUserById(user.id, false)));
-      setRowSelection({});
-      setPageIndex(0);
-      await refetch();
-    } catch (error) {
-      console.error('Bulk suspend failed:', error);
-    } finally {
-      setIsBulkBusy(false);
-    }
-  }, [selectedUsers, refetch]);
+  const filter = (
+    label: string,
+    value: string,
+    onChange: (next: string) => void,
+    options: readonly string[],
+    allLabel: string,
+  ) => (
+    <Select
+      value={value}
+      onValueChange={(next) => {
+        onChange(next);
+        setPage(1);
+      }}
+    >
+      <SelectTrigger className="w-auto min-w-36" aria-label={label}>
+        <SelectValue />
+      </SelectTrigger>
+      <SelectContent>
+        <SelectItem value="ALL">{allLabel}</SelectItem>
+        {options.map((option) => (
+          <SelectItem key={option} value={option}>
+            {option}
+          </SelectItem>
+        ))}
+      </SelectContent>
+    </Select>
+  );
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-5">
       <PageHeader
         title="Users"
-        description="Manage platform users, roles and access."
-        actions={<Button onClick={() => setShowAdd(true)}>Add User</Button>}
+        description={`${total} account${total === 1 ? '' : 's'}. Suspending, granting access and changing a role all happen here.`}
+        actions={
+          <div className="flex flex-wrap gap-2">
+            <Button variant="outline" onClick={() => router.push('/users/flagged')}>
+              Needs attention
+            </Button>
+            <Button onClick={() => setAdding(true)}>Add user</Button>
+          </div>
+        }
       />
 
-      <Card className="p-4 sm:p-6">
-        <div className="mb-4 space-y-3">
-          <Input
-            placeholder="Search by name or email..."
-            value={globalFilter}
-            onChange={(e) => {
-              setGlobalFilter(e.target.value);
-              setPageIndex(0);
-            }}
-            className="w-full"
-          />
+      <div className="flex flex-wrap items-center gap-2">
+        <Input
+          value={q}
+          onChange={(event) => {
+            setQ(event.target.value);
+            setPage(1);
+          }}
+          placeholder="Search name, email or username…"
+          className="max-w-xs"
+          aria-label="Search users"
+        />
+        {filter('Filter by role', role, setRole, ROLES, 'All roles')}
+        {filter('Filter by status', status, setStatus, STATUSES, 'Any status')}
+        {filter('Filter by access', access, setAccess, ACCESS, 'Any access')}
+        {filter('Filter by signup', source, setSource, SIGNUP_SOURCES, 'Any signup')}
+      </div>
 
-          <div className="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap sm:items-center">
-            <Select
-              value={roleFilter}
-              onValueChange={(v) => {
-                setRoleFilter(v);
-                setPageIndex(0);
-              }}
-            >
-              <SelectTrigger className="w-full sm:w-36">
-                <SelectValue placeholder="All roles" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All roles</SelectItem>
-                <SelectItem value="SUPER_ADMIN">Super Admin</SelectItem>
-                <SelectItem value="ADMIN">Admin</SelectItem>
-                <SelectItem value="INSTRUCTOR">Instructor</SelectItem>
-              </SelectContent>
-            </Select>
+      {isLoading ? <LoadingState /> : null}
+      {isError ? <ErrorState onRetry={() => refetch()} /> : null}
 
-            <Select
-              value={statusFilter}
-              onValueChange={(v) => {
-                setStatusFilter(v);
-                setPageIndex(0);
-              }}
-            >
-              <SelectTrigger className="w-full sm:w-36">
-                <SelectValue placeholder="All status" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All status</SelectItem>
-                <SelectItem value="active">Active</SelectItem>
-                <SelectItem value="inactive">Inactive</SelectItem>
-              </SelectContent>
-            </Select>
+      {!isLoading && !isError && rows.length === 0 ? (
+        <EmptyState title="Nobody matches" description="Try a different search or filter." />
+      ) : null}
 
+      {rows.length > 0 ? (
+        <Card className="overflow-hidden p-0">
+          <DataTable table={table} mobileTitle={(row) => row.original.name || row.original.email} />
+        </Card>
+      ) : null}
+
+      {pages > 1 ? (
+        <div className="flex items-center justify-between text-xs text-muted-foreground">
+          <span>
+            Page {page} of {pages}
+          </span>
+          <div className="flex gap-2">
             <Button
-              onClick={() => refetch()}
               variant="outline"
-              className="col-span-2 sm:col-span-1"
+              size="sm"
+              disabled={page === 1}
+              onClick={() => setPage((p) => p - 1)}
             >
-              Refresh
+              Previous
             </Button>
-
-            {selectedUsers.length > 0 && (
-              <>
-                <Button
-                  onClick={bulkSuspendSelected}
-                  disabled={isBulkBusy}
-                  variant="outline"
-                  className="col-span-2 text-warning sm:col-span-1"
-                >
-                  Suspend ({selectedUsers.length})
-                </Button>
-                <Button
-                  onClick={exportSelectedCsv}
-                  variant="outline"
-                  className="col-span-2 sm:col-span-1"
-                >
-                  Export CSV ({selectedUsers.length})
-                </Button>
-              </>
-            )}
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={page >= pages}
+              onClick={() => setPage((p) => p + 1)}
+            >
+              Next
+            </Button>
           </div>
         </div>
+      ) : null}
 
-        {isLoading ? (
-          <LoadingState label="Loading users..." />
-        ) : isError ? (
-          <ErrorState message="Error loading users. Please try again." onRetry={refetch} />
-        ) : users.length === 0 ? (
-          <EmptyState title="No users found" description="Try adjusting your search or filters." />
-        ) : (
-          <>
-            <DataTable table={table} mobileTitle={(r) => r.original.name} />
-
-            {/* Pagination */}
-            <div className="mt-6 flex flex-col gap-3 border-t border-border pt-4 sm:flex-row sm:items-center sm:justify-between">
-              <div className="text-sm text-muted-foreground">
-                Showing {Math.min(pageIndex * pageSize + 1, total)}–
-                {Math.min((pageIndex + 1) * pageSize, total)} of {total} users
-              </div>
-              <div className="flex items-center gap-2">
-                <Select
-                  value={String(pageSize)}
-                  onValueChange={(v) => {
-                    table.setPageSize(Number(v));
-                    setPageIndex(0);
-                  }}
-                >
-                  <SelectTrigger className="w-28">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="10">10 / page</SelectItem>
-                    <SelectItem value="20">20 / page</SelectItem>
-                    <SelectItem value="50">50 / page</SelectItem>
-                  </SelectContent>
-                </Select>
-
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => setPageIndex(Math.max(0, pageIndex - 1))}
-                  disabled={pageIndex === 0}
-                >
-                  Previous
-                </Button>
-
-                <span className="text-sm text-muted-foreground">
-                  Page {pageIndex + 1} of {Math.ceil(total / pageSize) || 1}
-                </span>
-
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => setPageIndex(pageIndex + 1)}
-                  disabled={(pageIndex + 1) * pageSize >= total}
-                >
-                  Next
-                </Button>
-              </div>
-            </div>
-          </>
-        )}
-      </Card>
-
-      {/* Modals */}
       <AddUserModal
-        open={showAdd}
-        onClose={() => setShowAdd(false)}
-        onCreated={() => {
-          setPageIndex(0);
-          refetch();
-        }}
+        open={adding}
+        onOpenChange={setAdding}
+        onCreated={(id) => router.push(`/users/${id}`)}
       />
-
-      {editingUser && (
-        <EditUserModal
-          open={Boolean(editingUser)}
-          user={editingUser}
-          onClose={() => setEditingUser(null)}
-          onUpdated={() => {
-            setEditingUser(null);
-            refetch();
-          }}
-        />
-      )}
-
-      {deletingId && (
-        <ConfirmDelete
-          open={Boolean(deletingId)}
-          title="Delete User"
-          description={`Are you sure you want to permanently delete this user?`}
-          onCancel={() => setDeletingId(null)}
-          onConfirm={async () => {
-            if (!deletingId) return;
-            try {
-              await deleteUser(deletingId);
-              setDeletingId(null);
-              refetch();
-            } catch (err) {
-              console.error('Delete failed:', err);
-            }
-          }}
-        />
-      )}
     </div>
   );
 }

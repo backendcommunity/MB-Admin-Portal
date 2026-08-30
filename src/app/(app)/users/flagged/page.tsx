@@ -1,10 +1,10 @@
 import { ProtectedPage } from '@/components/shared/ProtectedPage';
-import UserDetailClient from '@/components/users/UserDetailClient';
+import FlaggedUsers from '@/components/users/FlaggedUsers';
 
-export default function UserDetailPage() {
+export default function FlaggedUsersPage() {
   return (
     <ProtectedPage allowedRoles={['SUPER_ADMIN', 'ADMIN']}>
-      <UserDetailClient />
+      <FlaggedUsers />
     </ProtectedPage>
   );
 }
