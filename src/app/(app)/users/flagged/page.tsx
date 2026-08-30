@@ -1,10 +1,7 @@
-import { ProtectedPage } from '@/components/shared/ProtectedPage';
-import FlaggedUsers from '@/components/users/FlaggedUsers';
+import { redirect } from 'next/navigation';
 
+// The queue folded into the Users list as a filter. Kept as a redirect so
+// bookmarks and older links still land somewhere correct.
 export default function FlaggedUsersPage() {
-  return (
-    <ProtectedPage allowedRoles={['SUPER_ADMIN', 'ADMIN']}>
-      <FlaggedUsers />
-    </ProtectedPage>
-  );
+  redirect('/users?filter=flagged');
 }

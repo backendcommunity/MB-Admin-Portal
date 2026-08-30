@@ -1,7 +1,7 @@
 'use client';
 
 import { useMemo, useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { useQuery } from '@tanstack/react-query';
 import { getCoreRowModel, useReactTable, type ColumnDef } from '@tanstack/react-table';
 import { MoreHorizontal } from 'lucide-react';
@@ -36,6 +36,7 @@ import {
   SIGNUP_SOURCES,
   STATUSES,
   deleteUser,
+  fetchFlagged,
   fetchUsers,
   type UserRow,
 } from '@/lib/api/users';
@@ -52,6 +53,8 @@ function fmt(iso: string) {
 
 export default function UsersTable() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const [flagged, setFlagged] = useState(() => searchParams?.get('filter') === 'flagged');
   const [q, setQ] = useState('');
   const [role, setRole] = useState('ALL');
   const [status, setStatus] = useState('ALL');
@@ -74,8 +77,8 @@ export default function UsersTable() {
   );
 
   const { data, isLoading, isError, refetch } = useQuery({
-    queryKey: ['admin-users', params],
-    queryFn: () => fetchUsers(params),
+    queryKey: flagged ? ['admin-users-flagged'] : ['admin-users', params],
+    queryFn: () => (flagged ? fetchFlagged() : fetchUsers(params)),
   });
 
   const rows = useMemo(() => data?.data ?? [], [data]);
@@ -232,10 +235,20 @@ export default function UsersTable() {
     <div className="space-y-5">
       <PageHeader
         title="Users"
-        description={`${total} account${total === 1 ? '' : 's'}. Suspending, granting access and changing a role all happen here.`}
+        description={
+          flagged
+            ? `${total} account${total === 1 ? '' : 's'} needing a decision — unverified addresses, stalled onboarding, suspensions, forced resets and live trials.`
+            : `${total} account${total === 1 ? '' : 's'}. Suspending, granting access and changing a role all happen here.`
+        }
         actions={
           <div className="flex flex-wrap gap-2">
-            <Button variant="outline" onClick={() => router.push('/users/flagged')}>
+            <Button
+              variant={flagged ? 'default' : 'outline'}
+              onClick={() => {
+                setFlagged((value) => !value);
+                setPage(1);
+              }}
+            >
               Needs attention
             </Button>
             <Button onClick={() => setAdding(true)}>Add user</Button>
@@ -243,22 +256,24 @@ export default function UsersTable() {
         }
       />
 
-      <div className="flex flex-wrap items-center gap-2">
-        <Input
-          value={q}
-          onChange={(event) => {
-            setQ(event.target.value);
-            setPage(1);
-          }}
-          placeholder="Search name, email or username…"
-          className="max-w-xs"
-          aria-label="Search users"
-        />
-        {filter('Filter by role', role, setRole, ROLES, 'All roles')}
-        {filter('Filter by status', status, setStatus, STATUSES, 'Any status')}
-        {filter('Filter by access', access, setAccess, ACCESS, 'Any access')}
-        {filter('Filter by signup', source, setSource, SIGNUP_SOURCES, 'Any signup')}
-      </div>
+      {flagged ? null : (
+        <div className="flex flex-wrap items-center gap-2">
+          <Input
+            value={q}
+            onChange={(event) => {
+              setQ(event.target.value);
+              setPage(1);
+            }}
+            placeholder="Search name, email or username…"
+            className="max-w-xs"
+            aria-label="Search users"
+          />
+          {filter('Filter by role', role, setRole, ROLES, 'All roles')}
+          {filter('Filter by status', status, setStatus, STATUSES, 'Any status')}
+          {filter('Filter by access', access, setAccess, ACCESS, 'Any access')}
+          {filter('Filter by signup', source, setSource, SIGNUP_SOURCES, 'Any signup')}
+        </div>
+      )}
 
       {isLoading ? <LoadingState /> : null}
       {isError ? <ErrorState onRetry={() => refetch()} /> : null}
@@ -273,7 +288,7 @@ export default function UsersTable() {
         </Card>
       ) : null}
 
-      {pages > 1 ? (
+      {!flagged && pages > 1 ? (
         <div className="flex items-center justify-between text-xs text-muted-foreground">
           <span>
             Page {page} of {pages}
