@@ -87,16 +87,20 @@ export const NAV_ITEMS: NavItem[] = [
     roles: ['SUPER_ADMIN', 'ADMIN'],
   },
   {
+    // requireStrictAdmin on every offers route: setting amount/paddle_price_id
+    // on your own Ship bundle has no field-level pricing guard yet.
     label: 'Ship',
     href: '/offers',
     icon: Tag,
-    roles: ['SUPER_ADMIN', 'ADMIN', 'INSTRUCTOR'],
+    roles: ['SUPER_ADMIN', 'ADMIN'],
   },
   {
+    // requireStrictAdmin on all four routes (reverted from requireAdmin):
+    // template fields have no field-level guard yet either.
     label: 'Mock Interviews',
     href: '/mock-interviews/templates',
     icon: Briefcase,
-    roles: ['SUPER_ADMIN', 'ADMIN', 'INSTRUCTOR'],
+    roles: ['SUPER_ADMIN', 'ADMIN'],
   },
   {
     label: 'Certifications',
