@@ -1,10 +1,10 @@
 import { ProtectedPage } from '@/components/shared/ProtectedPage';
-import CohortDetailClient from '@/components/bootcamps/CohortDetailClient';
+import BootcampDetailClient from '@/components/bootcamps/BootcampDetailClient';
 
-export default function CohortDetailPage() {
+export default function BootcampDetailPage() {
   return (
     <ProtectedPage allowedRoles={['SUPER_ADMIN', 'ADMIN']}>
-      <CohortDetailClient />
+      <BootcampDetailClient />
     </ProtectedPage>
   );
 }

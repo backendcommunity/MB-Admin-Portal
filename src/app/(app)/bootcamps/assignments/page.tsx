@@ -1,10 +1,10 @@
 import { ProtectedPage } from '@/components/shared/ProtectedPage';
-import CohortDetailClient from '@/components/bootcamps/CohortDetailClient';
+import AssignmentsQueue from '@/components/bootcamps/AssignmentsQueue';
 
-export default function CohortDetailPage() {
+export default function AssignmentsPage() {
   return (
     <ProtectedPage allowedRoles={['SUPER_ADMIN', 'ADMIN']}>
-      <CohortDetailClient />
+      <AssignmentsQueue />
     </ProtectedPage>
   );
 }
