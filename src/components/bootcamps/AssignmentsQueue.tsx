@@ -83,7 +83,11 @@ export default function AssignmentsQueue({ bootcampId }: { bootcampId?: string }
     <div className="space-y-5">
       <PageHeader
         title="Assignments"
-        description="Submissions across every bootcamp. Only assignment, exercise and project lessons are reviewed — the other four types have nothing to hand in."
+        description={
+          bootcampId
+            ? 'Submissions for this bootcamp. Only assignment, exercise and project lessons are reviewed — the other four types have nothing to hand in.'
+            : 'Submissions across every bootcamp. Only assignment, exercise and project lessons are reviewed — the other four types have nothing to hand in.'
+        }
         actions={
           <StatusBadge
             label={`${pending} awaiting review`}

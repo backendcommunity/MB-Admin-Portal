@@ -17,18 +17,8 @@ import { PageHeader } from '@/components/shared/PageHeader';
 import { LoadingState, ErrorState } from '@/components/shared/LoadingState';
 import { EmptyState } from '@/components/shared/EmptyState';
 import { StatusBadge } from '@/components/shared/StatusBadge';
-import { Avatar, FlagList } from '@/components/users/bits';
+import { Avatar, FLAG_REASONS, FlagList, filterByFlagReason } from '@/components/users/bits';
 import { fetchFlagged } from '@/lib/api/users';
-
-const REASONS = [
-  ['ALL', 'Every reason'],
-  ['suspended', 'Suspended'],
-  ['unverified', 'Unverified email'],
-  ['must-reset', 'Must reset password'],
-  ['onboarding', 'Stalled onboarding'],
-  ['trial', 'On a trial'],
-  ['deleted', 'Deleted'],
-] as const;
 
 function fmt(iso: string) {
   return new Date(iso).toLocaleDateString(undefined, {
@@ -47,11 +37,7 @@ export default function FlaggedUsers() {
     queryFn: fetchFlagged,
   });
 
-  const rows = useMemo(() => {
-    const all = data?.data ?? [];
-    if (reason === 'ALL') return all;
-    return all.filter((user) => user.flags.some((flag) => flag.code === reason));
-  }, [data, reason]);
+  const rows = useMemo(() => filterByFlagReason(data?.data ?? [], reason), [data, reason]);
 
   return (
     <div className="space-y-5">
@@ -76,7 +62,7 @@ export default function FlaggedUsers() {
           <SelectValue />
         </SelectTrigger>
         <SelectContent>
-          {REASONS.map(([value, label]) => (
+          {FLAG_REASONS.map(([value, label]) => (
             <SelectItem key={value} value={value}>
               {label}
             </SelectItem>

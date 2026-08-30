@@ -10,13 +10,18 @@ import { useAuthStore } from '@/store/authStore';
  * two admins' screens reads as a bug. The API enforces the rule regardless —
  * this is the explanation, not the guard.
  *
- * `userRole` is `null` for two different reasons — auth hasn't resolved yet,
- * or it resolved and there is no super-admin role — and this component
- * deliberately does not tell them apart. A viewer who isn't actually a super
- * admin must never see the control flash enabled before the role check lands,
- * so the strict `=== 'SUPER_ADMIN'` comparison fails closed on both an
- * unresolved and a resolved-but-lesser role, and only flips to enabled once
- * the role is positively known to be SUPER_ADMIN.
+ * Gated on `authResolved` as well as `userRole`, deliberately: `useAuthStore`
+ * persists `userRole` to localStorage (`partialize`) but never persists
+ * `authResolved`, which always starts `false` on a fresh load. That means a
+ * `role === 'SUPER_ADMIN'` check ALONE does not fail closed — on a real page
+ * load `userRole` can be a stale cached value from a previous session (a
+ * role change, or someone else's session on a shared machine) while
+ * `authResolved` is still `false`. Checking role alone would flash-enable
+ * this control on that stale value until the session check lands. Requiring
+ * both `authResolved` and `role === 'SUPER_ADMIN'` is what actually fails
+ * closed: the control stays disabled for every unresolved render, no matter
+ * what role happens to be cached, and only enables once the current session
+ * has positively confirmed SUPER_ADMIN.
  */
 export function SuperAdminOnly({
   children,
@@ -26,7 +31,8 @@ export function SuperAdminOnly({
   reason?: string;
 }) {
   const role = useAuthStore((s) => s.userRole);
-  if (role === 'SUPER_ADMIN') return <>{children}</>;
+  const authResolved = useAuthStore((s) => s.authResolved);
+  if (authResolved && role === 'SUPER_ADMIN') return <>{children}</>;
 
   return (
     <span className="inline-flex flex-col gap-1" title={reason}>

@@ -29,7 +29,16 @@ import { LoadingState, ErrorState } from '@/components/shared/LoadingState';
 import { EmptyState } from '@/components/shared/EmptyState';
 import { StatusBadge } from '@/components/shared/StatusBadge';
 import AddUserModal from '@/components/users/AddUserModal';
-import { Avatar, Streak, accessTone, roleTone, statusTone } from '@/components/users/bits';
+import {
+  Avatar,
+  FLAG_REASONS,
+  FlagList,
+  Streak,
+  accessTone,
+  filterByFlagReason,
+  roleTone,
+  statusTone,
+} from '@/components/users/bits';
 import {
   ACCESS,
   ROLES,
@@ -39,8 +48,17 @@ import {
   fetchFlagged,
   fetchUsers,
   type Paged,
+  type UserFlag,
   type UserRow,
 } from '@/lib/api/users';
+
+/**
+ * What the table renders is always this shape — `flags` is only ever
+ * populated when the flagged endpoint filled it in, but keeping it on the
+ * type (rather than reaching for `any`/a cast at the two call sites that need
+ * it) is what lets the flags column and the reason filter read it safely.
+ */
+type FlaggableUserRow = UserRow & { flags?: UserFlag[] };
 
 const PAGE = 25;
 
@@ -56,6 +74,7 @@ export default function UsersTable() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const [flagged, setFlagged] = useState(() => searchParams?.get('filter') === 'flagged');
+  const [flagReason, setFlagReason] = useState('ALL');
   const [q, setQ] = useState('');
   const [role, setRole] = useState('ALL');
   const [status, setStatus] = useState('ALL');
@@ -77,9 +96,9 @@ export default function UsersTable() {
     [q, role, status, access, source, page],
   );
 
-  const { data, isLoading, isError, refetch } = useQuery<Paged<UserRow>>({
+  const { data, isLoading, isError, refetch } = useQuery<Paged<FlaggableUserRow>>({
     queryKey: flagged ? ['admin-users-flagged'] : ['admin-users', params],
-    queryFn: async () => {
+    queryFn: async (): Promise<Paged<FlaggableUserRow>> => {
       if (!flagged) return fetchUsers(params);
       // The flagged endpoint isn't paged — it returns every flagged account —
       // so it is normalised to the same `Paged` shape the table already reads.
@@ -88,12 +107,18 @@ export default function UsersTable() {
     },
   });
 
-  const rows = useMemo(() => data?.data ?? [], [data]);
+  const rows = useMemo(() => {
+    const all = data?.data ?? [];
+    // The reason filter only makes sense against flagged rows — every row has
+    // `flags` there, which is what `filterByFlagReason` requires.
+    if (!flagged) return all;
+    return filterByFlagReason(all, flagReason);
+  }, [data, flagged, flagReason]);
   const total = data?.total ?? 0;
   const pages = Math.max(1, Math.ceil(total / PAGE));
 
-  const columns = useMemo<ColumnDef<UserRow>[]>(() => {
-    const remove = async (user: UserRow) => {
+  const columns = useMemo<ColumnDef<FlaggableUserRow>[]>(() => {
+    const remove = async (user: FlaggableUserRow) => {
       try {
         await deleteUser(user.id);
         toast.success(`Deleted ${user.email}.`, {
@@ -180,6 +205,17 @@ export default function UsersTable() {
           <StatusBadge label={row.original.status} tone={statusTone(row.original.status)} />
         ),
       },
+      ...(flagged
+        ? [
+            {
+              id: 'flags',
+              header: 'Flags',
+              cell: ({ row }: { row: { original: FlaggableUserRow } }) => (
+                <FlagList flags={row.original.flags ?? []} />
+              ),
+            } satisfies ColumnDef<FlaggableUserRow>,
+          ]
+        : []),
       {
         id: 'actions',
         header: '',
@@ -206,7 +242,7 @@ export default function UsersTable() {
         ),
       },
     ];
-  }, [router, refetch]);
+  }, [router, refetch, flagged]);
 
   const table = useReactTable({ data: rows, columns, getCoreRowModel: getCoreRowModel() });
 
@@ -263,7 +299,26 @@ export default function UsersTable() {
         }
       />
 
-      {flagged ? null : (
+      {flagged ? (
+        <div className="flex flex-wrap items-center gap-2">
+          <Select value={flagReason} onValueChange={setFlagReason}>
+            <SelectTrigger className="w-56" aria-label="Filter by reason">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {FLAG_REASONS.map(([value, label]) => (
+                <SelectItem key={value} value={value}>
+                  {label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <StatusBadge
+            label={`${rows.length} flagged`}
+            tone={rows.length ? 'warning' : 'success'}
+          />
+        </div>
+      ) : (
         <div className="flex flex-wrap items-center gap-2">
           <Input
             value={q}

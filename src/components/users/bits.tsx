@@ -1,5 +1,5 @@
 import { StatusBadge } from '@/components/shared/StatusBadge';
-import type { Role, UserAccess, UserStatus } from '@/lib/api/users';
+import type { Role, UserAccess, UserFlag, UserStatus } from '@/lib/api/users';
 
 type Tone = 'neutral' | 'info' | 'success' | 'danger' | 'warning';
 
@@ -64,6 +64,29 @@ export function Streak({ current, longest }: { current: number; longest: number 
       ) : null}
     </span>
   );
+}
+
+/**
+ * Every reason an account can be flagged, shared by the flagged-users screen
+ * and the "Needs attention" chip on the main users list — one filter, reused
+ * rather than redefined at each call site.
+ */
+export const FLAG_REASONS = [
+  ['ALL', 'Every reason'],
+  ['suspended', 'Suspended'],
+  ['unverified', 'Unverified email'],
+  ['must-reset', 'Must reset password'],
+  ['onboarding', 'Stalled onboarding'],
+  ['trial', 'On a trial'],
+  ['deleted', 'Deleted'],
+] as const;
+
+export function filterByFlagReason<T extends { flags?: UserFlag[] }>(
+  rows: T[],
+  reason: string,
+): T[] {
+  if (reason === 'ALL') return rows;
+  return rows.filter((row) => (row.flags ?? []).some((flag) => flag.code === reason));
 }
 
 export function FlagList({ flags }: { flags: Array<{ code: string; detail: string }> }) {

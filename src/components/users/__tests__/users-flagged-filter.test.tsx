@@ -58,3 +58,53 @@ describe('the Needs attention chip', () => {
     expect(flaggedFetch).toHaveBeenCalled();
   });
 });
+
+describe('a flagged row', () => {
+  // Folding the standalone flagged-users screen into a chip must not drop
+  // WHY an account is flagged — that reason (and the ability to filter by
+  // it) was most of what made the old screen useful.
+  const flaggedRow = {
+    id: 'u9',
+    name: 'Stalled Onboarder',
+    email: 'stalled@example.com',
+    username: 'stalled',
+    avatar: '',
+    role: 'USER',
+    status: 'unverified',
+    access: 'free',
+    isPremium: false,
+    isTrial: false,
+    emailConfirmed: false,
+    plan: null,
+    points: 0,
+    level: 1,
+    currentStreak: 0,
+    longestStreak: 0,
+    signedUpThrough: 'MASTERINGBACKEND',
+    createdAt: '2026-02-14T00:00:00.000Z',
+    lastActivityAt: '2026-08-29T00:00:00.000Z',
+    suspendedAt: null,
+    deletedAt: null,
+    flags: [{ code: 'unverified', detail: 'Email address never confirmed.' }],
+  };
+
+  it('shows its flag reason once the chip is on', async () => {
+    flaggedFetch.mockResolvedValue({ data: [flaggedRow], total: 1 });
+    renderTable();
+    await userEvent.click(await screen.findByRole('button', { name: /needs attention/i }));
+
+    // DataTable renders a desktop table and a mobile card list together in
+    // jsdom, so the same content appears more than once.
+    expect((await screen.findAllByText('Email address never confirmed.')).length).toBeGreaterThan(
+      0,
+    );
+  });
+
+  it('offers a reason filter once the chip is on', async () => {
+    flaggedFetch.mockResolvedValue({ data: [flaggedRow], total: 1 });
+    renderTable();
+    await userEvent.click(await screen.findByRole('button', { name: /needs attention/i }));
+
+    expect(await screen.findByLabelText(/filter by reason/i)).toBeInTheDocument();
+  });
+});
