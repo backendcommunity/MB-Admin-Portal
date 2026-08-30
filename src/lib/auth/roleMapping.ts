@@ -1,7 +1,15 @@
-import type { UserRole } from "@/lib/constants/roles";
+import type { UserRole } from '@/lib/constants/roles';
 
-export function mapAcademyRoleToPortalRole(role: string | undefined): UserRole {
-  if (role === "INSTRUCTOR") return "INSTRUCTOR";
-  if (role === "ADMIN") return "ADMIN";
-  return "SUPER_ADMIN";
+/**
+ * Fails closed. An unrecognised role gets no portal role, not the highest one —
+ * the previous default handed a `USER` every super-admin control on screen.
+ */
+const PORTAL_ROLES: Record<string, UserRole> = {
+  SUPER_ADMIN: 'SUPER_ADMIN',
+  ADMIN: 'ADMIN',
+  INSTRUCTOR: 'INSTRUCTOR',
+};
+
+export function mapAcademyRoleToPortalRole(role: string | undefined): UserRole | null {
+  return (role && PORTAL_ROLES[role]) || null;
 }

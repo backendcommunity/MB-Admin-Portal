@@ -28,7 +28,7 @@ export default function AuthSessionHydrator() {
 
         const payload = (await response.json()) as {
           authenticated?: boolean;
-          role?: UserRole;
+          role?: UserRole | null;
         };
 
         if (payload.authenticated && payload.role) {
