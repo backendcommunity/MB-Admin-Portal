@@ -26,8 +26,11 @@ import {
   type Assignment,
 } from '@/lib/api/bootcamps';
 
-export default function AssignmentsQueue() {
-  const [bootcampId, setBootcampId] = useState('ALL');
+export default function AssignmentsQueue({ bootcampId }: { bootcampId?: string } = {}) {
+  // Only the standalone queue (no fixed bootcamp) ever needs its own picker —
+  // on a bootcamp's detail page the id is already chosen. `enabled: false`
+  // means that query never runs at all, not merely stays hidden.
+  const [selectedBootcampId, setSelectedBootcampId] = useState('ALL');
   const [q, setQ] = useState('');
   const [onlyPending, setOnlyPending] = useState(true);
   const [busyId, setBusyId] = useState<string | null>(null);
@@ -35,11 +38,15 @@ export default function AssignmentsQueue() {
   const bootcampsQuery = useQuery({
     queryKey: ['admin-bootcamps', 'for-assignments'],
     queryFn: () => fetchBootcamps({ limit: 100 }),
+    enabled: !bootcampId,
   });
 
+  const effectiveBootcampId = bootcampId ?? selectedBootcampId;
+
   const { data, isLoading, isError, refetch } = useQuery({
-    queryKey: ['admin-assignments', bootcampId],
-    queryFn: () => fetchAssignments(bootcampId === 'ALL' ? undefined : bootcampId),
+    queryKey: ['admin-assignments', effectiveBootcampId],
+    queryFn: () =>
+      fetchAssignments(effectiveBootcampId === 'ALL' ? undefined : effectiveBootcampId),
   });
 
   const rows = useMemo(() => {
@@ -93,19 +100,21 @@ export default function AssignmentsQueue() {
           className="max-w-xs"
           aria-label="Search submissions"
         />
-        <Select value={bootcampId} onValueChange={setBootcampId}>
-          <SelectTrigger className="w-56" aria-label="Filter by bootcamp">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="ALL">All bootcamps</SelectItem>
-            {(bootcampsQuery.data?.data ?? []).map((bootcamp) => (
-              <SelectItem key={bootcamp.id} value={bootcamp.id}>
-                {bootcamp.title}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+        {bootcampId ? null : (
+          <Select value={selectedBootcampId} onValueChange={setSelectedBootcampId}>
+            <SelectTrigger className="w-56" aria-label="Filter by bootcamp">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="ALL">All bootcamps</SelectItem>
+              {(bootcampsQuery.data?.data ?? []).map((bootcamp) => (
+                <SelectItem key={bootcamp.id} value={bootcamp.id}>
+                  {bootcamp.title}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        )}
         <Button
           variant={onlyPending ? 'default' : 'outline'}
           size="sm"

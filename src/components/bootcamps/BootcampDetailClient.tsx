@@ -28,6 +28,7 @@ import { Stat, StatRow } from '@/components/shared/Stat';
 import { TabBar } from '@/components/shared/TabBar';
 import { useSeededForm } from '@/lib/forms/useSeededForm';
 import CohortFormDialog from '@/components/bootcamps/CohortFormDialog';
+import AssignmentsQueue from '@/components/bootcamps/AssignmentsQueue';
 import {
   fetchBootcamp,
   updateBootcamp,
@@ -39,6 +40,7 @@ import {
 const TABS = [
   ['overview', 'Overview'],
   ['cohorts', 'Cohorts'],
+  ['assignments', 'Assignments'],
 ] as const;
 
 type TabId = (typeof TABS)[number][0];
@@ -442,6 +444,8 @@ export default function BootcampDetailClient() {
           )}
         </Card>
       ) : null}
+
+      {tab === 'assignments' ? <AssignmentsQueue bootcampId={bootcampId} /> : null}
 
       <CohortFormDialog
         open={newCohort}
