@@ -1,9 +1,9 @@
-"use client";
+'use client';
 
-import { useEffect } from "react";
+import { useEffect } from 'react';
 
-import type { UserRole } from "@/lib/constants/roles";
-import { useAuthStore } from "@/store/authStore";
+import type { UserRole } from '@/lib/constants/roles';
+import { useAuthStore } from '@/store/authStore';
 
 export default function AuthSessionHydrator() {
   const setUserRole = useAuthStore((state) => state.setUserRole);
@@ -13,10 +13,10 @@ export default function AuthSessionHydrator() {
 
     const syncRole = async () => {
       try {
-        const response = await fetch("/api/auth/me", {
-          method: "GET",
-          credentials: "include",
-          cache: "no-store",
+        const response = await fetch('/api/auth/me', {
+          method: 'GET',
+          credentials: 'include',
+          cache: 'no-store',
         });
 
         if (!active) return;

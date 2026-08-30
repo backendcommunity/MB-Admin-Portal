@@ -325,3 +325,22 @@ export function richTextLength(html: string | null | undefined): number {
     .replace(/\s+/g, ' ')
     .trim().length;
 }
+
+/**
+ * Plain text for a list row or a summary line. Long-form fields are stored as
+ * HTML, and a table cell must not print the tags — it wants the words.
+ */
+export function richTextPreview(html: string | null | undefined): string {
+  if (!html) return '';
+  return String(html)
+    .replace(/<(script|style)[\s\S]*?<\/\1>/gi, ' ')
+    .replace(/<[^>]*>/g, ' ')
+    .replace(/&nbsp;/gi, ' ')
+    .replace(/&amp;/gi, '&')
+    .replace(/&lt;/gi, '<')
+    .replace(/&gt;/gi, '>')
+    .replace(/&quot;/gi, '"')
+    .replace(/&#0*39;|&apos;/gi, "'")
+    .replace(/\s+/g, ' ')
+    .trim();
+}

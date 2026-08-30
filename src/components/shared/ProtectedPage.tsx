@@ -1,9 +1,9 @@
-"use client";
+'use client';
 
-import type { ReactNode } from "react";
+import type { ReactNode } from 'react';
 
-import type { UserRole } from "@/lib/constants/roles";
-import { useRoleGuard } from "@/lib/auth/useRoleGuard";
+import type { UserRole } from '@/lib/constants/roles';
+import { useRoleGuard } from '@/lib/auth/useRoleGuard';
 
 export function ProtectedPage({
   allowedRoles,
