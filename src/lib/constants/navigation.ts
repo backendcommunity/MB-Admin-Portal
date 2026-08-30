@@ -7,13 +7,11 @@ import {
   CreditCard,
   FileText,
   FolderKanban,
-  ClipboardCheck,
   GraduationCap,
   LayoutDashboard,
   Map,
   Receipt,
   Settings,
-  UserCog,
   Users,
   Users2,
   Wallet,
@@ -46,45 +44,29 @@ export const NAV_ITEMS: NavItem[] = [
     roles: ['SUPER_ADMIN', 'ADMIN'],
   },
   {
-    // Accounts an admin has to decide something about. Its own entry because a
-    // suspension or a stalled signup is work, not a filter you remember to set.
-    label: 'Needs attention',
-    href: '/users/flagged',
-    icon: UserCog,
-    roles: ['SUPER_ADMIN', 'ADMIN'],
-  },
-  {
     label: 'Courses',
     href: '/courses',
     icon: BookOpen,
-    roles: ['SUPER_ADMIN', 'ADMIN'],
+    roles: ['SUPER_ADMIN', 'ADMIN', 'INSTRUCTOR'],
   },
   {
     label: 'Bootcamps',
     href: '/bootcamps',
     icon: GraduationCap,
-    roles: ['SUPER_ADMIN', 'ADMIN'],
-  },
-  {
-    // Submissions from every bootcamp, not just one — a reviewer works the
-    // whole queue rather than hunting cohort by cohort.
-    label: 'Assignments',
-    href: '/bootcamps/assignments',
-    icon: ClipboardCheck,
-    roles: ['SUPER_ADMIN', 'ADMIN'],
+    roles: ['SUPER_ADMIN', 'ADMIN', 'INSTRUCTOR'],
   },
   {
     label: 'Projects',
     href: '/projects',
     icon: FolderKanban,
-    roles: ['SUPER_ADMIN', 'ADMIN'],
+    roles: ['SUPER_ADMIN', 'ADMIN', 'INSTRUCTOR'],
   },
   {
     // The product calls these Paths; the API is still /admin/roadmaps.
     label: 'Paths',
     href: '/paths',
     icon: Map,
-    roles: ['SUPER_ADMIN', 'ADMIN'],
+    roles: ['SUPER_ADMIN', 'ADMIN', 'INSTRUCTOR'],
   },
   {
     label: 'Plans',
@@ -105,16 +87,16 @@ export const NAV_ITEMS: NavItem[] = [
     roles: ['SUPER_ADMIN', 'ADMIN'],
   },
   {
-    label: 'Offers',
+    label: 'Ship',
     href: '/offers',
     icon: Tag,
-    roles: ['SUPER_ADMIN', 'ADMIN'],
+    roles: ['SUPER_ADMIN', 'ADMIN', 'INSTRUCTOR'],
   },
   {
     label: 'Mock Interviews',
     href: '/mock-interviews/templates',
     icon: Briefcase,
-    roles: ['SUPER_ADMIN', 'ADMIN'],
+    roles: ['SUPER_ADMIN', 'ADMIN', 'INSTRUCTOR'],
   },
   {
     label: 'Certifications',
