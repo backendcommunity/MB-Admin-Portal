@@ -38,6 +38,7 @@ import {
   deleteUser,
   fetchFlagged,
   fetchUsers,
+  type Paged,
   type UserRow,
 } from '@/lib/api/users';
 
@@ -76,9 +77,15 @@ export default function UsersTable() {
     [q, role, status, access, source, page],
   );
 
-  const { data, isLoading, isError, refetch } = useQuery({
+  const { data, isLoading, isError, refetch } = useQuery<Paged<UserRow>>({
     queryKey: flagged ? ['admin-users-flagged'] : ['admin-users', params],
-    queryFn: () => (flagged ? fetchFlagged() : fetchUsers(params)),
+    queryFn: async () => {
+      if (!flagged) return fetchUsers(params);
+      // The flagged endpoint isn't paged — it returns every flagged account —
+      // so it is normalised to the same `Paged` shape the table already reads.
+      const result = await fetchFlagged();
+      return { data: result.data, total: result.total, page: 1, limit: result.total };
+    },
   });
 
   const rows = useMemo(() => data?.data ?? [], [data]);
