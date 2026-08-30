@@ -24,6 +24,7 @@ import { Field, FieldGrid, Section } from '@/components/shared/form/Section';
 import { LoadingState, ErrorState } from '@/components/shared/LoadingState';
 import { EmptyState } from '@/components/shared/EmptyState';
 import { StatusBadge } from '@/components/shared/StatusBadge';
+import { SuperAdminOnly } from '@/components/shared/SuperAdminOnly';
 import ConfirmDelete from '@/components/users/ConfirmDelete';
 import GrantAccessDialog from '@/components/users/GrantAccessDialog';
 import SuspendDialog from '@/components/users/SuspendDialog';
@@ -247,11 +248,13 @@ export default function UserDetailClient() {
                   />
                 </Field>
                 <Field label="Email" htmlFor="u-email" required hint="Unique across every account.">
-                  <Input
-                    id="u-email"
-                    value={draft.email}
-                    onChange={(e) => set('email', e.target.value)}
-                  />
+                  <SuperAdminOnly reason="Only a super admin can change an account's email">
+                    <Input
+                      id="u-email"
+                      value={draft.email}
+                      onChange={(e) => set('email', e.target.value)}
+                    />
+                  </SuperAdminOnly>
                 </Field>
                 <Field
                   label="Username"
@@ -584,18 +587,20 @@ function AccessTab({
             required
             hint="USER learns, INSTRUCTOR also reviews assignments, ADMIN reaches this console."
           >
-            <Select value={user.role} onValueChange={(value) => onRole(value as Role)}>
-              <SelectTrigger id="u-role">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {ROLES.map((role) => (
-                  <SelectItem key={role} value={role}>
-                    {role}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <SuperAdminOnly reason="Forbidden: super admin access required">
+              <Select value={user.role} onValueChange={(value) => onRole(value as Role)}>
+                <SelectTrigger id="u-role">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {ROLES.map((role) => (
+                    <SelectItem key={role} value={role}>
+                      {role}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </SuperAdminOnly>
           </Field>
 
           <label className="flex items-center justify-between gap-3 rounded-lg border p-3">
@@ -1495,13 +1500,15 @@ function SecurityTab({
             ) : null}
 
             <div className="flex flex-wrap gap-2">
-              <Button
-                variant={user.suspendedAt ? 'outline' : 'destructive'}
-                size="sm"
-                onClick={onSuspend}
-              >
-                {user.suspendedAt ? 'Lift the suspension' : 'Suspend'}
-              </Button>
+              <SuperAdminOnly reason="Forbidden: super admin access required">
+                <Button
+                  variant={user.suspendedAt ? 'outline' : 'destructive'}
+                  size="sm"
+                  onClick={onSuspend}
+                >
+                  {user.suspendedAt ? 'Lift the suspension' : 'Suspend'}
+                </Button>
+              </SuperAdminOnly>
 
               {user.deletedAt ? (
                 <Button
@@ -1522,9 +1529,11 @@ function SecurityTab({
                   Restore
                 </Button>
               ) : (
-                <Button variant="destructive" size="sm" onClick={onDelete}>
-                  Delete account
-                </Button>
+                <SuperAdminOnly reason="Forbidden: super admin access required">
+                  <Button variant="destructive" size="sm" onClick={onDelete}>
+                    Delete account
+                  </Button>
+                </SuperAdminOnly>
               )}
             </div>
           </div>
