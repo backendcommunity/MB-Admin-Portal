@@ -1,7 +1,6 @@
 'use client';
 
 import { useState } from 'react';
-import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
@@ -13,6 +12,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+import { Section } from '@/components/shared/form/Section';
 import { TagInput } from '@/components/shared/form/TagInput';
 import { SlugField } from '@/components/shared/form/SlugField';
 import { MediaField } from '@/components/shared/form/MediaField';
@@ -81,11 +81,7 @@ export function IdentitySection({ draft, patch, courseId, slugLocked }: SectionP
   const [slugTouched, setSlugTouched] = useState(Boolean(draft.slug));
 
   return (
-    <Card className="space-y-4 p-5" id="section-identity">
-      <h2 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-        Identity
-      </h2>
-
+    <Section title="Identity" id="section-identity">
       <div className="space-y-1.5">
         <Label htmlFor="course-title">
           Title <span className="text-destructive">*</span>
@@ -173,7 +169,7 @@ export function IdentitySection({ draft, patch, courseId, slugLocked }: SectionP
         value={draft.description}
         onChange={(description) => patch({ description })}
       />
-    </Card>
+    </Section>
   );
 }
 
@@ -201,11 +197,7 @@ export function ClassificationSection({
   };
 
   return (
-    <Card className="space-y-4 p-5" id="section-classification">
-      <h2 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-        Classification
-      </h2>
-
+    <Section title="Classification" id="section-classification">
       <div className="grid gap-4 md:grid-cols-2">
         <div className="space-y-1.5">
           <Label htmlFor="course-category">Category</Label>
@@ -287,17 +279,13 @@ export function ClassificationSection({
         <Label htmlFor="course-tags">Tags</Label>
         <TagInput id="course-tags" value={draft.tags} onChange={(tags) => patch({ tags })} />
       </div>
-    </Card>
+    </Section>
   );
 }
 
 export function AccessSection({ draft, patch }: SectionProps) {
   return (
-    <Card className="space-y-4 p-5" id="section-access">
-      <h2 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-        Access &amp; pricing
-      </h2>
-
+    <Section title="Access & pricing" id="section-access">
       <div className="flex items-center justify-between gap-4">
         <div>
           <Label htmlFor="course-premium">Premium</Label>
@@ -390,17 +378,13 @@ export function AccessSection({ draft, patch }: SectionProps) {
           />
         </div>
       ) : null}
-    </Card>
+    </Section>
   );
 }
 
 export function MediaSection({ draft, patch, courseId }: SectionProps) {
   return (
-    <Card className="space-y-4 p-5" id="section-media">
-      <h2 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-        Media
-      </h2>
-
+    <Section title="Media" id="section-media">
       <MediaField
         label="Banner"
         required
@@ -431,6 +415,6 @@ export function MediaSection({ draft, patch, courseId }: SectionProps) {
           />
         </div>
       </div>
-    </Card>
+    </Section>
   );
 }

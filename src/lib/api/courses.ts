@@ -532,7 +532,15 @@ export async function createCategory(name: string, color = '#13aece') {
   return data;
 }
 
-export type UploadScope = 'course-banner' | 'course-preview' | 'chapter-banner' | 'article-image';
+export type UploadScope =
+  | 'course-banner'
+  | 'course-preview'
+  | 'chapter-banner'
+  | 'article-image'
+  | 'path-banner'
+  | 'path-preview'
+  | 'topic-banner'
+  | 'bootcamp-banner';
 
 /**
  * Uploads through the API rather than straight to R2.

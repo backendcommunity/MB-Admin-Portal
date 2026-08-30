@@ -17,6 +17,8 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { PageHeader } from '@/components/shared/PageHeader';
+import { Stat, StatRow } from '@/components/shared/Stat';
+import { TabBar } from '@/components/shared/TabBar';
 import { StatusBadge } from '@/components/shared/StatusBadge';
 import { LoadingState, ErrorState } from '@/components/shared/LoadingState';
 import { EmptyState } from '@/components/shared/EmptyState';
@@ -70,7 +72,6 @@ import {
   type Modality,
 } from '@/lib/api/courses';
 import { evaluateReadiness } from '@/lib/courses/readiness';
-import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 
 const TABS = [
@@ -342,31 +343,15 @@ export default function CourseDetailClient() {
         }
       />
 
-      <div className="mb-5 flex flex-wrap gap-3">
+      <StatRow>
         <Stat label="enrolled" value={course.stats.enrolled.toLocaleString()} />
         <Stat label="completion" value={`${course.stats.completionRate}%`} />
         <Stat label="chapters" value={String(course.counts.chapters)} />
         <Stat label="items" value={String(course.counts.items)} />
         <Stat label="runtime" value={runtime(course.totalDuration)} />
-      </div>
+      </StatRow>
 
-      <div className="mb-5 flex flex-wrap gap-1 border-b border-border">
-        {TABS.map(([id, label]) => (
-          <button
-            key={id}
-            type="button"
-            onClick={() => setTab(id)}
-            className={cn(
-              'border-b-2 px-3 py-2 text-sm transition-colors',
-              tab === id
-                ? 'border-primary font-semibold text-foreground'
-                : 'border-transparent text-muted-foreground hover:text-foreground',
-            )}
-          >
-            {label}
-          </button>
-        ))}
-      </div>
+      <TabBar tabs={TABS} value={tab} onChange={setTab} />
 
       {tab === 'overview' ? (
         <div className="grid gap-4 lg:grid-cols-[1fr_280px]">
@@ -917,15 +902,6 @@ export default function CourseDetailClient() {
           }
         }}
       />
-    </div>
-  );
-}
-
-function Stat({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="rounded-lg border border-border bg-card px-3.5 py-2">
-      <div className="text-xl font-semibold tabular-nums">{value}</div>
-      <div className="text-[10px] uppercase tracking-wider text-muted-foreground">{label}</div>
     </div>
   );
 }
