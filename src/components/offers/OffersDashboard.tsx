@@ -29,26 +29,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { Switch } from '@/components/ui/switch';
 import { StaffOnly } from '@/components/shared/SuperAdminOnly';
 import { useAuthStore } from '@/store/authStore';
-
-// The API refuses a non-staff payload that merely CONTAINS one of these keys
-// — presence, not value, is what's refused, since `amount: 0` still sets the
-// price (`assertMayWriteFields` / `MONETISATION_FIELDS` in the academy repo's
-// field-guard.ts). Only the fields this form actually collects are listed.
-const PRICING_FIELDS = ['amount', 'isPremium'] as const;
-
-/**
- * Drop the pricing keys entirely for a non-staff caller — never send them as
- * `undefined` or `null`, the guard tests presence via `in`. Applied to both
- * create and edit payloads: on create there is no stored row to compare
- * against, so mere presence 403s outright; on edit it happens to work today
- * because the form echoes stored values back unchanged, but omitting the
- * keys is the same fix and doesn't depend on that coincidence continuing.
- */
-function stripPricingFields(data: Partial<Offer>): Partial<Offer> {
-  const next = { ...data };
-  for (const field of PRICING_FIELDS) delete next[field];
-  return next;
-}
+import { stripPricingFields } from '@/lib/pricing-fields';
 
 export default function OffersDashboard() {
   const queryClient = useQueryClient();

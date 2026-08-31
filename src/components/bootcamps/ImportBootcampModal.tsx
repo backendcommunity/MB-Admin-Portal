@@ -28,6 +28,8 @@ import {
 import { parseBootcampImport } from '@/lib/bootcamps/import';
 import { resolveBootcampRefs, resolvedId, type Resolved } from '@/lib/bootcamps/resolve';
 import { bootcampSample } from '@/lib/bootcamps/sample';
+import { useAuthStore } from '@/store/authStore';
+import { stripPricingFields } from '@/lib/pricing-fields';
 
 /**
  * One document builds a whole bootcamp: the record, its topics, every cohort,
@@ -46,6 +48,12 @@ export default function ImportBootcampModal({
   onOpenChange: (open: boolean) => void;
   onImported: (bootcampId: string) => void;
 }) {
+  const role = useAuthStore((s) => s.userRole);
+  const authResolved = useAuthStore((s) => s.authResolved);
+  // Fail closed: until the session check lands, treat the caller as non-staff
+  // rather than trusting a possibly-stale cached role (see SuperAdminOnly).
+  const isStaff = authResolved && (role === 'ADMIN' || role === 'SUPER_ADMIN');
+
   const [text, setText] = useState('');
   const [busy, setBusy] = useState(false);
   const [step, setStep] = useState('');
@@ -98,7 +106,7 @@ export default function ImportBootcampModal({
 
       for (const cohortDoc of doc.cohorts) {
         setStep(`Creating “${cohortDoc.name}”…`);
-        const cohort = await createCohort(bootcamp.id, {
+        const cohortPayload = {
           name: cohortDoc.name,
           startsAt: new Date(cohortDoc.startsAt).toISOString(),
           endsAt: cohortDoc.endsAt ? new Date(cohortDoc.endsAt).toISOString() : null,
@@ -111,7 +119,11 @@ export default function ImportBootcampModal({
           paddle_price_id: cohortDoc.paddle_price_id,
           asyncpay_plan_id: cohortDoc.asyncpay_plan_id,
           allowsSubscription: cohortDoc.allowsSubscription,
-        });
+        };
+        const cohort = await createCohort(
+          bootcamp.id,
+          isStaff ? cohortPayload : stripPricingFields(cohortPayload),
+        );
 
         // Weeks land in payload order because each create appends to the end.
         const weekIds: string[] = [];

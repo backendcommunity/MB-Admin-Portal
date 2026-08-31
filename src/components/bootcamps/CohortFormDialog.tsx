@@ -24,6 +24,9 @@ import {
 } from '@/components/ui/select';
 import { COHORT_STATUSES, createCohort, updateCohort, type Cohort } from '@/lib/api/bootcamps';
 import { useSeededForm } from '@/lib/forms/useSeededForm';
+import { StaffOnly } from '@/components/shared/SuperAdminOnly';
+import { useAuthStore } from '@/store/authStore';
+import { stripPricingFields } from '@/lib/pricing-fields';
 
 /** An ISO timestamp as the `date` input wants it. */
 function dateValue(iso: string | null | undefined) {
@@ -61,6 +64,12 @@ export default function CohortFormDialog({
   cohort,
   onSaved,
 }: Props) {
+  const role = useAuthStore((s) => s.userRole);
+  const authResolved = useAuthStore((s) => s.authResolved);
+  // Fail closed: until the session check lands, treat the caller as non-staff
+  // rather than trusting a possibly-stale cached role (see SuperAdminOnly).
+  const isStaff = authResolved && (role === 'ADMIN' || role === 'SUPER_ADMIN');
+
   const editing = Boolean(cohort);
   // Re-seeded whenever the subject changes, so a previous edit never bleeds
   // into a new cohort.
@@ -116,9 +125,11 @@ export default function CohortFormDialog({
         endsAt: form.endsAt ? new Date(form.endsAt).toISOString() : null,
       };
 
+      const outgoing = isStaff ? payload : stripPricingFields(payload);
+
       const saved = cohort
-        ? await updateCohort(cohort.id, payload)
-        : await createCohort(bootcampId, payload);
+        ? await updateCohort(cohort.id, outgoing)
+        : await createCohort(bootcampId, outgoing);
 
       toast.success(editing ? 'Cohort saved.' : 'Cohort created.');
       onSaved(saved);
@@ -197,13 +208,15 @@ export default function CohortFormDialog({
 
           <div className="space-y-1.5">
             <Label htmlFor="cohort-amount">Price</Label>
-            <Input
-              id="cohort-amount"
-              type="number"
-              min={0}
-              value={form.amount}
-              onChange={(event) => set('amount', Number(event.target.value) || 0)}
-            />
+            <StaffOnly reason="Only an admin can set the price (amount)">
+              <Input
+                id="cohort-amount"
+                type="number"
+                min={0}
+                value={form.amount}
+                onChange={(event) => set('amount', Number(event.target.value) || 0)}
+              />
+            </StaffOnly>
             <p className="text-xs text-muted-foreground">
               Stored as an integer. 0 makes the cohort free.
             </p>
@@ -243,21 +256,25 @@ export default function CohortFormDialog({
 
           <div className="space-y-1.5">
             <Label htmlFor="cohort-paddle">Paddle price id</Label>
-            <Input
-              id="cohort-paddle"
-              value={form.paddle_price_id}
-              onChange={(event) => set('paddle_price_id', event.target.value)}
-              placeholder="pri_…"
-            />
+            <StaffOnly reason="Only an admin can set the Paddle price id (paddle_price_id)">
+              <Input
+                id="cohort-paddle"
+                value={form.paddle_price_id}
+                onChange={(event) => set('paddle_price_id', event.target.value)}
+                placeholder="pri_…"
+              />
+            </StaffOnly>
           </div>
 
           <div className="space-y-1.5">
             <Label htmlFor="cohort-asyncpay">AsyncPay plan id</Label>
-            <Input
-              id="cohort-asyncpay"
-              value={form.asyncpay_plan_id}
-              onChange={(event) => set('asyncpay_plan_id', event.target.value)}
-            />
+            <StaffOnly reason="Only an admin can set the AsyncPay plan id (asyncpay_plan_id)">
+              <Input
+                id="cohort-asyncpay"
+                value={form.asyncpay_plan_id}
+                onChange={(event) => set('asyncpay_plan_id', event.target.value)}
+              />
+            </StaffOnly>
           </div>
 
           <label className="flex items-center justify-between gap-3 rounded-lg border p-3 sm:col-span-2">
@@ -267,11 +284,13 @@ export default function CohortFormDialog({
                 Whether a subscriber can join without paying the cohort price.
               </span>
             </span>
-            <Switch
-              checked={form.allowsSubscription}
-              onCheckedChange={(next) => set('allowsSubscription', next)}
-              aria-label="Allows subscription"
-            />
+            <StaffOnly reason="Only an admin can set the subscription-access flag (allowsSubscription)">
+              <Switch
+                checked={form.allowsSubscription}
+                onCheckedChange={(next) => set('allowsSubscription', next)}
+                aria-label="Allows subscription"
+              />
+            </StaffOnly>
           </label>
 
           <label className="flex items-center justify-between gap-3 rounded-lg border p-3 sm:col-span-2">
