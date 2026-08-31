@@ -24,6 +24,7 @@ describe('NAV_ITEMS', () => {
         '/projects',
         '/paths',
         '/bootcamps',
+        '/offers',
         '/my-content',
         '/earnings',
       ].sort(),
@@ -35,14 +36,12 @@ describe('NAV_ITEMS', () => {
     expect(forRole('INSTRUCTOR').filter((h) => banned.includes(h))).toEqual([]);
   });
 
-  it('never offers an instructor Ship or Mock Interview templates', () => {
-    // Both are requireStrictAdmin on the API: /offers lets a caller set
-    // amount/paddle_price_id on their own Ship bundle with no field-level
-    // pricing guard yet, and the mock-interview-templates router was just
-    // reverted from requireAdmin back to requireStrictAdmin for the same
-    // reason (no field-level guard on template fields). An instructor who
-    // sees either link gets a 403 on every request.
-    expect(forRole('INSTRUCTOR')).not.toContain('/offers');
+  it('never offers an instructor Mock Interview templates', () => {
+    // requireStrictAdmin on all four routes, deliberately: mock interviews
+    // were not in the list of things instructors may author. /offers is no
+    // longer excluded here — instructors now get full CRUD on their own
+    // Ships, and the API is requireAdmin with ownership scoping plus a
+    // pricing field-guard.
     expect(forRole('INSTRUCTOR')).not.toContain('/mock-interviews/templates');
   });
 

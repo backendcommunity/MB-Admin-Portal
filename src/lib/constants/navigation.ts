@@ -87,12 +87,12 @@ export const NAV_ITEMS: NavItem[] = [
     roles: ['SUPER_ADMIN', 'ADMIN'],
   },
   {
-    // requireStrictAdmin on every offers route: setting amount/paddle_price_id
-    // on your own Ship bundle has no field-level pricing guard yet.
+    // requireAdmin with ownership scoping and a pricing field-guard:
+    // instructors get full CRUD on their own Ships.
     label: 'Ship',
     href: '/offers',
     icon: Tag,
-    roles: ['SUPER_ADMIN', 'ADMIN'],
+    roles: ['SUPER_ADMIN', 'ADMIN', 'INSTRUCTOR'],
   },
   {
     // requireStrictAdmin on all four routes (reverted from requireAdmin):
