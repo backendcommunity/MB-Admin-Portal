@@ -1,37 +1,77 @@
-"use client";
+'use client';
 
-import { useState } from "react";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { format } from "date-fns";
-import { toast } from "sonner";
-import { Plus, Edit, Trash2, Search, MoreHorizontal } from "lucide-react";
+import { useState } from 'react';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { format } from 'date-fns';
+import { toast } from 'sonner';
+import { Plus, Edit, Trash2, Search, MoreHorizontal } from 'lucide-react';
 
-import { getOffers, createOffer, updateOffer, deleteOffer, Offer } from "@/lib/api/offers";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
-import { Label } from "@/components/ui/label";
-import { Skeleton } from "@/components/ui/skeleton";
-import { Switch } from "@/components/ui/switch";
+import { getOffers, createOffer, updateOffer, deleteOffer, Offer } from '@/lib/api/offers';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+} from '@/components/ui/dialog';
+import { Label } from '@/components/ui/label';
+import { Skeleton } from '@/components/ui/skeleton';
+import { Switch } from '@/components/ui/switch';
+import { StaffOnly } from '@/components/shared/SuperAdminOnly';
+import { useAuthStore } from '@/store/authStore';
+
+// The API refuses a non-staff payload that merely CONTAINS one of these keys
+// — presence, not value, is what's refused, since `amount: 0` still sets the
+// price (`assertMayWriteFields` / `MONETISATION_FIELDS` in the academy repo's
+// field-guard.ts). Only the fields this form actually collects are listed.
+const PRICING_FIELDS = ['amount', 'isPremium'] as const;
+
+/**
+ * Drop the pricing keys entirely for a non-staff caller — never send them as
+ * `undefined` or `null`, the guard tests presence via `in`. Applied to both
+ * create and edit payloads: on create there is no stored row to compare
+ * against, so mere presence 403s outright; on edit it happens to work today
+ * because the form echoes stored values back unchanged, but omitting the
+ * keys is the same fix and doesn't depend on that coincidence continuing.
+ */
+function stripPricingFields(data: Partial<Offer>): Partial<Offer> {
+  const next = { ...data };
+  for (const field of PRICING_FIELDS) delete next[field];
+  return next;
+}
 
 export default function OffersDashboard() {
   const queryClient = useQueryClient();
+  const role = useAuthStore((s) => s.userRole);
+  const authResolved = useAuthStore((s) => s.authResolved);
+  // Fail closed: until the session check lands, treat the caller as non-staff
+  // rather than trusting a possibly-stale cached role (see SuperAdminOnly).
+  const isStaff = authResolved && (role === 'ADMIN' || role === 'SUPER_ADMIN');
   const [page, setPage] = useState(1);
-  const [search, setSearch] = useState("");
+  const [search, setSearch] = useState('');
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [selectedOffer, setSelectedOffer] = useState<Offer | null>(null);
 
   const [formData, setFormData] = useState<Partial<Offer>>({
-    title: "",
-    slug: "",
-    summary: "",
+    title: '',
+    slug: '',
+    summary: '',
     amount: 0,
     isPremium: false,
   });
 
   const { data, isLoading } = useQuery({
-    queryKey: ["offers", page, search],
+    queryKey: ['offers', page, search],
     queryFn: () => getOffers({ page, limit: 10, q: search }),
   });
 
@@ -41,20 +81,20 @@ export default function OffersDashboard() {
       return createOffer(payload);
     },
     onSuccess: () => {
-      toast.success(selectedOffer ? "Offer updated" : "Offer created");
-      queryClient.invalidateQueries({ queryKey: ["offers"] });
+      toast.success(selectedOffer ? 'Offer updated' : 'Offer created');
+      queryClient.invalidateQueries({ queryKey: ['offers'] });
       closeDialog();
     },
-    onError: (err: any) => toast.error(err.response?.data?.message || "Operation failed"),
+    onError: (err: any) => toast.error(err.response?.data?.message || 'Operation failed'),
   });
 
   const deleteMutation = useMutation({
     mutationFn: deleteOffer,
     onSuccess: () => {
-      toast.success("Offer deleted");
-      queryClient.invalidateQueries({ queryKey: ["offers"] });
+      toast.success('Offer deleted');
+      queryClient.invalidateQueries({ queryKey: ['offers'] });
     },
-    onError: (err: any) => toast.error(err.response?.data?.message || "Delete failed"),
+    onError: (err: any) => toast.error(err.response?.data?.message || 'Delete failed'),
   });
 
   const openDialog = (offer?: Offer) => {
@@ -69,7 +109,7 @@ export default function OffersDashboard() {
       });
     } else {
       setSelectedOffer(null);
-      setFormData({ title: "", slug: "", summary: "", amount: 0, isPremium: false });
+      setFormData({ title: '', slug: '', summary: '', amount: 0, isPremium: false });
     }
     setIsDialogOpen(true);
   };
@@ -81,13 +121,13 @@ export default function OffersDashboard() {
 
   const handleSave = () => {
     if (!formData.title || !formData.slug) {
-      return toast.error("Title and slug are required");
+      return toast.error('Title and slug are required');
     }
-    saveMutation.mutate(formData);
+    saveMutation.mutate(isStaff ? formData : stripPricingFields(formData));
   };
 
   const handleDelete = (id: string) => {
-    if (confirm("Are you sure you want to delete this offer?")) {
+    if (confirm('Are you sure you want to delete this offer?')) {
       deleteMutation.mutate(id);
     }
   };
@@ -125,12 +165,24 @@ export default function OffersDashboard() {
             {isLoading ? (
               Array.from({ length: 5 }).map((_, i) => (
                 <TableRow key={i}>
-                  <TableCell><Skeleton className="h-4 w-[150px]" /></TableCell>
-                  <TableCell><Skeleton className="h-4 w-[100px]" /></TableCell>
-                  <TableCell><Skeleton className="h-4 w-[60px]" /></TableCell>
-                  <TableCell><Skeleton className="h-4 w-[60px]" /></TableCell>
-                  <TableCell><Skeleton className="h-4 w-[100px]" /></TableCell>
-                  <TableCell><Skeleton className="h-4 w-[80px] float-right" /></TableCell>
+                  <TableCell>
+                    <Skeleton className="h-4 w-[150px]" />
+                  </TableCell>
+                  <TableCell>
+                    <Skeleton className="h-4 w-[100px]" />
+                  </TableCell>
+                  <TableCell>
+                    <Skeleton className="h-4 w-[60px]" />
+                  </TableCell>
+                  <TableCell>
+                    <Skeleton className="h-4 w-[60px]" />
+                  </TableCell>
+                  <TableCell>
+                    <Skeleton className="h-4 w-[100px]" />
+                  </TableCell>
+                  <TableCell>
+                    <Skeleton className="h-4 w-[80px] float-right" />
+                  </TableCell>
                 </TableRow>
               ))
             ) : data?.data.length === 0 ? (
@@ -145,8 +197,8 @@ export default function OffersDashboard() {
                   <TableCell className="font-medium">{offer.title}</TableCell>
                   <TableCell className="text-muted-foreground">{offer.slug}</TableCell>
                   <TableCell>${offer.amount}</TableCell>
-                  <TableCell>{offer.isPremium ? "Yes" : "No"}</TableCell>
-                  <TableCell>{format(new Date(offer.createdAt), "MMM d, yyyy")}</TableCell>
+                  <TableCell>{offer.isPremium ? 'Yes' : 'No'}</TableCell>
+                  <TableCell>{format(new Date(offer.createdAt), 'MMM d, yyyy')}</TableCell>
                   <TableCell className="text-right">
                     <Button variant="ghost" size="icon" onClick={() => openDialog(offer)}>
                       <Edit className="h-4 w-4 text-muted-foreground" />
@@ -165,56 +217,77 @@ export default function OffersDashboard() {
       <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
         <DialogContent className="sm:max-w-[425px]">
           <DialogHeader>
-            <DialogTitle>{selectedOffer ? "Edit Offer" : "Create Offer"}</DialogTitle>
+            <DialogTitle>{selectedOffer ? 'Edit Offer' : 'Create Offer'}</DialogTitle>
           </DialogHeader>
           <div className="grid gap-4 py-4">
             <div className="grid grid-cols-4 items-center gap-4">
-              <Label className="text-right">Title</Label>
+              <Label htmlFor="offer-title" className="text-right">
+                Title
+              </Label>
               <Input
+                id="offer-title"
                 className="col-span-3"
                 value={formData.title}
                 onChange={(e) => setFormData({ ...formData, title: e.target.value })}
               />
             </div>
             <div className="grid grid-cols-4 items-center gap-4">
-              <Label className="text-right">Slug</Label>
+              <Label htmlFor="offer-slug" className="text-right">
+                Slug
+              </Label>
               <Input
+                id="offer-slug"
                 className="col-span-3"
                 value={formData.slug}
                 onChange={(e) => setFormData({ ...formData, slug: e.target.value })}
               />
             </div>
             <div className="grid grid-cols-4 items-center gap-4">
-              <Label className="text-right">Summary</Label>
+              <Label htmlFor="offer-summary" className="text-right">
+                Summary
+              </Label>
               <Input
+                id="offer-summary"
                 className="col-span-3"
                 value={formData.summary}
                 onChange={(e) => setFormData({ ...formData, summary: e.target.value })}
               />
             </div>
             <div className="grid grid-cols-4 items-center gap-4">
-              <Label className="text-right">Amount ($)</Label>
-              <Input
-                type="number"
-                className="col-span-3"
-                value={formData.amount}
-                onChange={(e) => setFormData({ ...formData, amount: Number(e.target.value) })}
-              />
+              <Label htmlFor="offer-amount" className="text-right">
+                Amount ($)
+              </Label>
+              <StaffOnly reason="Only an admin can set the price (amount)">
+                <Input
+                  id="offer-amount"
+                  type="number"
+                  className="col-span-3"
+                  value={formData.amount}
+                  onChange={(e) => setFormData({ ...formData, amount: Number(e.target.value) })}
+                />
+              </StaffOnly>
             </div>
             <div className="grid grid-cols-4 items-center gap-4">
-              <Label className="text-right">Premium</Label>
+              <Label htmlFor="offer-premium" className="text-right">
+                Premium
+              </Label>
               <div className="col-span-3 flex items-center">
-                <Switch
-                  checked={formData.isPremium}
-                  onCheckedChange={(c) => setFormData({ ...formData, isPremium: c })}
-                />
+                <StaffOnly reason="Only an admin can set the premium flag (isPremium)">
+                  <Switch
+                    id="offer-premium"
+                    checked={formData.isPremium}
+                    onCheckedChange={(c) => setFormData({ ...formData, isPremium: c })}
+                  />
+                </StaffOnly>
               </div>
             </div>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={closeDialog}>Cancel</Button>
+            <Button variant="outline" onClick={closeDialog}>
+              Cancel
+            </Button>
             <Button onClick={handleSave} disabled={saveMutation.isPending}>
-              {saveMutation.isPending ? "Saving..." : "Save changes"}
+              {saveMutation.isPending ? 'Saving...' : 'Save changes'}
             </Button>
           </DialogFooter>
         </DialogContent>
