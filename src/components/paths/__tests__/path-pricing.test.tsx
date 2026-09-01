@@ -15,6 +15,11 @@
  * instructor (informative, even though the API refuses the write) — only
  * the two Paddle fields are removed outright, not disabled, because they're
  * payment-processor plumbing an instructor can't act on.
+ *
+ * Item 10 (Author): the API stamps `createdById` from the caller, so for an
+ * instructor this control on the "Visibility" tab cannot do anything except
+ * mislead. Hidden for non-staff; admins keep it, since reassigning an
+ * author is a real admin action.
  */
 import React from 'react';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
@@ -156,5 +161,27 @@ describe('PathDetailClient — Paddle field gating', () => {
 
     expect(screen.getByLabelText(/paddle plan code/i)).toBeInTheDocument();
     expect(screen.getByLabelText(/paddle price id/i)).toBeInTheDocument();
+  });
+});
+
+describe('PathDetailClient — Author field gating', () => {
+  it('renders no Author control for an instructor', async () => {
+    asRole('INSTRUCTOR');
+    renderPage();
+
+    fireEvent.click(await screen.findByRole('tab', { name: 'Visibility' }));
+    await screen.findByText('Who can see this');
+
+    expect(screen.queryByText(/^author$/i)).not.toBeInTheDocument();
+  });
+
+  it('still renders the Author control for an admin', async () => {
+    asRole('ADMIN');
+    renderPage();
+
+    fireEvent.click(await screen.findByRole('tab', { name: 'Visibility' }));
+    await screen.findByText('Who can see this');
+
+    expect(screen.getByText(/^author$/i)).toBeInTheDocument();
   });
 });

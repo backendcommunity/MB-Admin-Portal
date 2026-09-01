@@ -713,11 +713,13 @@ export default function PathDetailClient() {
                   : 'Set by Publish and Unpublish, so the readiness checks always run first.'
               }
             />
-            <AuthorField
-              author={path.createdBy}
-              value={draft.createdById ?? ''}
-              onChange={(id) => patch({ createdById: id })}
-            />
+            {isStaff ? (
+              <AuthorField
+                author={path.createdBy}
+                value={draft.createdById ?? ''}
+                onChange={(id) => patch({ createdById: id })}
+              />
+            ) : null}
             <LockedField
               label="Owner team"
               value={path.ownerTeamId ?? ''}
