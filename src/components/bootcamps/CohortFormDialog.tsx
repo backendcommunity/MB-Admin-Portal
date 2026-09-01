@@ -105,6 +105,14 @@ export default function CohortFormDialog({
     problems.push('The end date cannot be before the start.');
   }
 
+  // `assertMayPublish` 403s on ANY payload where `status === 'OPEN'` from a
+  // non-staff caller — not just a change to OPEN, the mere value, even an
+  // unchanged resend of an already-open cohort. So `status` is only safe to
+  // send as non-staff when it isn't OPEN: never on create (nothing stored
+  // yet to be "unchanged", and the API forces CLOSED anyway), and on edit
+  // only once the caller has moved it off OPEN.
+  const maySendStatus = isStaff || (editing && form.status !== 'OPEN');
+
   const submit = async () => {
     if (problems.length || !form.name.trim()) return;
     setSaving(true);
@@ -114,7 +122,7 @@ export default function CohortFormDialog({
         duration: form.duration,
         amount: form.amount,
         maxStudent: form.maxStudent,
-        status: form.status,
+        ...(maySendStatus ? { status: form.status } : {}),
         completed: form.completed,
         studyGroupLink: form.studyGroupLink,
         paddle_price_id: form.paddle_price_id,
@@ -224,24 +232,42 @@ export default function CohortFormDialog({
 
           <div className="space-y-1.5">
             <Label htmlFor="cohort-status">Status</Label>
-            <Select
-              value={form.status}
-              onValueChange={(value) => set('status', value as Cohort['status'])}
-            >
-              <SelectTrigger id="cohort-status">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {COHORT_STATUSES.map((status) => (
-                  <SelectItem key={status} value={status}>
-                    {status}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            <p className="text-xs text-muted-foreground">
-              Only OPEN accepts new joins on the learner side.
-            </p>
+            {!editing && !isStaff ? (
+              <>
+                <Input id="cohort-status" value="CLOSED" disabled />
+                <p className="text-xs text-muted-foreground">
+                  New cohorts start closed. Only an admin can open one for enrollment.
+                </p>
+              </>
+            ) : (
+              <>
+                <Select
+                  value={form.status}
+                  onValueChange={(value) => set('status', value as Cohort['status'])}
+                >
+                  <SelectTrigger id="cohort-status">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {COHORT_STATUSES.map((status) => (
+                      <SelectItem
+                        key={status}
+                        value={status}
+                        disabled={!isStaff && status === 'OPEN'}
+                      >
+                        {status}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <p className="text-xs text-muted-foreground">
+                  Only OPEN accepts new joins on the learner side.
+                  {!isStaff
+                    ? ' Only an admin can open a cohort — submit this for approval instead.'
+                    : ''}
+                </p>
+              </>
+            )}
           </div>
 
           <div className="space-y-1.5 sm:col-span-2">
