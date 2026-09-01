@@ -40,10 +40,17 @@ type Props = {
   onSaved: () => void;
 };
 
+/** A UI-only fourth choice — not a real `kind` the API accepts. Picking it
+ * means "no linked item," which the payload expresses by omitting `kind`
+ * and `itemId` entirely, not by sending the literal string. */
+type BonusChoice = BonusKind | 'custom';
+
 export default function BonusDialog({ open, onOpenChange, cohortId, bonus, onSaved }: Props) {
   const editing = Boolean(bonus);
   const [form, setForm] = useSeededForm(open ? (bonus?.id ?? 'new') : 'closed', () => ({
-    kind: (bonus?.kind ?? 'course') as BonusKind,
+    // A bonus with no `itemId` on the server is a custom one — nothing else
+    // distinguishes the two shapes.
+    kind: (bonus && !bonus.itemId ? 'custom' : (bonus?.kind ?? 'course')) as BonusChoice,
     itemId: bonus?.itemId ?? '',
     itemTitle: bonus?.itemTitle ?? '',
     topic: bonus?.topic ?? '',
@@ -51,18 +58,26 @@ export default function BonusDialog({ open, onOpenChange, cohortId, bonus, onSav
   }));
   const [saving, setSaving] = useState(false);
 
+  const isCustom = form.kind === 'custom';
+  const canSubmit = isCustom
+    ? Boolean(form.topic.trim()) && Boolean(form.summary.trim())
+    : Boolean(form.itemId);
+
   const submit = async () => {
-    if (!form.itemId) return;
+    if (!canSubmit) return;
     setSaving(true);
     try {
-      // kind and itemId always travel together — the id lands in a different
-      // column for each kind, so one without the other is meaningless.
-      const payload = {
-        kind: form.kind,
-        itemId: form.itemId,
-        topic: form.topic,
-        summary: form.summary,
-      };
+      // A LINK (kind+itemId, always together — the id lands in a different
+      // column per kind) or a CUSTOM bonus (title+description, no linked
+      // entity) — exactly one of the two, never both, never neither.
+      const payload = isCustom
+        ? { topic: form.topic, summary: form.summary }
+        : {
+            kind: form.kind as BonusKind,
+            itemId: form.itemId,
+            topic: form.topic,
+            summary: form.summary,
+          };
       if (bonus) {
         await updateBonus(cohortId, bonus.id, payload);
       } else {
@@ -94,8 +109,9 @@ export default function BonusDialog({ open, onOpenChange, cohortId, bonus, onSav
             <Select
               value={form.kind}
               onValueChange={(value) =>
-                // Switching kind switches library, so the old pick cannot stand.
-                setForm((f) => ({ ...f, kind: value as BonusKind, itemId: '', itemTitle: '' }))
+                // Switching kind switches library (or drops it), so the old
+                // pick cannot stand.
+                setForm((f) => ({ ...f, kind: value as BonusChoice, itemId: '', itemTitle: '' }))
               }
             >
               <SelectTrigger id="bonus-kind">
@@ -107,23 +123,29 @@ export default function BonusDialog({ open, onOpenChange, cohortId, bonus, onSav
                     {kind}
                   </SelectItem>
                 ))}
+                <SelectItem value="custom">custom</SelectItem>
               </SelectContent>
             </Select>
           </div>
 
-          <LibraryPicker
-            kind={BONUS_SOURCE[form.kind]}
-            label={form.kind.charAt(0).toUpperCase() + form.kind.slice(1)}
-            value={form.itemId}
-            valueTitle={form.itemTitle}
-            onPick={(row) =>
-              setForm((f) => ({ ...f, itemId: row?.id ?? '', itemTitle: row?.title ?? '' }))
-            }
-            hint={`Stored as ${form.kind}Id.`}
-          />
+          {isCustom ? null : (
+            <LibraryPicker
+              kind={BONUS_SOURCE[form.kind as BonusKind]}
+              label={form.kind.charAt(0).toUpperCase() + form.kind.slice(1)}
+              value={form.itemId}
+              valueTitle={form.itemTitle}
+              onPick={(row) =>
+                setForm((f) => ({ ...f, itemId: row?.id ?? '', itemTitle: row?.title ?? '' }))
+              }
+              hint={`Stored as ${form.kind}Id.`}
+            />
+          )}
 
           <div className="space-y-1.5">
-            <Label htmlFor="bonus-topic">Topic</Label>
+            <Label htmlFor="bonus-topic">
+              {isCustom ? 'Title' : 'Topic'}{' '}
+              {isCustom ? <span className="text-destructive">*</span> : null}
+            </Label>
             <Input
               id="bonus-topic"
               value={form.topic}
@@ -133,7 +155,10 @@ export default function BonusDialog({ open, onOpenChange, cohortId, bonus, onSav
           </div>
 
           <div className="space-y-1.5">
-            <Label htmlFor="bonus-summary">Summary</Label>
+            <Label htmlFor="bonus-summary">
+              {isCustom ? 'Description' : 'Summary'}{' '}
+              {isCustom ? <span className="text-destructive">*</span> : null}
+            </Label>
             <Input
               id="bonus-summary"
               value={form.summary}
@@ -146,7 +171,7 @@ export default function BonusDialog({ open, onOpenChange, cohortId, bonus, onSav
           <Button variant="outline" onClick={() => onOpenChange(false)}>
             Cancel
           </Button>
-          <Button onClick={submit} disabled={saving || !form.itemId}>
+          <Button onClick={submit} disabled={saving || !canSubmit}>
             {saving ? 'Saving…' : editing ? 'Save' : 'Add bonus'}
           </Button>
         </DialogFooter>
