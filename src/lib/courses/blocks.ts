@@ -17,6 +17,41 @@ export type ArticleBlock =
       explanation?: string | null;
     };
 
+/**
+ * D1 (instructor-authoring-fixes plan): the playground block's Language field
+ * was free text, so an instructor could type anything the runner cannot
+ * execute. This list is a manual, one-time mirror of `enum ProgrammingLanguage`
+ * in `academy/prisma/schema.prisma` — verified against
+ * `mb-executor/src/config/constants.ts`'s `LANGUAGES` map, which supports all
+ * thirteen (node/python/php/ruby/java/c/cpp/go/rust/csharp/kotlin/scala/perl),
+ * so nothing here needs to be excluded as a broken choice.
+ *
+ * The two repos are not wired together, so this list CAN drift from the
+ * schema enum if a language is ever added or removed there — that is a
+ * deliberate, visible cost, not a bug. Do not build a sync mechanism for it;
+ * just keep this comment (and this file) in view when the enum changes.
+ *
+ * Values are the human-readable strings articles already store (the sample
+ * data in `v3-masteringbackend/app/preview/article/page.tsx` uses `"Python"`
+ * — not the enum's `PYTHON` key, and not the executor's lowercase `python`),
+ * so this is a stricter INPUT on the same free-text column, not a new format.
+ */
+export const PLAYGROUND_LANGUAGES = [
+  { value: 'Node.js', enumKey: 'NODEJS' },
+  { value: 'Python', enumKey: 'PYTHON' },
+  { value: 'PHP', enumKey: 'PHP' },
+  { value: 'Ruby', enumKey: 'RUBY' },
+  { value: 'Java', enumKey: 'JAVA' },
+  { value: 'C', enumKey: 'C' },
+  { value: 'C++', enumKey: 'CPP' },
+  { value: 'Go', enumKey: 'GO' },
+  { value: 'Rust', enumKey: 'RUST' },
+  { value: 'C#', enumKey: 'CSHARP' },
+  { value: 'Kotlin', enumKey: 'KOTLIN' },
+  { value: 'Scala', enumKey: 'SCALA' },
+  { value: 'Perl', enumKey: 'PERL' },
+] as const;
+
 export function isArticleBlock(value: unknown): value is ArticleBlock {
   if (!value || typeof value !== 'object') return false;
   const block = value as { type?: unknown };

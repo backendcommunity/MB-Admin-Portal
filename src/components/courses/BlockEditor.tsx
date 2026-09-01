@@ -4,10 +4,17 @@ import { ChevronDown, ChevronUp, Plus, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import { RichTextField } from '@/components/shared/form/RichTextField';
 import { CodeArea } from '@/components/shared/form/CodeArea';
 import { moved } from '@/lib/courses/useDragReorder';
-import type { ArticleBlock } from '@/lib/courses/blocks';
+import { PLAYGROUND_LANGUAGES, type ArticleBlock } from '@/lib/courses/blocks';
 
 /**
  * An article body is a sequence of blocks, not one field: prose interleaved with
@@ -99,14 +106,23 @@ export function BlockEditor({
               <div className="grid gap-2 sm:grid-cols-2">
                 <div className="space-y-1.5">
                   <Label htmlFor={`pg-lang-${index}`}>Language</Label>
-                  <Input
-                    id={`pg-lang-${index}`}
-                    value={block.language ?? ''}
-                    placeholder="Python"
-                    onChange={(event) =>
-                      patch(index, { language: event.target.value } as Partial<ArticleBlock>)
+                  <Select
+                    value={block.language ?? undefined}
+                    onValueChange={(language) =>
+                      patch(index, { language } as Partial<ArticleBlock>)
                     }
-                  />
+                  >
+                    <SelectTrigger id={`pg-lang-${index}`}>
+                      <SelectValue placeholder="Select a language" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {PLAYGROUND_LANGUAGES.map((language) => (
+                        <SelectItem key={language.enumKey} value={language.value}>
+                          {language.value}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                 </div>
                 <div className="space-y-1.5">
                   <Label htmlFor={`pg-title-${index}`}>File name</Label>
