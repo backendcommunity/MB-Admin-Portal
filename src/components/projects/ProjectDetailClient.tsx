@@ -346,7 +346,14 @@ export default function ProjectDetailClient() {
                     id="p-amount"
                     type="number"
                     min={0}
-                    value={draft.amount}
+                    step="0.01"
+                    // Display only: `amount` is a Float column, so a whole
+                    // number renders with its decimal (0 -> "0.0") to match
+                    // the hint above. `onChange` below still parses a plain
+                    // number and sends that — never this formatted string —
+                    // so an unedited save cannot turn `0` into `"0.0"` on
+                    // the wire and trip the field-guard's equality check.
+                    value={Number.isInteger(draft.amount) ? draft.amount.toFixed(1) : draft.amount}
                     onChange={(event) => set('amount', Number(event.target.value) || 0)}
                   />
                 </Field>
