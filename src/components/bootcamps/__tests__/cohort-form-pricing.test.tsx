@@ -17,8 +17,12 @@
  *
  * Fix (same pattern as the Ship fix, commit faeee54): strip the pricing keys
  * from the outgoing payload entirely for a non-staff caller, on both create
- * and edit, via the shared `stripPricingFields`, and disable the pricing
- * inputs for that caller with a visible reason via `StaffOnly`.
+ * and edit, via the shared `stripPricingFields`. Price stays visible but
+ * disabled with a reason (`StaffOnly`) — an instructor still benefits from
+ * seeing it. `paddle_price_id`, `asyncpay_plan_id` and `allowsSubscription`
+ * are payment-processor plumbing an instructor can't act on, so the product
+ * call was to remove those three controls entirely rather than show them
+ * disabled.
  */
 import React from 'react';
 import { render, screen, waitFor } from '@testing-library/react';
@@ -151,7 +155,7 @@ describe('CohortFormDialog — instructor edit payload', () => {
 });
 
 describe('CohortFormDialog — pricing input gating', () => {
-  it('disables the pricing inputs for an instructor, with a reason', async () => {
+  it('disables Price for an instructor, with a reason, but removes the Paddle/AsyncPay/subscription controls entirely', async () => {
     asRole('INSTRUCTOR');
     render(
       <CohortFormDialog
@@ -163,19 +167,17 @@ describe('CohortFormDialog — pricing input gating', () => {
       />,
     );
 
+    // Price stays visible-but-disabled: it's business-relevant info an
+    // instructor still benefits from seeing, even though they can't set it.
     expect(screen.getByLabelText(/^price$/i)).toBeDisabled();
     expect(screen.getByText(/only an admin can set the price/i)).toBeInTheDocument();
 
-    expect(screen.getByLabelText(/paddle price id/i)).toBeDisabled();
-    expect(screen.getByText(/only an admin can set the paddle price id/i)).toBeInTheDocument();
-
-    expect(screen.getByLabelText(/asyncpay plan id/i)).toBeDisabled();
-    expect(screen.getByText(/only an admin can set the asyncpay plan id/i)).toBeInTheDocument();
-
-    expect(screen.getByLabelText(/allows subscription/i)).toBeDisabled();
-    expect(
-      screen.getByText(/only an admin can set the subscription-access flag/i),
-    ).toBeInTheDocument();
+    // Paddle/AsyncPay ids and the subscription flag are payment-processor
+    // plumbing an instructor can't act on — the product call was to remove
+    // them outright rather than show an inert disabled control.
+    expect(screen.queryByLabelText(/paddle price id/i)).not.toBeInTheDocument();
+    expect(screen.queryByLabelText(/asyncpay plan id/i)).not.toBeInTheDocument();
+    expect(screen.queryByLabelText(/allows subscription/i)).not.toBeInTheDocument();
   });
 
   it('leaves the pricing inputs enabled for an admin', async () => {

@@ -280,44 +280,44 @@ export default function CohortFormDialog({
             />
           </div>
 
-          <div className="space-y-1.5">
-            <Label htmlFor="cohort-paddle">Paddle price id</Label>
-            <StaffOnly reason="Only an admin can set the Paddle price id (paddle_price_id)">
+          {isStaff ? (
+            <div className="space-y-1.5">
+              <Label htmlFor="cohort-paddle">Paddle price id</Label>
               <Input
                 id="cohort-paddle"
                 value={form.paddle_price_id}
                 onChange={(event) => set('paddle_price_id', event.target.value)}
                 placeholder="pri_…"
               />
-            </StaffOnly>
-          </div>
+            </div>
+          ) : null}
 
-          <div className="space-y-1.5">
-            <Label htmlFor="cohort-asyncpay">AsyncPay plan id</Label>
-            <StaffOnly reason="Only an admin can set the AsyncPay plan id (asyncpay_plan_id)">
+          {isStaff ? (
+            <div className="space-y-1.5">
+              <Label htmlFor="cohort-asyncpay">AsyncPay plan id</Label>
               <Input
                 id="cohort-asyncpay"
                 value={form.asyncpay_plan_id}
                 onChange={(event) => set('asyncpay_plan_id', event.target.value)}
               />
-            </StaffOnly>
-          </div>
+            </div>
+          ) : null}
 
-          <label className="flex items-center justify-between gap-3 rounded-lg border p-3 sm:col-span-2">
-            <span>
-              <span className="block text-sm font-medium">Allows subscription</span>
-              <span className="block text-xs text-muted-foreground">
-                Whether a subscriber can join without paying the cohort price.
+          {isStaff ? (
+            <label className="flex items-center justify-between gap-3 rounded-lg border p-3 sm:col-span-2">
+              <span>
+                <span className="block text-sm font-medium">Allows subscription</span>
+                <span className="block text-xs text-muted-foreground">
+                  Whether a subscriber can join without paying the cohort price.
+                </span>
               </span>
-            </span>
-            <StaffOnly reason="Only an admin can set the subscription-access flag (allowsSubscription)">
               <Switch
                 checked={form.allowsSubscription}
                 onCheckedChange={(next) => set('allowsSubscription', next)}
                 aria-label="Allows subscription"
               />
-            </StaffOnly>
-          </label>
+            </label>
+          ) : null}
 
           <label className="flex items-center justify-between gap-3 rounded-lg border p-3 sm:col-span-2">
             <span>
