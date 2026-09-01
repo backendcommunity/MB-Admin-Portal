@@ -3,7 +3,7 @@ import ProjectsTable from '@/components/projects/ProjectsTable';
 
 export default function ProjectsPage() {
   return (
-    <ProtectedPage allowedRoles={['SUPER_ADMIN', 'ADMIN']}>
+    <ProtectedPage allowedRoles={['SUPER_ADMIN', 'ADMIN', 'INSTRUCTOR']}>
       <ProjectsTable />
     </ProtectedPage>
   );
