@@ -17,6 +17,7 @@ import { TagInput } from '@/components/shared/form/TagInput';
 import { SlugField } from '@/components/shared/form/SlugField';
 import { MediaField } from '@/components/shared/form/MediaField';
 import { RichTextField } from '@/components/shared/form/RichTextField';
+import { StaffOnly } from '@/components/shared/SuperAdminOnly';
 import { createCategory, type Category, type CourseType, type Level } from '@/lib/api/courses';
 import { MIN_SUMMARY } from '@/lib/courses/readiness';
 import { toast } from 'sonner';
@@ -291,17 +292,19 @@ export function AccessSection({ draft, patch }: SectionProps) {
           <Label htmlFor="course-premium">Premium</Label>
           <p className="text-xs text-muted-foreground">Requires payment to enrol.</p>
         </div>
-        <Switch
-          id="course-premium"
-          checked={draft.isPremium}
-          onCheckedChange={(isPremium) =>
-            patch(
-              isPremium
-                ? { isPremium }
-                : { isPremium, amount: 0, paddle_price_id: null, paddlePlanCode: null },
-            )
-          }
-        />
+        <StaffOnly reason="Only an admin can set the premium flag (isPremium)">
+          <Switch
+            id="course-premium"
+            checked={draft.isPremium}
+            onCheckedChange={(isPremium) =>
+              patch(
+                isPremium
+                  ? { isPremium }
+                  : { isPremium, amount: 0, paddle_price_id: null, paddlePlanCode: null },
+              )
+            }
+          />
+        </StaffOnly>
       </div>
 
       {draft.isPremium ? (
@@ -310,39 +313,45 @@ export function AccessSection({ draft, patch }: SectionProps) {
             <Label htmlFor="course-amount">
               Price (USD) <span className="text-destructive">*</span>
             </Label>
-            <Input
-              id="course-amount"
-              type="number"
-              min={0}
-              step="0.01"
-              value={draft.amount}
-              onChange={(event) => patch({ amount: Number(event.target.value) })}
-            />
+            <StaffOnly reason="Only an admin can set the price (amount)">
+              <Input
+                id="course-amount"
+                type="number"
+                min={0}
+                step="0.01"
+                value={draft.amount}
+                onChange={(event) => patch({ amount: Number(event.target.value) })}
+              />
+            </StaffOnly>
           </div>
           <div className="space-y-1.5">
             <Label htmlFor="course-paddle">
               Paddle price ID <span className="text-destructive">*</span>
             </Label>
-            <Input
-              id="course-paddle"
-              value={draft.paddle_price_id ?? ''}
-              placeholder="pri_01h…"
-              onChange={(event) => patch({ paddle_price_id: event.target.value })}
-            />
+            <StaffOnly reason="Only an admin can set the Paddle price id (paddle_price_id)">
+              <Input
+                id="course-paddle"
+                value={draft.paddle_price_id ?? ''}
+                placeholder="pri_01h…"
+                onChange={(event) => patch({ paddle_price_id: event.target.value })}
+              />
+            </StaffOnly>
           </div>
           <div className="space-y-1.5 md:col-span-2">
             <Label htmlFor="course-plan-code">Paddle plan code</Label>
-            <Input
-              id="course-plan-code"
-              inputMode="numeric"
-              value={draft.paddlePlanCode ?? ''}
-              placeholder="legacy checkout only"
-              onChange={(event) =>
-                patch({
-                  paddlePlanCode: event.target.value ? Number(event.target.value) : null,
-                })
-              }
-            />
+            <StaffOnly reason="Only an admin can set the Paddle plan code (paddlePlanCode)">
+              <Input
+                id="course-plan-code"
+                inputMode="numeric"
+                value={draft.paddlePlanCode ?? ''}
+                placeholder="legacy checkout only"
+                onChange={(event) =>
+                  patch({
+                    paddlePlanCode: event.target.value ? Number(event.target.value) : null,
+                  })
+                }
+              />
+            </StaffOnly>
           </div>
         </div>
       ) : (

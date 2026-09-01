@@ -72,6 +72,8 @@ import {
   type Modality,
 } from '@/lib/api/courses';
 import { evaluateReadiness } from '@/lib/courses/readiness';
+import { stripPricingFields } from '@/lib/pricing-fields';
+import { useAuthStore } from '@/store/authStore';
 import { toast } from 'sonner';
 
 const TABS = [
@@ -148,6 +150,11 @@ export default function CourseDetailClient() {
   const [saving, setSaving] = useState(false);
   const [payloadOpen, setPayloadOpen] = useState(false);
   const [attaching, setAttaching] = useState<CapstoneKind | null>(null);
+  const role = useAuthStore((s) => s.userRole);
+  const authResolved = useAuthStore((s) => s.authResolved);
+  // Fail closed: until the session check lands, treat the caller as non-staff
+  // rather than trusting a possibly-stale cached role (see SuperAdminOnly).
+  const isStaff = authResolved && (role === 'ADMIN' || role === 'SUPER_ADMIN');
 
   const {
     data: course,
@@ -218,7 +225,7 @@ export default function CourseDetailClient() {
   const save = async () => {
     setSaving(true);
     try {
-      await updateCourse(course.id, { ...draft });
+      await updateCourse(course.id, isStaff ? { ...draft } : stripPricingFields({ ...draft }));
       await refetch();
       toast.success('Saved.');
     } catch (error) {

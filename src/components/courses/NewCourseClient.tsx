@@ -20,6 +20,8 @@ import { CataloguePreview } from '@/components/courses/CataloguePreview';
 import { PayloadDialog } from '@/components/shared/PayloadDialog';
 import { createCourse, fetchCategories, setCourseStatus, type Category } from '@/lib/api/courses';
 import { evaluateReadiness } from '@/lib/courses/readiness';
+import { stripPricingFields } from '@/lib/pricing-fields';
+import { useAuthStore } from '@/store/authStore';
 import { toast } from 'sonner';
 
 const SECTIONS = [
@@ -36,6 +38,11 @@ const SECTIONS = [
  */
 export default function NewCourseClient() {
   const router = useRouter();
+  const role = useAuthStore((s) => s.userRole);
+  const authResolved = useAuthStore((s) => s.authResolved);
+  // Fail closed: until the session check lands, treat the caller as non-staff
+  // rather than trusting a possibly-stale cached role (see SuperAdminOnly).
+  const isStaff = authResolved && (role === 'ADMIN' || role === 'SUPER_ADMIN');
   const [draft, setDraft] = useState<CourseDraft>(emptyDraft());
   const [categories, setCategories] = useState<Category[]>([]);
   const [saving, setSaving] = useState(false);
@@ -62,13 +69,14 @@ export default function NewCourseClient() {
     }
     setSaving(true);
     try {
-      const created = await createCourse({
+      const payload = {
         ...draft,
         paddle_price_id: draft.paddle_price_id || null,
         preview: draft.preview || null,
         vimeoFolderId: draft.vimeoFolderId || null,
         waitingLink: draft.waitingLink || null,
-      });
+      };
+      const created = await createCourse(isStaff ? payload : stripPricingFields(payload));
 
       if (publish) {
         try {
