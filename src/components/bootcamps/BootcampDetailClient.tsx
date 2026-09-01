@@ -371,11 +371,9 @@ export default function BootcampDetailClient() {
 
           <aside className="space-y-4 lg:sticky lg:top-4 lg:self-start">
             <Section title="Where the content lives">
-              <p className="text-xs leading-relaxed text-muted-foreground">
+              <p className="break-words text-xs leading-relaxed text-muted-foreground">
                 A bootcamp holds identity only. Weeks, lessons, schedule and students all belong to
-                a cohort — the learner URL is{' '}
-                <span className="font-mono">/bootcamps/:bootcamp/:cohort/weeks/:week</span>, so the
-                cohort sits above the curriculum.
+                a cohort, which sits above the curriculum.
               </p>
               <Button
                 variant="outline"
