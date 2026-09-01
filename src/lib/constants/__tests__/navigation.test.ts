@@ -16,7 +16,7 @@ describe('NAV_ITEMS', () => {
     expect(hrefs).not.toContain('/bootcamps/assignments');
   });
 
-  it('gives an instructor the six content sections plus their own three', () => {
+  it('gives an instructor the six content sections plus their own two', () => {
     expect(forRole('INSTRUCTOR').sort()).toEqual(
       [
         '/dashboard',
@@ -25,10 +25,13 @@ describe('NAV_ITEMS', () => {
         '/paths',
         '/bootcamps',
         '/offers',
-        '/my-content',
         '/earnings',
       ].sort(),
     );
+  });
+
+  it('no longer lists My Content — the feature was removed outright', () => {
+    expect(hrefs).not.toContain('/my-content');
   });
 
   it('never shows an instructor users, billing or audit logs', () => {

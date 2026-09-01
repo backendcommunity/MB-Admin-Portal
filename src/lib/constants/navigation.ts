@@ -5,7 +5,6 @@ import {
   BookOpen,
   CheckCircle2,
   CreditCard,
-  FileText,
   FolderKanban,
   GraduationCap,
   LayoutDashboard,
@@ -132,12 +131,6 @@ export const NAV_ITEMS: NavItem[] = [
     icon: CheckCircle2,
     roles: ['SUPER_ADMIN', 'ADMIN'],
     badgeKey: 'approvals',
-  },
-  {
-    label: 'My Content',
-    href: '/my-content',
-    icon: FileText,
-    roles: ['INSTRUCTOR'],
   },
   {
     label: 'Earnings',
