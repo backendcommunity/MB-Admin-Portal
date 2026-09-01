@@ -3,7 +3,7 @@
 import { useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Plus, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -71,6 +71,7 @@ export default function BootcampDetailClient() {
   const router = useRouter();
   const params = useParams<{ id: string }>();
   const bootcampId = params.id;
+  const queryClient = useQueryClient();
 
   const { data, isLoading, isError, refetch } = useQuery({
     queryKey: ['admin-bootcamp', bootcampId],
@@ -120,6 +121,10 @@ export default function BootcampDetailClient() {
       });
       toast.success('Saved.');
       refetch();
+      // Same cache-staleness issue as the table's create path: the list lives
+      // on a different query than this page's, so a title/level change here
+      // needs its own invalidation to show up without a hard reload.
+      queryClient.invalidateQueries({ queryKey: ['admin-bootcamps'] });
     } catch (error) {
       toast.error('Could not save', { description: (error as Error).message });
     } finally {

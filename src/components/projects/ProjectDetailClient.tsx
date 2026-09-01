@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { GripVertical, Pencil, Plus, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -80,6 +80,7 @@ export default function ProjectDetailClient() {
   const router = useRouter();
   const params = useParams<{ id: string }>();
   const projectId = params.id;
+  const queryClient = useQueryClient();
 
   const { data, isLoading, isError, refetch } = useQuery({
     queryKey: ['admin-project', projectId],
@@ -168,6 +169,10 @@ export default function ProjectDetailClient() {
       });
       toast.success('Saved.');
       refetch();
+      // The projects list is a separate query with a 60s staleTime — without
+      // this, an edit here would not show up there until it expires or the
+      // page is hard-reloaded.
+      queryClient.invalidateQueries({ queryKey: ['admin-projects'] });
     } catch (error) {
       toast.error('Could not save', { description: (error as Error).message });
     } finally {

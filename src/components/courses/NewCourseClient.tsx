@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { useQueryClient } from '@tanstack/react-query';
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
@@ -38,6 +39,7 @@ const SECTIONS = [
  */
 export default function NewCourseClient() {
   const router = useRouter();
+  const queryClient = useQueryClient();
   const role = useAuthStore((s) => s.userRole);
   const authResolved = useAuthStore((s) => s.authResolved);
   // Fail closed: until the session check lands, treat the caller as non-staff
@@ -77,6 +79,10 @@ export default function NewCourseClient() {
         waitingLink: draft.waitingLink || null,
       };
       const created = await createCourse(isStaff ? payload : stripPricingFields(payload));
+      // The list's query has a 60s staleTime and lives on a different route's
+      // component — a plain remount after navigating back would still serve
+      // the pre-create cache without this.
+      queryClient.invalidateQueries({ queryKey: ['admin-courses'] });
 
       if (publish) {
         try {

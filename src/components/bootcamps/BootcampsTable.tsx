@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { getCoreRowModel, useReactTable, type ColumnDef } from '@tanstack/react-table';
 import { MoreHorizontal } from 'lucide-react';
 import { toast } from 'sonner';
@@ -53,6 +53,7 @@ function fmtDate(iso: string) {
 
 export default function BootcampsTable() {
   const router = useRouter();
+  const queryClient = useQueryClient();
   const [q, setQ] = useState('');
   const [level, setLevel] = useState<string>('ALL');
   const [confirming, setConfirming] = useState<Bootcamp | null>(null);
@@ -81,6 +82,10 @@ export default function BootcampsTable() {
     setBusy(true);
     try {
       const created = await createBootcamp({ title: 'Untitled bootcamp' });
+      // The 60s query staleTime (createQueryClient) means a plain remount of
+      // this table after navigating back from the detail page would still
+      // serve the pre-create cache — invalidate so the list is right on return.
+      queryClient.invalidateQueries({ queryKey: ['admin-bootcamps'] });
       router.push(`/bootcamps/${created.id}`);
     } catch (error) {
       toast.error('Could not create the bootcamp', { description: (error as Error).message });

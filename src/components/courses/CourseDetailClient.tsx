@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { ChevronDown, ChevronUp, Pencil, Plus, X } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
@@ -150,6 +150,7 @@ export default function CourseDetailClient() {
   const [saving, setSaving] = useState(false);
   const [payloadOpen, setPayloadOpen] = useState(false);
   const [attaching, setAttaching] = useState<CapstoneKind | null>(null);
+  const queryClient = useQueryClient();
   const role = useAuthStore((s) => s.userRole);
   const authResolved = useAuthStore((s) => s.authResolved);
   // Fail closed: until the session check lands, treat the caller as non-staff
@@ -228,6 +229,10 @@ export default function CourseDetailClient() {
       await updateCourse(course.id, isStaff ? { ...draft } : stripPricingFields({ ...draft }));
       await refetch();
       toast.success('Saved.');
+      // The courses list is a separate query, with a 60s staleTime — without
+      // this, a title/pricing edit here would not show up there until it
+      // expires or the page is hard-reloaded.
+      queryClient.invalidateQueries({ queryKey: ['admin-courses'] });
     } catch (error) {
       const message =
         (error as { response?: { data?: { message?: string } } }).response?.data?.message ??
@@ -242,6 +247,7 @@ export default function CourseDetailClient() {
     try {
       await setCourseStatus(course.id, action);
       await refetch();
+      queryClient.invalidateQueries({ queryKey: ['admin-courses'] });
       toast.success(`${action.charAt(0).toUpperCase()}${action.slice(1)}ed.`);
     } catch (error) {
       const failures = (error as { failures?: Array<{ message: string }> }).failures;
@@ -880,6 +886,7 @@ export default function CourseDetailClient() {
             if (confirming.kind === 'course') {
               await deleteCourse(course.id);
               toast.success('Deleted.');
+              queryClient.invalidateQueries({ queryKey: ['admin-courses'] });
               router.push('/courses');
               return;
             }

@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { useQueryClient } from '@tanstack/react-query';
 import Link from 'next/link';
 import { toast } from 'sonner';
 
@@ -45,6 +46,7 @@ const emptyDraft = (): ProjectDraft => ({
  */
 export default function NewProjectClient() {
   const router = useRouter();
+  const queryClient = useQueryClient();
   const [form, setForm] = useState<ProjectDraft>(emptyDraft());
   const [saving, setSaving] = useState(false);
 
@@ -66,6 +68,10 @@ export default function NewProjectClient() {
       toast.success('Created as a draft.', {
         description: 'Clear the waitlist flag on the Overview tab to publish it.',
       });
+      // Same fix as courses/bootcamps: the list's query has a 60s staleTime
+      // and lives on a different route's component, so it needs its own
+      // invalidation to show this on return rather than serving stale cache.
+      queryClient.invalidateQueries({ queryKey: ['admin-projects'] });
       router.push(`/projects/${created.id}`);
     } catch (error) {
       toast.error('Could not create the project', { description: (error as Error).message });
