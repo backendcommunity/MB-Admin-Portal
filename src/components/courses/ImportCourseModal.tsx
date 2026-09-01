@@ -36,6 +36,47 @@ import {
 import { toApiQuestions } from '@/lib/courses/quiz';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
+import { useAuthStore } from '@/store/authStore';
+
+/**
+ * What would 403 partway through an import for a non-staff caller, per the
+ * approval-workflow report: `POST /admin/categories` (admin-only — a new
+ * category named in the document), and `POST /quizzes` / `POST /exercises`
+ * (both admin-only for CREATE, because Quiz and Exercise carry no ownership
+ * column at all — there is no way to scope who may write them). Attaching an
+ * EXISTING quiz/exercise/project is a different, already-open call
+ * (`attachQuiz`/`attachExercise`/`attachProject`) and is not blocked here.
+ */
+function importBlockers(doc: {
+  newCategory?: string;
+  chapters: Array<{ items: Array<{ kind: string }> }>;
+}): string[] {
+  const problems: string[] = [];
+  if (doc.newCategory) {
+    problems.push(
+      `Category "${doc.newCategory}" doesn't exist — pick an existing one, or ask an admin to add it.`,
+    );
+  }
+  const newQuizzes = doc.chapters.reduce(
+    (n, chapter) => n + chapter.items.filter((item) => item.kind === 'quiz').length,
+    0,
+  );
+  const newExercises = doc.chapters.reduce(
+    (n, chapter) => n + chapter.items.filter((item) => item.kind === 'exercise').length,
+    0,
+  );
+  if (newQuizzes) {
+    problems.push(
+      `This document creates ${newQuizzes} new quiz${newQuizzes === 1 ? '' : 'zes'} — only an admin can create a quiz. Remove ${newQuizzes === 1 ? 'it' : 'them'} from the document, or ask an admin to run this import.`,
+    );
+  }
+  if (newExercises) {
+    problems.push(
+      `This document creates ${newExercises} new exercise${newExercises === 1 ? '' : 's'} — only an admin can create an exercise. Remove ${newExercises === 1 ? 'it' : 'them'} from the document, or ask an admin to run this import.`,
+    );
+  }
+  return problems;
+}
 
 /**
  * One document builds a whole course: record, category, chapters, videos,
@@ -58,6 +99,11 @@ export default function ImportCourseModal({
   courseId?: string;
   onImported: (courseId: string) => void;
 }) {
+  const role = useAuthStore((s) => s.userRole);
+  const authResolved = useAuthStore((s) => s.authResolved);
+  // Fail closed: until the session check lands, treat the caller as non-staff
+  // rather than trusting a possibly-stale cached role (see SuperAdminOnly).
+  const isStaff = authResolved && (role === 'ADMIN' || role === 'SUPER_ADMIN');
   const [text, setText] = useState('');
   const [busy, setBusy] = useState(false);
   const [catalog, setCatalog] = useState<ImportCatalog>({
@@ -109,8 +155,23 @@ export default function ImportCourseModal({
 
   const run = async () => {
     if (!result?.ok || !result.doc) return;
-    setBusy(true);
     const { doc } = result;
+
+    // Refuse before writing anything — not after the API 403s partway
+    // through, with chapters and videos already created. Staff hit none of
+    // these guards; they're the only callers `createCategory`/`POST
+    // /quizzes`/`POST /exercises` actually accept.
+    if (!isStaff) {
+      const blockers = importBlockers(doc);
+      if (blockers.length) {
+        toast.error('Cannot import this document', {
+          description: blockers.join(' '),
+        });
+        return;
+      }
+    }
+
+    setBusy(true);
 
     try {
       let categoryId = doc.course.categoryId ?? null;
