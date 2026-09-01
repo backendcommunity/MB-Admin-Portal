@@ -1009,6 +1009,11 @@ function TasksTab({ project, onChanged }: { project: ProjectDetail; onChanged: (
 // ── builders ────────────────────────────────────────────────────────────────
 
 function BuildersTab({ projectId }: { projectId: string }) {
+  const role = useAuthStore((s) => s.userRole);
+  const authResolved = useAuthStore((s) => s.authResolved);
+  // Fail closed: until the session check lands, treat the caller as non-staff
+  // rather than trusting a possibly-stale cached role (see SuperAdminOnly).
+  const isStaff = authResolved && (role === 'ADMIN' || role === 'SUPER_ADMIN');
   const [q, setQ] = useState('');
   const [page, setPage] = useState(1);
   const [enrolling, setEnrolling] = useState(false);
@@ -1036,10 +1041,12 @@ function BuildersTab({ projectId }: { projectId: string }) {
           className="max-w-xs"
           aria-label="Search builders"
         />
-        <Button size="sm" onClick={() => setEnrolling(true)}>
-          <Plus className="mr-1.5 size-4" />
-          Add builders
-        </Button>
+        {isStaff ? (
+          <Button size="sm" onClick={() => setEnrolling(true)}>
+            <Plus className="mr-1.5 size-4" />
+            Add builders
+          </Button>
+        ) : null}
       </div>
 
       {isLoading ? (

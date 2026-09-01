@@ -744,7 +744,9 @@ export default function PathDetailClient() {
                 ? `${path.counts.enrolled} enrolled. Removing someone deletes their progress on this path — there is no undo.`
                 : 'Nobody is enrolled yet.'
             }
-            actions={<Button onClick={() => setEnrolOpen(true)}>Enrol learners</Button>}
+            actions={
+              isStaff ? <Button onClick={() => setEnrolOpen(true)}>Enrol learners</Button> : null
+            }
           />
 
           <div className="flex flex-wrap items-center gap-2">
@@ -780,7 +782,9 @@ export default function PathDetailClient() {
             <Card className="p-6 text-center text-sm text-muted-foreground">
               {learnerQDebounced || accessFilter !== 'all'
                 ? 'Nobody matches that filter.'
-                : 'No enrolments. Use Enrol learners to add people by email.'}
+                : isStaff
+                  ? 'No enrolments. Use Enrol learners to add people by email.'
+                  : 'No enrolments yet.'}
             </Card>
           ) : (
             <Card className="overflow-x-auto">

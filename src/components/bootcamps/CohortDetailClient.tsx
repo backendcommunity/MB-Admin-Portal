@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
 import { useQuery } from '@tanstack/react-query';
 import { GripVertical, Pencil, Plus, Trash2 } from 'lucide-react';
+import { useAuthStore } from '@/store/authStore';
 import { toast } from 'sonner';
 
 import { Button } from '@/components/ui/button';
@@ -568,6 +569,11 @@ function StudentsPane({
   onGuard: (label: string, run: () => Promise<void>) => void;
   onChanged: () => void;
 }) {
+  const role = useAuthStore((s) => s.userRole);
+  const authResolved = useAuthStore((s) => s.authResolved);
+  // Fail closed: until the session check lands, treat the caller as non-staff
+  // rather than trusting a possibly-stale cached role (see SuperAdminOnly).
+  const isStaff = authResolved && (role === 'ADMIN' || role === 'SUPER_ADMIN');
   const [q, setQ] = useState('');
   const [page, setPage] = useState(1);
   const [adding, setAdding] = useState(false);
@@ -597,10 +603,12 @@ function StudentsPane({
           className="max-w-xs"
           aria-label="Search learners"
         />
-        <Button size="sm" onClick={() => setAdding(true)}>
-          <Plus className="mr-1.5 size-4" />
-          Add learners
-        </Button>
+        {isStaff ? (
+          <Button size="sm" onClick={() => setAdding(true)}>
+            <Plus className="mr-1.5 size-4" />
+            Add learners
+          </Button>
+        ) : null}
       </div>
 
       {isLoading ? (
