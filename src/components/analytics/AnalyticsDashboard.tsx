@@ -53,11 +53,15 @@ const CURRENCY_SYMBOLS: Record<string, string> = {
   NGN: '₦',
 };
 
-function currencySymbol(currency: string): string {
+export function currencySymbol(currency: string): string {
   return CURRENCY_SYMBOLS[currency] ?? currency + ' ';
 }
 
-function fmtMoney(amount: number, currency: string): string {
+/**
+ * Exported so other dashboards (e.g. the instructor's) format money the same
+ * way instead of rolling a second currency formatter.
+ */
+export function fmtMoney(amount: number, currency: string): string {
   const sym = currencySymbol(currency);
   if (amount >= 1_000_000) return `${sym}${(amount / 1_000_000).toFixed(1)}M`;
   if (amount >= 1_000) return `${sym}${(amount / 1_000).toFixed(1)}k`;
@@ -65,7 +69,7 @@ function fmtMoney(amount: number, currency: string): string {
 }
 
 // ─── Relative time helper ─────────────────────────────────────────────────────
-function relativeTime(iso: string): string {
+export function relativeTime(iso: string): string {
   const diff = Date.now() - new Date(iso).getTime();
   const mins = Math.floor(diff / 60_000);
   if (mins < 1) return 'just now';
@@ -172,7 +176,7 @@ const PERIODS: { label: string; value: AnalyticsPeriod }[] = [
 ];
 
 // ─── Formatters ───────────────────────────────────────────────────────────────
-function fmtNum(n: number): string {
+export function fmtNum(n: number): string {
   if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
   if (n >= 1_000) return `${(n / 1_000).toFixed(1)}k`;
   return String(n);
