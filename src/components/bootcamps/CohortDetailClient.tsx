@@ -750,10 +750,18 @@ function BonusesPane({
             <div key={bonus.id} className="flex flex-wrap items-center gap-3 px-4 py-3">
               <StatusBadge label={bonus.kind ?? 'unset'} tone="info" />
               <div className="min-w-0 flex-1">
-                <div className="truncate font-medium">{bonus.itemTitle || 'Nothing chosen'}</div>
+                {/* A custom bonus (no linked course/resource/video) has no
+                    `itemTitle` by design — its title lives in `topic`
+                    instead (see BonusDialog.tsx). Falling straight to
+                    "Nothing chosen" for that case was the bug; only a bonus
+                    with neither a linked item nor a topic ever reaches it. */}
+                <div className="truncate font-medium">
+                  {bonus.itemTitle || bonus.topic || 'Nothing chosen'}
+                </div>
                 <div className="truncate text-xs text-muted-foreground">
-                  {[bonus.topic, bonus.summary].filter(Boolean).join(' · ') ||
-                    'No topic or summary'}
+                  {(bonus.itemTitle ? [bonus.topic, bonus.summary] : [bonus.summary])
+                    .filter(Boolean)
+                    .join(' · ') || 'No topic or summary'}
                 </div>
               </div>
               <Button variant="ghost" size="sm" onClick={() => setEditing(bonus)}>
