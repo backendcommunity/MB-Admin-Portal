@@ -270,15 +270,17 @@ export default function CohortFormDialog({
             )}
           </div>
 
-          <div className="space-y-1.5 sm:col-span-2">
-            <Label htmlFor="cohort-slack">Study group link</Label>
-            <Input
-              id="cohort-slack"
-              value={form.studyGroupLink}
-              onChange={(event) => set('studyGroupLink', event.target.value)}
-              placeholder="https://…"
-            />
-          </div>
+          {isStaff ? (
+            <div className="space-y-1.5 sm:col-span-2">
+              <Label htmlFor="cohort-slack">Study group link</Label>
+              <Input
+                id="cohort-slack"
+                value={form.studyGroupLink}
+                onChange={(event) => set('studyGroupLink', event.target.value)}
+                placeholder="https://…"
+              />
+            </div>
+          ) : null}
 
           {isStaff ? (
             <div className="space-y-1.5">

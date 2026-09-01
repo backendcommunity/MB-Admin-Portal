@@ -23,6 +23,11 @@
  * are payment-processor plumbing an instructor can't act on, so the product
  * call was to remove those three controls entirely rather than show them
  * disabled.
+ *
+ * Item 13: Study group link gets the same removal treatment, for a
+ * different reason — it isn't API-guarded at all (an instructor's payload
+ * containing it never 403s), but admins add it during cohort approval, so
+ * the product call was to keep it out of an instructor's form entirely.
  */
 import React from 'react';
 import { render, screen, waitFor } from '@testing-library/react';
@@ -178,6 +183,10 @@ describe('CohortFormDialog — pricing input gating', () => {
     expect(screen.queryByLabelText(/paddle price id/i)).not.toBeInTheDocument();
     expect(screen.queryByLabelText(/asyncpay plan id/i)).not.toBeInTheDocument();
     expect(screen.queryByLabelText(/allows subscription/i)).not.toBeInTheDocument();
+
+    // Study group link isn't API-guarded, but admins add it during
+    // approval, so it's removed for an instructor rather than left editable.
+    expect(screen.queryByLabelText(/study group link/i)).not.toBeInTheDocument();
   });
 
   it('leaves the pricing inputs enabled for an admin', async () => {
@@ -196,5 +205,6 @@ describe('CohortFormDialog — pricing input gating', () => {
     expect(screen.getByLabelText(/paddle price id/i)).toBeEnabled();
     expect(screen.getByLabelText(/asyncpay plan id/i)).toBeEnabled();
     expect(screen.getByLabelText(/allows subscription/i)).toBeEnabled();
+    expect(screen.getByLabelText(/study group link/i)).toBeEnabled();
   });
 });
