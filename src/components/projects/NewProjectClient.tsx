@@ -1,16 +1,10 @@
 'use client';
 
 import { useState } from 'react';
+import { useRouter } from 'next/navigation';
+import Link from 'next/link';
 import { toast } from 'sonner';
 
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import {
@@ -20,32 +14,44 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { Field, FieldGrid } from '@/components/shared/form/Section';
-import { useSeededForm } from '@/lib/forms/useSeededForm';
+import { PageHeader } from '@/components/shared/PageHeader';
+import { Field, FieldGrid, Section } from '@/components/shared/form/Section';
 import { LEVELS, MODES, createProject, type Level, type Mode } from '@/lib/api/projects';
 
-/** Enough to create it. The brief, playground and curriculum are built inside. */
-export default function NewProjectModal({
-  open,
-  onOpenChange,
-  onCreated,
-}: {
-  open: boolean;
-  onOpenChange: (open: boolean) => void;
-  onCreated: (id: string) => void;
-}) {
-  const [form, setForm] = useSeededForm(open ? 'open' : 'closed', () => ({
-    title: '',
-    summary: '',
-    level: 'Beginner' as Level,
-    mode: 'rest-api' as Mode,
-    language: 'node',
-    entrypoint: 'index.js',
-  }));
+type ProjectDraft = {
+  title: string;
+  summary: string;
+  level: Level;
+  mode: Mode;
+  language: string;
+  entrypoint: string;
+};
+
+const emptyDraft = (): ProjectDraft => ({
+  title: '',
+  summary: '',
+  level: 'Beginner',
+  mode: 'rest-api',
+  language: 'node',
+  entrypoint: 'index.js',
+});
+
+/**
+ * Full create page, same shape as `courses/new`: enough to create a draft
+ * project immediately, then hand off to the detail page for the brief, the
+ * playground and the curriculum. Used to be a dialog (`NewProjectModal`) —
+ * moved here so creating a project feels like every other content type
+ * instead of popping a dialog before a page.
+ */
+export default function NewProjectClient() {
+  const router = useRouter();
+  const [form, setForm] = useState<ProjectDraft>(emptyDraft());
   const [saving, setSaving] = useState(false);
 
-  const submit = async () => {
-    if (!form.title.trim() || !form.summary.trim()) return;
+  const valid = form.title.trim().length > 0 && form.summary.trim().length > 0;
+
+  const save = async () => {
+    if (!valid) return;
     setSaving(true);
     try {
       const created = await createProject({
@@ -60,26 +66,39 @@ export default function NewProjectModal({
       toast.success('Created as a draft.', {
         description: 'Clear the waitlist flag on the Overview tab to publish it.',
       });
-      onOpenChange(false);
-      onCreated(created.id);
+      router.push(`/projects/${created.id}`);
     } catch (error) {
       toast.error('Could not create the project', { description: (error as Error).message });
-    } finally {
       setSaving(false);
     }
   };
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-lg">
-        <DialogHeader>
-          <DialogTitle>New project</DialogTitle>
-          <DialogDescription>
-            Enough to create it. The brief, the playground and the curriculum are built inside.
-          </DialogDescription>
-        </DialogHeader>
+    <div>
+      <p className="mb-1 text-sm text-muted-foreground">
+        <Link href="/projects" className="text-primary hover:underline">
+          Projects
+        </Link>{' '}
+        / New
+      </p>
 
-        <div className="space-y-4">
+      <PageHeader
+        title={form.title || 'Untitled project'}
+        description="Enough to create it. The brief, the playground and the curriculum are built inside."
+        actions={
+          <>
+            <Button variant="ghost" onClick={() => router.push('/projects')} disabled={saving}>
+              Cancel
+            </Button>
+            <Button onClick={save} disabled={saving || !valid}>
+              {saving ? 'Creating…' : 'Create'}
+            </Button>
+          </>
+        }
+      />
+
+      <div className="space-y-4">
+        <Section title="Identity" id="section-identity">
           <Field label="Title" htmlFor="np-title" required>
             <Input
               id="np-title"
@@ -103,7 +122,9 @@ export default function NewProjectModal({
               className="w-full rounded-lg border bg-background px-3 py-2 text-sm"
             />
           </Field>
+        </Section>
 
+        <Section title="Playground" id="section-playground">
           <FieldGrid>
             <Field label="Level" htmlFor="np-level" required>
               <Select
@@ -178,17 +199,8 @@ export default function NewProjectModal({
               </Field>
             </FieldGrid>
           ) : null}
-        </div>
-
-        <DialogFooter>
-          <Button variant="outline" onClick={() => onOpenChange(false)}>
-            Cancel
-          </Button>
-          <Button onClick={submit} disabled={saving || !form.title.trim() || !form.summary.trim()}>
-            {saving ? 'Creating…' : 'Create'}
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+        </Section>
+      </div>
+    </div>
   );
 }

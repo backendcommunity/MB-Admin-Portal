@@ -29,7 +29,6 @@ import { LoadingState, ErrorState } from '@/components/shared/LoadingState';
 import { EmptyState } from '@/components/shared/EmptyState';
 import { StatusBadge } from '@/components/shared/StatusBadge';
 import ConfirmDelete from '@/components/users/ConfirmDelete';
-import NewProjectModal from '@/components/projects/NewProjectModal';
 import ImportProjectModal from '@/components/projects/ImportProjectModal';
 import { LEVELS, MODES, deleteProject, fetchProjects, type Project } from '@/lib/api/projects';
 
@@ -49,7 +48,6 @@ export default function ProjectsTable() {
   const [mode, setMode] = useState('ALL');
   const [status, setStatus] = useState('ALL');
   const [page, setPage] = useState(1);
-  const [creating, setCreating] = useState(false);
   const [importing, setImporting] = useState(false);
   const [confirming, setConfirming] = useState<Project | null>(null);
 
@@ -212,7 +210,7 @@ export default function ProjectsTable() {
             <Button variant="outline" onClick={() => setImporting(true)}>
               Import JSON
             </Button>
-            <Button onClick={() => setCreating(true)}>New project</Button>
+            <Button onClick={() => router.push('/projects/new')}>New project</Button>
           </div>
         }
       />
@@ -279,12 +277,6 @@ export default function ProjectsTable() {
           refetch();
           router.push(`/projects/${id}`);
         }}
-      />
-
-      <NewProjectModal
-        open={creating}
-        onOpenChange={setCreating}
-        onCreated={(id) => router.push(`/projects/${id}`)}
       />
 
       <ConfirmDelete
