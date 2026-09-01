@@ -75,6 +75,7 @@ import { evaluateReadiness } from '@/lib/courses/readiness';
 import { stripPricingFields } from '@/lib/pricing-fields';
 import { useAuthStore } from '@/store/authStore';
 import { toast } from 'sonner';
+import { deriveLifecycle, SubmitForReviewControl } from '@/components/shared/PublishLifecycle';
 
 const TABS = [
   ['overview', 'Overview'],
@@ -320,16 +321,18 @@ export default function CourseDetailClient() {
         description={`${course.slug} · updated ${new Date(course.updatedAt).toLocaleDateString()}`}
         actions={
           <>
-            <StatusBadge
-              label={course.status}
-              tone={
-                course.status === 'PUBLISHED'
-                  ? 'success'
-                  : course.status === 'DRAFT'
-                    ? 'neutral'
-                    : 'warning'
-              }
-            />
+            {isStaff ? (
+              <StatusBadge
+                label={course.status}
+                tone={
+                  course.status === 'PUBLISHED'
+                    ? 'success'
+                    : course.status === 'DRAFT'
+                      ? 'neutral'
+                      : 'warning'
+                }
+              />
+            ) : null}
             {course.archivedAt ? (
               <Button variant="outline" onClick={() => changeStatus('restore')}>
                 Restore
@@ -338,10 +341,22 @@ export default function CourseDetailClient() {
               <Button variant="outline" onClick={() => changeStatus('unpublish')}>
                 Unpublish
               </Button>
-            ) : (
+            ) : isStaff ? (
               <Button onClick={() => changeStatus('publish')} disabled={!ready}>
                 Publish
               </Button>
+            ) : (
+              <SubmitForReviewControl
+                type="course"
+                id={course.id}
+                state={deriveLifecycle({
+                  isWaiting: course.isWaiting,
+                  waitingLink: course.waitingLink,
+                  isLive: course.isPublic,
+                })}
+                note={course.waitingLink}
+                onSubmitted={refetch}
+              />
             )}
             <Button variant="outline" onClick={() => changeStatus('archive')}>
               Archive

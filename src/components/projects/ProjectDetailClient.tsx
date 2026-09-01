@@ -7,6 +7,8 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { GripVertical, Pencil, Plus, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
 
+import { useAuthStore } from '@/store/authStore';
+import { deriveLifecycle, SubmitForReviewControl } from '@/components/shared/PublishLifecycle';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -81,6 +83,11 @@ export default function ProjectDetailClient() {
   const params = useParams<{ id: string }>();
   const projectId = params.id;
   const queryClient = useQueryClient();
+  const role = useAuthStore((s) => s.userRole);
+  const authResolved = useAuthStore((s) => s.authResolved);
+  // Fail closed: until the session check lands, treat the caller as non-staff
+  // rather than trusting a possibly-stale cached role (see SuperAdminOnly).
+  const isStaff = authResolved && (role === 'ADMIN' || role === 'SUPER_ADMIN');
 
   const { data, isLoading, isError, refetch } = useQuery({
     queryKey: ['admin-project', projectId],
@@ -359,11 +366,6 @@ export default function ProjectDetailClient() {
                   'Only a subscriber or somebody with an entitlement can start it.',
                 ],
                 ['isSample', 'Sample project', 'Shown as an example, not counted as real work.'],
-                [
-                  'isWaiting',
-                  'Waitlisted (draft)',
-                  'Defaults to TRUE. This one flag is the whole publish state.',
-                ],
               ].map(([key, label, hint]) => (
                 <label
                   key={key}
@@ -380,6 +382,42 @@ export default function ProjectDetailClient() {
                   />
                 </label>
               ))}
+
+              {isStaff ? (
+                <label className="flex items-center justify-between gap-3 rounded-lg border p-3">
+                  <span>
+                    <span className="block text-sm font-medium">Waitlisted (draft)</span>
+                    <span className="block text-xs text-muted-foreground">
+                      Defaults to TRUE. This one flag is the whole publish state.
+                    </span>
+                  </span>
+                  <Switch
+                    checked={draft.isWaiting}
+                    onCheckedChange={(next) => set('isWaiting', next)}
+                    aria-label="Waitlisted (draft)"
+                  />
+                </label>
+              ) : (
+                <div className="flex items-center justify-between gap-3 rounded-lg border p-3">
+                  <span>
+                    <span className="block text-sm font-medium">Publish status</span>
+                    <span className="block text-xs text-muted-foreground">
+                      An instructor cannot publish directly — submit it for review instead.
+                    </span>
+                  </span>
+                  <SubmitForReviewControl
+                    type="project"
+                    id={projectId}
+                    state={deriveLifecycle({
+                      isWaiting: data.isWaiting,
+                      waitingLink: data.waitingLink,
+                      isLive: !data.isWaiting,
+                    })}
+                    note={data.waitingLink}
+                    onSubmitted={refetch}
+                  />
+                </div>
+              )}
             </Section>
 
             <Button onClick={save} disabled={saving}>

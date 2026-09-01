@@ -30,6 +30,7 @@ import { Switch } from '@/components/ui/switch';
 import { StaffOnly } from '@/components/shared/SuperAdminOnly';
 import { useAuthStore } from '@/store/authStore';
 import { stripPricingFields } from '@/lib/pricing-fields';
+import { deriveLifecycle, SubmitForReviewControl } from '@/components/shared/PublishLifecycle';
 
 export default function OffersDashboard() {
   const queryClient = useQueryClient();
@@ -138,6 +139,7 @@ export default function OffersDashboard() {
               <TableHead>Slug</TableHead>
               <TableHead>Amount</TableHead>
               <TableHead>Premium</TableHead>
+              <TableHead>Status</TableHead>
               <TableHead>Created</TableHead>
               <TableHead className="text-right">Actions</TableHead>
             </TableRow>
@@ -162,34 +164,64 @@ export default function OffersDashboard() {
                     <Skeleton className="h-4 w-[100px]" />
                   </TableCell>
                   <TableCell>
+                    <Skeleton className="h-4 w-[90px]" />
+                  </TableCell>
+                  <TableCell>
+                    <Skeleton className="h-4 w-[100px]" />
+                  </TableCell>
+                  <TableCell>
                     <Skeleton className="h-4 w-[80px] float-right" />
                   </TableCell>
                 </TableRow>
               ))
             ) : data?.data.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={6} className="text-center h-24 text-muted-foreground">
+                <TableCell colSpan={7} className="text-center h-24 text-muted-foreground">
                   No offers found.
                 </TableCell>
               </TableRow>
             ) : (
-              data?.data.map((offer) => (
-                <TableRow key={offer.id}>
-                  <TableCell className="font-medium">{offer.title}</TableCell>
-                  <TableCell className="text-muted-foreground">{offer.slug}</TableCell>
-                  <TableCell>${offer.amount}</TableCell>
-                  <TableCell>{offer.isPremium ? 'Yes' : 'No'}</TableCell>
-                  <TableCell>{format(new Date(offer.createdAt), 'MMM d, yyyy')}</TableCell>
-                  <TableCell className="text-right">
-                    <Button variant="ghost" size="icon" onClick={() => openDialog(offer)}>
-                      <Edit className="h-4 w-4 text-muted-foreground" />
-                    </Button>
-                    <Button variant="ghost" size="icon" onClick={() => handleDelete(offer.id)}>
-                      <Trash2 className="h-4 w-4 text-destructive" />
-                    </Button>
-                  </TableCell>
-                </TableRow>
-              ))
+              data?.data.map((offer) => {
+                const lifecycle = deriveLifecycle({
+                  isWaiting: offer.isWaiting,
+                  waitingLink: offer.waitingLink,
+                  isLive: !offer.isWaiting,
+                });
+                return (
+                  <TableRow key={offer.id}>
+                    <TableCell className="font-medium">{offer.title}</TableCell>
+                    <TableCell className="text-muted-foreground">{offer.slug}</TableCell>
+                    <TableCell>${offer.amount}</TableCell>
+                    <TableCell>{offer.isPremium ? 'Yes' : 'No'}</TableCell>
+                    <TableCell>
+                      {isStaff ? (
+                        <span className="text-muted-foreground">
+                          {offer.isWaiting ? 'Waitlisted' : 'Live'}
+                        </span>
+                      ) : (
+                        <SubmitForReviewControl
+                          type="offer"
+                          id={offer.id}
+                          state={lifecycle}
+                          note={offer.waitingLink}
+                          onSubmitted={() =>
+                            queryClient.invalidateQueries({ queryKey: ['offers'] })
+                          }
+                        />
+                      )}
+                    </TableCell>
+                    <TableCell>{format(new Date(offer.createdAt), 'MMM d, yyyy')}</TableCell>
+                    <TableCell className="text-right">
+                      <Button variant="ghost" size="icon" onClick={() => openDialog(offer)}>
+                        <Edit className="h-4 w-4 text-muted-foreground" />
+                      </Button>
+                      <Button variant="ghost" size="icon" onClick={() => handleDelete(offer.id)}>
+                        <Trash2 className="h-4 w-4 text-destructive" />
+                      </Button>
+                    </TableCell>
+                  </TableRow>
+                );
+              })
             )}
           </TableBody>
         </Table>

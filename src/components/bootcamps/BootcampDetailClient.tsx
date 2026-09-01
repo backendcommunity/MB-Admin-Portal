@@ -29,6 +29,8 @@ import { TabBar } from '@/components/shared/TabBar';
 import { useSeededForm } from '@/lib/forms/useSeededForm';
 import CohortFormDialog from '@/components/bootcamps/CohortFormDialog';
 import AssignmentsQueue from '@/components/bootcamps/AssignmentsQueue';
+import { useAuthStore } from '@/store/authStore';
+import { submitForReview } from '@/lib/api/instructor';
 import {
   fetchBootcamp,
   updateBootcamp,
@@ -36,6 +38,45 @@ import {
   type BootcampTopic,
   type Cohort,
 } from '@/lib/api/bootcamps';
+
+/**
+ * `GET /admin/bootcamps/:id` does not currently return `isWaiting` or
+ * `waitingLink` (the row shape omits them even though the model has both),
+ * so — unlike course/path/project/offer — there is no real signal here to
+ * derive Draft/In review/Changes requested/Published from. What IS true and
+ * safe to show is "you just submitted this" for the rest of the session; it
+ * intentionally does not survive a reload, rather than claim a persisted
+ * status the API cannot back up.
+ */
+function BootcampReviewAction({ bootcampId }: { bootcampId: string }) {
+  const [status, setStatus] = useState<'idle' | 'submitting' | 'submitted'>('idle');
+
+  if (status === 'submitted') {
+    return <StatusBadge label="Submitted for review" tone="info" />;
+  }
+
+  const submit = async () => {
+    setStatus('submitting');
+    try {
+      await submitForReview('bootcamp', bootcampId);
+      toast.success('Submitted for review.');
+      setStatus('submitted');
+    } catch (error) {
+      toast.error('Could not submit', {
+        description:
+          (error as { response?: { data?: { message?: string } } }).response?.data?.message ??
+          (error as Error).message,
+      });
+      setStatus('idle');
+    }
+  };
+
+  return (
+    <Button variant="outline" onClick={submit} disabled={status === 'submitting'}>
+      {status === 'submitting' ? 'Submitting…' : 'Submit for review'}
+    </Button>
+  );
+}
 
 const TABS = [
   ['overview', 'Overview'],
@@ -72,6 +113,11 @@ export default function BootcampDetailClient() {
   const params = useParams<{ id: string }>();
   const bootcampId = params.id;
   const queryClient = useQueryClient();
+  const role = useAuthStore((s) => s.userRole);
+  const authResolved = useAuthStore((s) => s.authResolved);
+  // Fail closed: until the session check lands, treat the caller as non-staff
+  // rather than trusting a possibly-stale cached role (see SuperAdminOnly).
+  const isStaff = authResolved && (role === 'ADMIN' || role === 'SUPER_ADMIN');
 
   const { data, isLoading, isError, refetch } = useQuery({
     queryKey: ['admin-bootcamp', bootcampId],
@@ -153,6 +199,7 @@ export default function BootcampDetailClient() {
         actions={
           <>
             <StatusBadge label={data.level || '—'} tone={levelTone(data.level)} />
+            {isStaff ? null : <BootcampReviewAction bootcampId={bootcampId} />}
             <Button variant="outline" onClick={() => router.push('/bootcamps')}>
               Back
             </Button>

@@ -33,6 +33,8 @@ import TopicDrawer from '@/components/paths/TopicDrawer';
 import AttachItemDialog from '@/components/paths/AttachItemDialog';
 import EnrolLearnersDialog from '@/components/paths/EnrolLearnersDialog';
 import { AuthorField } from '@/components/paths/AuthorField';
+import { useAuthStore } from '@/store/authStore';
+import { deriveLifecycle, SubmitForReviewControl } from '@/components/shared/PublishLifecycle';
 import {
   ATTACHABLE_KINDS,
   checkPathSlug,
@@ -107,6 +109,11 @@ export default function PathDetailClient() {
   const router = useRouter();
   const params = useParams();
   const pathId = String(params?.id ?? '');
+  const role = useAuthStore((s) => s.userRole);
+  const authResolved = useAuthStore((s) => s.authResolved);
+  // Fail closed: until the session check lands, treat the caller as non-staff
+  // rather than trusting a possibly-stale cached role (see SuperAdminOnly).
+  const isStaff = authResolved && (role === 'ADMIN' || role === 'SUPER_ADMIN');
 
   const [tab, setTab] = useState<TabId>('overview');
   const [draft, setDraft] = useState<PathInput | null>(null);
@@ -261,7 +268,7 @@ export default function PathDetailClient() {
         description={`/${path.slug} · ${path.topics.length} topics · ${path.counts.items ?? 0} items`}
         actions={
           <div className="flex flex-wrap items-center gap-2">
-            <StatusBadge tone={tone(path.status)} label={path.status} />
+            {isStaff ? <StatusBadge tone={tone(path.status)} label={path.status} /> : null}
             <Button variant="outline" onClick={() => router.push('/paths')}>
               Back
             </Button>
@@ -275,13 +282,24 @@ export default function PathDetailClient() {
               {saving ? 'Saving…' : 'Save'}
             </Button>
             {/* A team path is never published to the catalogue. */}
-            {isTeamPath ? null : (
-              <Button
-                onClick={() => changeStatus(path.isPublic ? 'unpublish' : 'publish')}
-                disabled={!path.isPublic && !isReady(rules)}
-              >
-                {path.isPublic ? 'Unpublish' : 'Publish'}
+            {isTeamPath ? null : path.isPublic ? (
+              <Button onClick={() => changeStatus('unpublish')}>Unpublish</Button>
+            ) : isStaff ? (
+              <Button onClick={() => changeStatus('publish')} disabled={!isReady(rules)}>
+                Publish
               </Button>
+            ) : (
+              <SubmitForReviewControl
+                type="roadmap"
+                id={path.id}
+                state={deriveLifecycle({
+                  isWaiting: path.isWaiting,
+                  waitingLink: path.waitingLink,
+                  isLive: path.isPublic,
+                })}
+                note={path.waitingLink}
+                onSubmitted={refetch}
+              />
             )}
           </div>
         }
