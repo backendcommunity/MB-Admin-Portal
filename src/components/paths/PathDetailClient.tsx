@@ -1127,8 +1127,20 @@ function TopicPane({
         the same DOM node across topics and the box keeps the previous title.
         (The course editor avoids this by accident — its chapters each render
         their own input inside a map.)
+
+        `topic.id` alone remounts correctly on a SWITCH, but a save from the
+        "Edit all fields" drawer changes this SAME topic's title/duration
+        without changing its id — the persisted value comes back fine (the
+        sidebar spine, a plain controlled render, proves it) but these two
+        uncontrolled inputs kept showing whatever was on screen before the
+        drawer opened. Folding both fields into the key forces a remount,
+        hence a fresh `defaultValue`, whenever either changes for any reason
+        other than this input's own keystroke.
       */}
-      <div key={topic.id} className="grid gap-3 sm:grid-cols-3">
+      <div
+        key={`${topic.id}:${topic.title}:${topic.duration}`}
+        className="grid gap-3 sm:grid-cols-3"
+      >
         <InlineField label="Title" htmlFor="topic-inline-title">
           <Input
             id="topic-inline-title"
