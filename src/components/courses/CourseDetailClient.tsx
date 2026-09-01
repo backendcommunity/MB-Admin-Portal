@@ -168,31 +168,44 @@ export default function CourseDetailClient() {
     queryFn: () => fetchCourse(courseId),
   });
 
-  // Chapters and each chapter's items are separate ordered lists; the scope string
-  // is what stops a drag crossing between them. Declared after the query so it
-  // closes over the current render's data.
-  const drag = useDragReorder({
+  // Chapters and each chapter's items are separate ordered lists. A chapter's
+  // item rows render INSIDE its own chapter card, so a single shared
+  // useDragReorder here would be wrong: native drag events bubble, so
+  // dragstart/dragover/drop on an item also re-fires on its enclosing
+  // chapter card. With one shared hook that clobbers the same `dragged` ref
+  // with the chapter's own {index, scope: 'chapters'}, and the item-level
+  // drop handler then sees a scope mismatch and silently no-ops — the drag
+  // fires, nothing saves. Two independent instances (their own ref/state
+  // each) is the same fix PathDetailClient (topicDrag/itemDrag) and
+  // CohortDetailClient (weekDrag/lessonDrag) already use for the identical
+  // nested-list shape. Declared after the query so they close over the
+  // current render's data.
+  const chapterDrag = useDragReorder({
+    onReorder: async (from, to) => {
+      if (!course) return;
+      const next = moved(course.chapters, from, to);
+      await reorderChapters(
+        courseId,
+        next.map((chapter) => chapter.id),
+      );
+      await refetch();
+    },
+  });
+
+  const itemDrag = useDragReorder({
     onReorder: async (from, to, scope) => {
       if (!course) return;
-      if (scope === 'chapters') {
-        const next = moved(course.chapters, from, to);
-        await reorderChapters(
-          courseId,
-          next.map((chapter) => chapter.id),
-        );
-      } else {
-        const chapter = course.chapters.find((row) => row.id === scope);
-        if (!chapter) return;
-        const owned = chapter.items.filter(
-          (item) => item.kind === 'video' || item.kind === 'article',
-        );
-        const next = moved(owned, from, to);
-        await reorderChapterItems(
-          courseId,
-          chapter.id,
-          next.map((item) => item.id),
-        );
-      }
+      const chapter = course.chapters.find((row) => row.id === scope);
+      if (!chapter) return;
+      const owned = chapter.items.filter(
+        (item) => item.kind === 'video' || item.kind === 'article',
+      );
+      const next = moved(owned, from, to);
+      await reorderChapterItems(
+        courseId,
+        chapter.id,
+        next.map((item) => item.id),
+      );
       await refetch();
     },
   });
@@ -439,7 +452,7 @@ export default function CourseDetailClient() {
               return (
                 <Card
                   key={chapter.id}
-                  {...drag.handlers(chapterIndex, 'chapters')}
+                  {...chapterDrag.handlers(chapterIndex, 'chapters')}
                   className="overflow-hidden p-0 data-[dragging=true]:opacity-50 data-[dragover=true]:border-primary data-[dragover=true]:ring-2 data-[dragover=true]:ring-primary/30"
                 >
                   <div className="flex flex-wrap items-center gap-2 border-b border-border bg-muted/40 px-3 py-2">
@@ -540,7 +553,7 @@ export default function CourseDetailClient() {
                         return (
                           <div
                             key={item.id}
-                            {...(isOwned ? drag.handlers(ownedIndex, chapter.id) : {})}
+                            {...(isOwned ? itemDrag.handlers(ownedIndex, chapter.id) : {})}
                             className="flex flex-wrap items-center gap-2 rounded-md border border-border bg-muted/30 px-2.5 py-1.5 text-sm data-[dragging=true]:opacity-50 data-[dragover=true]:border-primary"
                           >
                             {isOwned ? (
