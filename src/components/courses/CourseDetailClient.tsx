@@ -304,6 +304,7 @@ export default function CourseDetailClient() {
     categories,
     courseId: course.id,
     slugLocked: course.isPublic,
+    isStaff,
     onCategoryCreated: (category: Category) => setCategories((all) => [...all, category]),
   };
 

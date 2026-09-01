@@ -111,6 +111,7 @@ export default function NewCourseClient() {
     draft,
     patch,
     categories,
+    isStaff,
     onCategoryCreated: (category: Category) => setCategories((all) => [...all, category]),
   };
 

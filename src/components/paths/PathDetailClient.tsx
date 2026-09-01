@@ -629,27 +629,33 @@ export default function PathDetailClient() {
                 onChange={(event) => patch({ amount: Number(event.target.value) || 0 })}
               />
             </Field>
-            <Field label="Paddle plan code" htmlFor="path-plan">
-              <Input
-                id="path-plan"
-                type="number"
-                value={draft.paddlePlanCode ?? ''}
-                onChange={(event) =>
-                  patch({ paddlePlanCode: event.target.value ? Number(event.target.value) : null })
-                }
-              />
-            </Field>
-            <Field label="Paddle price ID" htmlFor="path-price">
-              <Input
-                id="path-price"
-                value={draft.paddle_price_id ?? ''}
-                onChange={(event) => patch({ paddle_price_id: event.target.value })}
-                maxLength={30}
-              />
-              <p className="mt-1 text-xs text-muted-foreground">
-                Fixed-width column — trimmed on read so it round-trips.
-              </p>
-            </Field>
+            {isStaff ? (
+              <Field label="Paddle plan code" htmlFor="path-plan">
+                <Input
+                  id="path-plan"
+                  type="number"
+                  value={draft.paddlePlanCode ?? ''}
+                  onChange={(event) =>
+                    patch({
+                      paddlePlanCode: event.target.value ? Number(event.target.value) : null,
+                    })
+                  }
+                />
+              </Field>
+            ) : null}
+            {isStaff ? (
+              <Field label="Paddle price ID" htmlFor="path-price">
+                <Input
+                  id="path-price"
+                  value={draft.paddle_price_id ?? ''}
+                  onChange={(event) => patch({ paddle_price_id: event.target.value })}
+                  maxLength={30}
+                />
+                <p className="mt-1 text-xs text-muted-foreground">
+                  Fixed-width column — trimmed on read so it round-trips.
+                </p>
+              </Field>
+            ) : null}
           </Section>
 
           <Section title="Waitlist" blurb="Collect interest before the path is finished.">

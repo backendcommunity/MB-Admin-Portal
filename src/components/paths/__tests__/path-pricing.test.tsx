@@ -8,9 +8,16 @@
  *
  * Fix (same pattern as `CourseDetailClient`, commit 694620d): strip the
  * pricing keys from the outgoing payload for a non-staff caller.
+ *
+ * Items 9/10: the Paddle plan code and Paddle price ID inputs on the
+ * "Access & pricing" tab render unconditionally today. Per the owner's
+ * answer in §6 of the fix plan, `amount`/`isPremium` stay visible for an
+ * instructor (informative, even though the API refuses the write) — only
+ * the two Paddle fields are removed outright, not disabled, because they're
+ * payment-processor plumbing an instructor can't act on.
  */
 import React from 'react';
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import PathDetailClient from '@/components/paths/PathDetailClient';
@@ -125,5 +132,29 @@ describe('PathDetailClient — instructor save payload', () => {
     await waitFor(() => expect(updatePath).toHaveBeenCalled());
     const [, payload] = updatePath.mock.calls[0];
     expect(payload).toMatchObject({ paddlePlanCode: 12, paddle_price_id: 'pri_123' });
+  });
+});
+
+describe('PathDetailClient — Paddle field gating', () => {
+  it('renders no Paddle plan code or Paddle price ID input for an instructor', async () => {
+    asRole('INSTRUCTOR');
+    renderPage();
+
+    fireEvent.click(await screen.findByRole('tab', { name: 'Access & pricing' }));
+    await screen.findByText('Pricing');
+
+    expect(screen.queryByLabelText(/paddle plan code/i)).not.toBeInTheDocument();
+    expect(screen.queryByLabelText(/paddle price id/i)).not.toBeInTheDocument();
+  });
+
+  it('still renders both Paddle inputs for an admin', async () => {
+    asRole('ADMIN');
+    renderPage();
+
+    fireEvent.click(await screen.findByRole('tab', { name: 'Access & pricing' }));
+    await screen.findByText('Pricing');
+
+    expect(screen.getByLabelText(/paddle plan code/i)).toBeInTheDocument();
+    expect(screen.getByLabelText(/paddle price id/i)).toBeInTheDocument();
   });
 });

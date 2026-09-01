@@ -16,7 +16,7 @@
  * reason via `StaffOnly`.
  */
 import React from 'react';
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, fireEvent } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
@@ -191,5 +191,41 @@ describe('CourseDetailClient — instructor edit payload', () => {
     await waitFor(() => expect(updateCourse).toHaveBeenCalled());
     const [, payload] = updateCourse.mock.calls[0];
     expect(payload).toMatchObject({ isPremium: true, amount: 4999, paddle_price_id: 'pri_123' });
+  });
+});
+
+/**
+ * Item 9/10: the two Paddle inputs used to render StaffOnly — visible but
+ * disabled, with a reason — same as Premium and Price. Per the owner's
+ * answer in §6 of the fix plan, Premium and Price stay that way (an
+ * instructor benefits from seeing them even though they can't set them),
+ * but the two Paddle fields are payment-processor plumbing an instructor
+ * can't act on and should not render at all, matching the treatment the
+ * cohort form already gives its own Paddle/AsyncPay/subscription fields.
+ */
+describe('CourseDetailClient — Paddle field gating (course is already premium)', () => {
+  it('renders no Paddle price ID or Paddle plan code input for an instructor', async () => {
+    asRole('INSTRUCTOR');
+    renderWithClient(<CourseDetailClient />);
+
+    await screen.findByLabelText(/^title/i);
+    fireEvent.click(screen.getByRole('tab', { name: 'Access & pricing' }));
+
+    expect(await screen.findByLabelText(/premium/i)).toBeDisabled();
+    // Premium and Price stay visible, just disabled — this fix must not widen.
+    expect(screen.getByLabelText(/^price/i)).toBeDisabled();
+    expect(screen.queryByLabelText(/paddle price id/i)).not.toBeInTheDocument();
+    expect(screen.queryByLabelText(/paddle plan code/i)).not.toBeInTheDocument();
+  });
+
+  it('still renders both Paddle inputs, enabled, for an admin', async () => {
+    asRole('ADMIN');
+    renderWithClient(<CourseDetailClient />);
+
+    await screen.findByLabelText(/^title/i);
+    fireEvent.click(screen.getByRole('tab', { name: 'Access & pricing' }));
+
+    expect(await screen.findByLabelText(/paddle price id/i)).toBeEnabled();
+    expect(screen.getByLabelText(/paddle plan code/i)).toBeEnabled();
   });
 });

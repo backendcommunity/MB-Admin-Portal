@@ -75,6 +75,14 @@ type SectionProps = {
   courseId?: string;
   /** Slug locks once the course is public; unlocking is deliberate. */
   slugLocked?: boolean;
+  /**
+   * Only `AccessSection` reads this — it hides the two Paddle fields outright
+   * for a non-staff caller rather than disabling them (see `StaffOnly`'s
+   * doc comment for why disabled-with-a-reason is the default; Paddle price
+   * id/plan code are payment-processor plumbing an instructor can't act on,
+   * so the product call was to remove them, same as the cohort form).
+   */
+  isStaff?: boolean;
 };
 
 export function IdentitySection({ draft, patch, courseId, slugLocked }: SectionProps) {
@@ -284,7 +292,7 @@ export function ClassificationSection({
   );
 }
 
-export function AccessSection({ draft, patch }: SectionProps) {
+export function AccessSection({ draft, patch, isStaff }: SectionProps) {
   return (
     <Section title="Access & pricing" id="section-access">
       <div className="flex items-center justify-between gap-4">
@@ -324,22 +332,22 @@ export function AccessSection({ draft, patch }: SectionProps) {
               />
             </StaffOnly>
           </div>
-          <div className="space-y-1.5">
-            <Label htmlFor="course-paddle">
-              Paddle price ID <span className="text-destructive">*</span>
-            </Label>
-            <StaffOnly reason="Only an admin can set the Paddle price id (paddle_price_id)">
+          {isStaff ? (
+            <div className="space-y-1.5">
+              <Label htmlFor="course-paddle">
+                Paddle price ID <span className="text-destructive">*</span>
+              </Label>
               <Input
                 id="course-paddle"
                 value={draft.paddle_price_id ?? ''}
                 placeholder="pri_01h…"
                 onChange={(event) => patch({ paddle_price_id: event.target.value })}
               />
-            </StaffOnly>
-          </div>
-          <div className="space-y-1.5 md:col-span-2">
-            <Label htmlFor="course-plan-code">Paddle plan code</Label>
-            <StaffOnly reason="Only an admin can set the Paddle plan code (paddlePlanCode)">
+            </div>
+          ) : null}
+          {isStaff ? (
+            <div className="space-y-1.5 md:col-span-2">
+              <Label htmlFor="course-plan-code">Paddle plan code</Label>
               <Input
                 id="course-plan-code"
                 inputMode="numeric"
@@ -351,8 +359,8 @@ export function AccessSection({ draft, patch }: SectionProps) {
                   })
                 }
               />
-            </StaffOnly>
-          </div>
+            </div>
+          ) : null}
         </div>
       ) : (
         <p className="text-xs text-muted-foreground">
