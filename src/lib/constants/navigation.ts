@@ -37,6 +37,12 @@ export const NAV_ITEMS: NavItem[] = [
     roles: ['SUPER_ADMIN', 'ADMIN', 'INSTRUCTOR'],
   },
   {
+    label: 'Earnings',
+    href: '/earnings',
+    icon: Wallet,
+    roles: ['INSTRUCTOR'],
+  },
+  {
     label: 'Users',
     href: '/users',
     icon: Users,
@@ -131,11 +137,5 @@ export const NAV_ITEMS: NavItem[] = [
     icon: CheckCircle2,
     roles: ['SUPER_ADMIN', 'ADMIN'],
     badgeKey: 'approvals',
-  },
-  {
-    label: 'Earnings',
-    href: '/earnings',
-    icon: Wallet,
-    roles: ['INSTRUCTOR'],
   },
 ];
