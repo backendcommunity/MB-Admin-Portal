@@ -34,6 +34,7 @@ import {
   type ImportResult,
 } from '@/lib/courses/import';
 import { toApiQuestions } from '@/lib/courses/quiz';
+import { stripPricingFields } from '@/lib/pricing-fields';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 import { useAuthStore } from '@/store/authStore';
@@ -180,10 +181,18 @@ export default function ImportCourseModal({
         categoryId = created.id;
       }
 
+      // `doc.course` is posted almost verbatim — unlike a form-driven save,
+      // there is no field left unset by the UI to save it here. A document
+      // (including the shipped sample) is real course data and may well
+      // carry amount/isPremium/paddle fields; the API refuses their mere
+      // PRESENCE from a non-staff caller, so they are stripped the same way
+      // every other non-staff save in this app strips them.
+      const coursePayload = isStaff
+        ? { ...doc.course, categoryId }
+        : stripPricingFields({ ...doc.course, categoryId });
+
       const targetId =
-        mode === 'curriculum'
-          ? (courseId as string)
-          : (await createCourse({ ...doc.course, categoryId })).id;
+        mode === 'curriculum' ? (courseId as string) : (await createCourse(coursePayload)).id;
 
       for (const chapter of doc.chapters) {
         const created = await createChapter(targetId, {

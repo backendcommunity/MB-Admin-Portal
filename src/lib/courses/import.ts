@@ -615,7 +615,25 @@ export function parseImport(
   };
 }
 
-/** A complete document that exercises every path, used by "Load sample". */
+/**
+ * A complete document that exercises every path an INSTRUCTOR can actually
+ * take, used by "Load sample". It deliberately excludes anything only an
+ * admin may create:
+ *
+ *   - no `category` naming a new one — Category creation is
+ *     `requireStrictAdmin`. The sample uses "Backend", which every
+ *     environment seeds.
+ *   - no inline `quiz` or `exercise` items — both models carry no ownership
+ *     column, so `POST /quizzes` and `POST /exercises` are admin-only.
+ *     Attaching an EXISTING quiz/exercise is a different, already-open call
+ *     and is not affected; authoring new ones from an import is its own
+ *     slice (instructor-authoring-fixes plan, B6), not opened here.
+ *
+ * The capstone entries still reference a project and a mock interview BY
+ * TITLE rather than creating them — if a given environment has no row with
+ * that exact title, `parseImport` skips the entry with a note rather than
+ * failing the import, so this stays safe to run anywhere.
+ */
 export function importSample(): string {
   return JSON.stringify(
     {
@@ -625,7 +643,7 @@ export function importSample(): string {
         'Design systems that talk through events instead of calls — queues, brokers, idempotency, and the failure modes each one hides.',
       description: 'A practical tour, built around one order-processing system you refactor twice.',
       type: 'VIDEO',
-      category: 'Architecture',
+      category: 'Backend',
       level: 'Advanced',
       tags: ['events', 'queues', 'kafka'],
       languages: ['Go'],
@@ -653,30 +671,12 @@ export function importSample(): string {
                 'Synchronous calls couple availability: your service is only as up as everything it calls. Events break that chain, and hand you three new problems in exchange.',
               readingTime: 8,
             },
-            {
-              kind: 'quiz',
-              title: 'Coupling check',
-              description: 'Two questions on availability coupling.',
-              passingScore: 70,
-              questions: [
-                {
-                  prompt: 'A synchronous call couples which property?',
-                  options: ['Availability', 'Storage', 'Encoding', 'Latency only'],
-                  answer: 0,
-                },
-                {
-                  prompt: 'What does an event bus NOT give you for free?',
-                  options: ['Ordering across partitions', 'Fan-out', 'Decoupling', 'Buffering'],
-                  answer: 0,
-                },
-              ],
-            },
           ],
         },
         {
           title: 'Idempotency',
           summary: 'At-least-once delivery means you will see it twice.',
-          type: 'EXERCISE',
+          type: 'VIDEO',
           isPremium: true,
           items: [
             {
@@ -684,19 +684,6 @@ export function importSample(): string {
               title: 'Exactly-once is a lie',
               video: 'vimeo:912334477',
               duration: 880,
-            },
-            {
-              kind: 'exercise',
-              title: 'Make the handler idempotent',
-              description: 'Given a duplicate-prone consumer, make it safe.',
-              instructions:
-                'Add a dedupe key so processing the same message twice has no extra effect.',
-              solution:
-                'func handle(m Msg) error { if seen(m.ID) { return nil }; return process(m) }',
-              languages: ['Go'],
-              graderType: 'TEST_CASES',
-              points: 25,
-              testCases: [{ input: 'msg-1\nmsg-1', expectedOutput: 'processed:1' }],
             },
           ],
         },

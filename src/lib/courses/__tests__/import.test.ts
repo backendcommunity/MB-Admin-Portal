@@ -21,13 +21,15 @@ describe('parseImport — the sample', () => {
       chapters: 2,
       video: 2,
       article: 1,
-      quiz: 1,
-      exercise: 1,
+      quiz: 0,
+      exercise: 0,
       capstone: 2,
       incomplete: 0,
     });
     expect(result.doc?.publish).toBe(true);
-    expect(result.doc?.course.categoryId).toBe('cat-arch');
+    // No new category: the sample must not need admin-only Category creation.
+    expect(result.doc?.newCategory).toBeUndefined();
+    expect(result.doc?.course.categoryId).toBe('cat-backend');
   });
 });
 
