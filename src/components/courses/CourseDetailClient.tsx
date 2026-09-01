@@ -358,9 +358,11 @@ export default function CourseDetailClient() {
                 onSubmitted={refetch}
               />
             )}
-            <Button variant="outline" onClick={() => changeStatus('archive')}>
-              Archive
-            </Button>
+            {course.archivedAt ? null : (
+              <Button variant="outline" onClick={() => changeStatus('archive')}>
+                Archive
+              </Button>
+            )}
             <Button
               variant="destructive"
               onClick={() => setConfirming({ kind: 'course', label: course.title })}
