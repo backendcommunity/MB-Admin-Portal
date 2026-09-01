@@ -34,6 +34,7 @@ import AttachItemDialog from '@/components/paths/AttachItemDialog';
 import EnrolLearnersDialog from '@/components/paths/EnrolLearnersDialog';
 import { AuthorField } from '@/components/paths/AuthorField';
 import { useAuthStore } from '@/store/authStore';
+import { stripPricingFields } from '@/lib/pricing-fields';
 import { deriveLifecycle, SubmitForReviewControl } from '@/components/shared/PublishLifecycle';
 import {
   ATTACHABLE_KINDS,
@@ -229,7 +230,7 @@ export default function PathDetailClient() {
   const save = async () => {
     setSaving(true);
     try {
-      await updatePath(path.id, draft);
+      await updatePath(path.id, isStaff ? draft : stripPricingFields(draft));
       await refetch();
       toast.success('Saved.');
     } catch (error) {
