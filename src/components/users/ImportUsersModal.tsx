@@ -16,6 +16,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { CodeArea } from '@/components/shared/form/CodeArea';
 import { createUserImport } from '@/lib/api/userImports';
 import { parseUserImport } from '@/lib/users/import';
+import { userSample } from '@/lib/users/sample';
 import { ACTIVATION_VIDEO_AVAILABLE } from '@/lib/constants/activation-video';
 
 /**
@@ -229,10 +230,15 @@ export default function ImportUsersModal({
           </span>
         </label>
 
-        <DialogFooter>
-          <Button variant="outline" onClick={reset} disabled={busy || !text}>
-            Clear
-          </Button>
+        <DialogFooter className="sm:justify-between">
+          <div className="flex gap-2">
+            <Button variant="outline" onClick={() => setText(userSample)} disabled={busy}>
+              Load sample
+            </Button>
+            <Button variant="outline" onClick={reset} disabled={busy || !text}>
+              Clear
+            </Button>
+          </div>
           <Button onClick={run} disabled={busy || blocked}>
             {busy ? 'Importing…' : 'Import'}
           </Button>

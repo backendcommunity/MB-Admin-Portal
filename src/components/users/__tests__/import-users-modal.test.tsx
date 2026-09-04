@@ -46,4 +46,21 @@ describe('ImportUsersModal', () => {
     expect(withoutName).toEqual({ email: 'noname-c1@x.io' });
     expect(withoutName).not.toHaveProperty('name');
   });
+
+  it('loads the sample into the textarea and previews it without a blocking error', async () => {
+    render(<ImportUsersModal open onOpenChange={() => {}} onImported={() => {}} />);
+
+    fireEvent.click(await screen.findByRole('button', { name: /load sample/i }));
+
+    const textarea = screen.getByRole('textbox', { name: /roster csv or json/i });
+    expect((textarea as HTMLTextAreaElement).value).not.toBe('');
+
+    // No "nothing will be written until these are fixed" error panel — the
+    // sample must parse cleanly even though it deliberately contains rows
+    // that get skipped with a reason.
+    expect(
+      screen.queryByText(/nothing will be written until these are fixed/i),
+    ).not.toBeInTheDocument();
+    expect(await screen.findByText(/skipped rows and other notes/i)).toBeInTheDocument();
+  });
 });
