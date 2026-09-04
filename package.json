@@ -5,6 +5,7 @@
   "scripts": {
     "dev": "next dev --webpack",
     "build": "next build",
+    "build:check": "NEXT_DIST_DIR=.next-check next build",
     "start": "next start",
     "lint": "next lint",
     "format": "prettier --write .",
@@ -44,6 +45,7 @@
     "@testing-library/dom": "^10.4.1",
     "@testing-library/jest-dom": "^5.17.0",
     "@testing-library/react": "^16.0.1",
+    "@testing-library/user-event": "^14.6.1",
     "@types/node": "^20",
     "@types/papaparse": "^5.5.2",
     "@types/react": "^19",

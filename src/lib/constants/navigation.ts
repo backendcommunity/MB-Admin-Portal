@@ -5,7 +5,6 @@ import {
   BookOpen,
   CheckCircle2,
   CreditCard,
-  FileText,
   FolderKanban,
   GraduationCap,
   LayoutDashboard,
@@ -13,6 +12,7 @@ import {
   Receipt,
   Settings,
   Users,
+  Users2,
   Wallet,
   Tag,
   ClipboardList,
@@ -37,6 +37,12 @@ export const NAV_ITEMS: NavItem[] = [
     roles: ['SUPER_ADMIN', 'ADMIN', 'INSTRUCTOR'],
   },
   {
+    label: 'Earnings',
+    href: '/earnings',
+    icon: Wallet,
+    roles: ['INSTRUCTOR'],
+  },
+  {
     label: 'Users',
     href: '/users',
     icon: Users,
@@ -46,25 +52,26 @@ export const NAV_ITEMS: NavItem[] = [
     label: 'Courses',
     href: '/courses',
     icon: BookOpen,
-    roles: ['SUPER_ADMIN', 'ADMIN'],
+    roles: ['SUPER_ADMIN', 'ADMIN', 'INSTRUCTOR'],
   },
   {
     label: 'Bootcamps',
     href: '/bootcamps',
     icon: GraduationCap,
-    roles: ['SUPER_ADMIN', 'ADMIN'],
+    roles: ['SUPER_ADMIN', 'ADMIN', 'INSTRUCTOR'],
   },
   {
     label: 'Projects',
     href: '/projects',
     icon: FolderKanban,
-    roles: ['SUPER_ADMIN', 'ADMIN'],
+    roles: ['SUPER_ADMIN', 'ADMIN', 'INSTRUCTOR'],
   },
   {
-    label: 'Roadmaps',
-    href: '/roadmaps',
+    // The product calls these Paths; the API is still /admin/roadmaps.
+    label: 'Paths',
+    href: '/paths',
     icon: Map,
-    roles: ['SUPER_ADMIN', 'ADMIN'],
+    roles: ['SUPER_ADMIN', 'ADMIN', 'INSTRUCTOR'],
   },
   {
     label: 'Plans',
@@ -79,12 +86,22 @@ export const NAV_ITEMS: NavItem[] = [
     roles: ['SUPER_ADMIN', 'ADMIN'],
   },
   {
-    label: 'Offers',
-    href: '/offers',
-    icon: Tag,
+    label: 'Teams',
+    href: '/teams',
+    icon: Users2,
     roles: ['SUPER_ADMIN', 'ADMIN'],
   },
   {
+    // requireAdmin with ownership scoping and a pricing field-guard:
+    // instructors get full CRUD on their own Ships.
+    label: 'Ship',
+    href: '/offers',
+    icon: Tag,
+    roles: ['SUPER_ADMIN', 'ADMIN', 'INSTRUCTOR'],
+  },
+  {
+    // requireStrictAdmin on all four routes (reverted from requireAdmin):
+    // template fields have no field-level guard yet either.
     label: 'Mock Interviews',
     href: '/mock-interviews/templates',
     icon: Briefcase,
@@ -120,17 +137,5 @@ export const NAV_ITEMS: NavItem[] = [
     icon: CheckCircle2,
     roles: ['SUPER_ADMIN', 'ADMIN'],
     badgeKey: 'approvals',
-  },
-  {
-    label: 'My Content',
-    href: '/my-content',
-    icon: FileText,
-    roles: ['INSTRUCTOR'],
-  },
-  {
-    label: 'Earnings',
-    href: '/earnings',
-    icon: Wallet,
-    roles: ['INSTRUCTOR'],
   },
 ];

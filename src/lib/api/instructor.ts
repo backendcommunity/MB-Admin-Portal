@@ -1,24 +1,35 @@
-import { axiosInstance } from "@/lib/api/axios";
+import { axiosInstance } from '@/lib/api/axios';
 
-export type MyContentItem = {
+/**
+ * The five kinds an instructor can author and submit for review.
+ * `roadmap` is what the API calls a Path — the portal's own naming is `path`
+ * in some places and `roadmap` in others, and the endpoint accepts either
+ * (case-insensitive, `path` is an alias) — but the response always echoes
+ * back the canonical `"ROADMAP"`. Bootcamp submits the identity row; a
+ * cohort has no submit state of its own.
+ */
+export type SubmittableType = 'course' | 'project' | 'bootcamp' | 'roadmap' | 'offer';
+
+export type SubmitForReviewResponse = {
+  success: boolean;
   id: string;
-  type: "COURSE" | "PROJECT" | "ROADMAP";
-  title: string;
-  difficulty: string;
+  type: string;
   status: string;
-  progress: number;
-  submittedAt: string;
-  updatedAt: string;
-  feedback?: string;
 };
 
-export type MyContentResponse = {
-  data: {
-    courses: MyContentItem[];
-    projects: MyContentItem[];
-    roadmaps: MyContentItem[];
-  };
-};
+/**
+ * `POST /instructor/my-content/:type/:id/submit` — draft → submitted. This is
+ * the ONLY way a non-staff author moves their own content toward publish;
+ * the model's own update/status routes 403 an instructor who tries to flip
+ * the publish flag directly (`assertMayPublish` on the API side).
+ */
+export async function submitForReview(type: SubmittableType, id: string, notes?: string) {
+  const { data } = await axiosInstance.post<SubmitForReviewResponse>(
+    `/instructor/my-content/${type}/${id}/submit`,
+    notes ? { notes } : {},
+  );
+  return data;
+}
 
 export type EarningsSummary = {
   totalEarned: number;
@@ -42,49 +53,27 @@ export type PayoutItem = {
   date: string;
 };
 
-export async function fetchMyContent() {
-  const response = await axiosInstance.get<MyContentResponse>("/instructor/my-content");
-  return response.data;
-}
-
-export async function submitMyContentForReview(payload: {
-  type: "COURSE" | "PROJECT" | "ROADMAP";
-  id: string;
-  notes?: string;
-}) {
-  const response = await axiosInstance.post<{ success: boolean }>(
-    `/instructor/my-content/${payload.type}/${payload.id}/submit`,
-    { notes: payload.notes }
-  );
-  return response.data;
-}
-
-export async function createInstructorContent(payload: {
-  type: string;
-  title: string;
-  description: string;
-}) {
-  const response = await axiosInstance.post<{ success: boolean; id: string }>(
-    `/instructor/my-content`,
-    payload
-  );
-  return response.data;
-}
-
 export async function fetchEarningsSummary() {
-  const response = await axiosInstance.get<{ data: EarningsSummary }>("/instructor/earnings/summary");
+  const response = await axiosInstance.get<{ data: EarningsSummary }>(
+    '/instructor/earnings/summary',
+  );
   return response.data.data;
 }
 
 export async function fetchEarningsBreakdown(params?: { months?: number }) {
-  const response = await axiosInstance.get<{ data: EarningsBreakdownItem[] }>("/instructor/earnings/breakdown", { params });
+  const response = await axiosInstance.get<{ data: EarningsBreakdownItem[] }>(
+    '/instructor/earnings/breakdown',
+    { params },
+  );
   return response.data.data;
 }
 
 export async function fetchPayoutHistory(params?: { page?: number; limit?: number }) {
-  const response = await axiosInstance.get<{ data: PayoutItem[]; total: number; page: number; limit: number }>(
-    "/instructor/earnings/payouts",
-    { params }
-  );
+  const response = await axiosInstance.get<{
+    data: PayoutItem[];
+    total: number;
+    page: number;
+    limit: number;
+  }>('/instructor/earnings/payouts', { params });
   return response.data;
 }

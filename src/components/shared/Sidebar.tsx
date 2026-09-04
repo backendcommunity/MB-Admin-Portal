@@ -1,14 +1,14 @@
-"use client";
+'use client';
 
-import { useMemo } from "react";
-import Link from "next/link";
-import { usePathname } from "next/navigation";
-import { ChevronLeft, ChevronRight } from "lucide-react";
+import { useMemo } from 'react';
+import Link from 'next/link';
+import { usePathname } from 'next/navigation';
+import { ChevronLeft, ChevronRight } from 'lucide-react';
 
-import { Badge } from "@/components/ui/badge";
-import { NAV_ITEMS } from "@/lib/constants/navigation";
-import { cn } from "@/lib/utils";
-import { useAuthStore } from "@/store/authStore";
+import { Badge } from '@/components/ui/badge';
+import { NAV_ITEMS } from '@/lib/constants/navigation';
+import { cn } from '@/lib/utils';
+import { useAuthStore } from '@/store/authStore';
 
 type SidebarProps = {
   collapsed: boolean;
@@ -48,43 +48,39 @@ export function Sidebar({
       ) : null}
       <aside
         className={cn(
-          "fixed left-0 top-0 z-40 flex h-full flex-col border-r border-sidebar-border bg-sidebar text-sidebar-foreground transition-all duration-200",
-          collapsed ? "w-20" : "w-64",
-          mobileOpen ? "translate-x-0" : "-translate-x-full md:translate-x-0"
+          'fixed left-0 top-0 z-40 flex h-full flex-col border-r border-sidebar-border bg-sidebar text-sidebar-foreground transition-all duration-200',
+          collapsed ? 'w-20' : 'w-64',
+          mobileOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0',
         )}
       >
         <div
           className={cn(
-            "flex h-16 items-center justify-between px-4",
-            collapsed && "justify-center"
+            'flex h-16 items-center justify-between px-4',
+            collapsed && 'justify-center',
           )}
         >
           <span
             className={cn(
-              "text-sm font-semibold tracking-wide",
-              collapsed && "sr-only"
+              'flex items-center gap-2.5 text-sm font-semibold tracking-tight',
+              collapsed && 'sr-only',
             )}
           >
+            <span className="h-2.5 w-2.5 rounded-[3px] bg-sidebar-primary" aria-hidden />
             MB Admin
           </span>
           <button
             type="button"
             onClick={onToggleCollapse}
-            className="hidden rounded-md border border-sidebar-border p-1 text-sidebar-foreground/80 transition hover:text-sidebar-foreground md:inline-flex"
+            className="hidden rounded-md border border-sidebar-border p-1 text-sidebar-muted transition hover:border-sidebar-primary hover:text-sidebar-foreground md:inline-flex"
             aria-label="Toggle sidebar"
           >
-            {collapsed ? (
-              <ChevronRight className="h-4 w-4" />
-            ) : (
-              <ChevronLeft className="h-4 w-4" />
-            )}
+            {collapsed ? <ChevronRight className="h-4 w-4" /> : <ChevronLeft className="h-4 w-4" />}
           </button>
         </div>
 
         <nav className="flex-1 space-y-1 px-2 py-4">
           {items.map((item) => {
-            const isActive =
-              pathname === item.href || pathname.startsWith(`${item.href}/`);
+            const isActive = pathname === item.href || pathname.startsWith(`${item.href}/`);
             const Icon = item.icon;
 
             return (
@@ -92,19 +88,17 @@ export function Sidebar({
                 key={item.href}
                 href={item.href}
                 className={cn(
-                  "group flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors",
+                  'group flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors',
                   isActive
-                    ? "bg-sidebar-accent text-sidebar-accent-foreground"
-                    : "text-sidebar-foreground/80 hover:bg-sidebar-accent/70 hover:text-sidebar-accent-foreground",
-                  collapsed && "justify-center"
+                    ? 'bg-sidebar-accent text-sidebar-accent-foreground shadow-[inset_2px_0_0_var(--sidebar-primary)]'
+                    : 'text-sidebar-muted hover:bg-sidebar-accent/70 hover:text-sidebar-accent-foreground',
+                  collapsed && 'justify-center',
                 )}
               >
                 <Icon className="h-4 w-4" aria-hidden />
-                {collapsed ? null : (
-                  <span className="flex-1">{item.label}</span>
-                )}
-                {!collapsed && item.badgeKey === "approvals" && approvalsCount > 0 ? (
-                  <Badge variant="secondary" className="bg-primary/15 text-primary">
+                {collapsed ? null : <span className="flex-1">{item.label}</span>}
+                {!collapsed && item.badgeKey === 'approvals' && approvalsCount > 0 ? (
+                  <Badge variant="secondary" className="bg-sidebar-primary/20 text-sidebar-primary">
                     {approvalsCount}
                   </Badge>
                 ) : null}
@@ -112,9 +106,7 @@ export function Sidebar({
             );
           })}
           {items.length === 0 ? (
-            <p className="px-3 py-2 text-xs text-sidebar-foreground/70">
-              Sign in to view navigation.
-            </p>
+            <p className="px-3 py-2 text-xs text-sidebar-muted">Sign in to view navigation.</p>
           ) : null}
         </nav>
       </aside>

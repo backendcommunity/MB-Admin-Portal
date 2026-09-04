@@ -1,13 +1,13 @@
-"use client";
+'use client';
 
-import Link from "next/link";
-import { useRouter, useSearchParams } from "next/navigation";
-import { useState } from "react";
-import { z } from "zod";
-import { zodResolver } from "@hookform/resolvers/zod";
-import { useForm } from "react-hook-form";
+import Link from 'next/link';
+import { useRouter, useSearchParams } from 'next/navigation';
+import { useState } from 'react';
+import { z } from 'zod';
+import { zodResolver } from '@hookform/resolvers/zod';
+import { useForm } from 'react-hook-form';
 
-import { Button } from "@/components/ui/button";
+import { Button } from '@/components/ui/button';
 import {
   Card,
   CardContent,
@@ -15,27 +15,27 @@ import {
   CardFooter,
   CardHeader,
   CardTitle,
-} from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import type { UserRole } from "@/lib/constants/roles";
-import { useAuthStore } from "@/store/authStore";
+} from '@/components/ui/card';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import type { UserRole } from '@/lib/constants/roles';
+import { useAuthStore } from '@/store/authStore';
 
 const loginSchema = z.object({
   email: z
     .string()
-    .min(1, "Enter a valid email address.")
+    .min(1, 'Enter a valid email address.')
     .refine((value) => /^[^\s@]+@[^\s@]+$/.test(value), {
-      message: "Enter a valid email address.",
+      message: 'Enter a valid email address.',
     }),
-  password: z.string().min(8, "Password must be at least 8 characters."),
+  password: z.string().min(8, 'Password must be at least 8 characters.'),
 });
 
 type LoginValues = z.infer<typeof loginSchema>;
 
 const getSafeReturnUrl = (value: string | null) => {
-  if (!value || !value.startsWith("/") || value.startsWith("//")) {
-    return "/dashboard";
+  if (!value || !value.startsWith('/') || value.startsWith('//')) {
+    return '/dashboard';
   }
   return value;
 };
@@ -43,14 +43,14 @@ const getSafeReturnUrl = (value: string | null) => {
 export default function LoginForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const returnUrl = getSafeReturnUrl(searchParams.get("returnUrl"));
+  const returnUrl = getSafeReturnUrl(searchParams.get('returnUrl'));
   const [formError, setFormError] = useState<string | null>(null);
 
   const form = useForm<LoginValues>({
     resolver: zodResolver(loginSchema),
     defaultValues: {
-      email: "",
-      password: "",
+      email: '',
+      password: '',
     },
   });
 
@@ -58,30 +58,39 @@ export default function LoginForm() {
     setFormError(null);
 
     try {
-      if (process.env.NEXT_PUBLIC_DISABLE_AUTH === "true") {
-        const role: UserRole = "SUPER_ADMIN";
+      if (process.env.NEXT_PUBLIC_DISABLE_AUTH === 'true') {
+        const role: UserRole = 'SUPER_ADMIN';
         useAuthStore.getState().login(role);
         router.replace(returnUrl);
         return;
       }
 
-      const response = await fetch("/api/auth/login", {
-        method: "POST",
+      const response = await fetch('/api/auth/login', {
+        method: 'POST',
         headers: {
-          "Content-Type": "application/json",
+          'Content-Type': 'application/json',
         },
         body: JSON.stringify(values),
       });
 
       if (!response.ok) {
-        throw new Error("Authentication failed");
+        throw new Error('Authentication failed');
       }
 
-      const payload = (await response.json()) as { role: UserRole };
+      const payload = (await response.json()) as { role: UserRole | null };
+
+      if (!payload.role) {
+        // Valid academy credentials, but no recognised portal role. Fail
+        // closed: no fallback role, no landing on the page they asked for.
+        useAuthStore.getState().setUserRole(null);
+        router.replace('/403');
+        return;
+      }
+
       useAuthStore.getState().login(payload.role);
       router.replace(returnUrl);
     } catch (error) {
-      setFormError("Invalid email or password.");
+      setFormError('Invalid email or password.');
     }
   };
 
@@ -101,12 +110,10 @@ export default function LoginForm() {
                 type="email"
                 placeholder="you@masteringbackend.com"
                 autoComplete="email"
-                {...form.register("email")}
+                {...form.register('email')}
               />
               {form.formState.errors.email ? (
-                <p className="text-xs text-destructive">
-                  {form.formState.errors.email.message}
-                </p>
+                <p className="text-xs text-destructive">{form.formState.errors.email.message}</p>
               ) : null}
             </div>
 
@@ -116,12 +123,10 @@ export default function LoginForm() {
                 id="password"
                 type="password"
                 autoComplete="current-password"
-                {...form.register("password")}
+                {...form.register('password')}
               />
               {form.formState.errors.password ? (
-                <p className="text-xs text-destructive">
-                  {form.formState.errors.password.message}
-                </p>
+                <p className="text-xs text-destructive">{form.formState.errors.password.message}</p>
               ) : null}
             </div>
 
@@ -133,12 +138,8 @@ export default function LoginForm() {
 
             {formError ? <p className="text-sm text-destructive">{formError}</p> : null}
 
-            <Button
-              type="submit"
-              className="w-full"
-              disabled={form.formState.isSubmitting}
-            >
-              {form.formState.isSubmitting ? "Signing in..." : "Sign in"}
+            <Button type="submit" className="w-full" disabled={form.formState.isSubmitting}>
+              {form.formState.isSubmitting ? 'Signing in...' : 'Sign in'}
             </Button>
           </form>
         </CardContent>
