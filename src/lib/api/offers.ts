@@ -1,4 +1,4 @@
-import { axiosInstance } from "./axios";
+import { axiosInstance } from './axios';
 
 export interface Offer {
   id: string;
@@ -8,6 +8,7 @@ export interface Offer {
   slug: string;
   isPremium: boolean;
   isWaiting: boolean;
+  waitingLink?: string | null;
   amount: number;
   createdAt: string;
   updatedAt: string;
@@ -20,13 +21,17 @@ export interface PaginatedOffers {
   limit: number;
 }
 
-export async function getOffers(params?: { page?: number; limit?: number; q?: string }): Promise<PaginatedOffers> {
-  const { data } = await axiosInstance.get("/admin/offers", { params });
+export async function getOffers(params?: {
+  page?: number;
+  limit?: number;
+  q?: string;
+}): Promise<PaginatedOffers> {
+  const { data } = await axiosInstance.get('/admin/offers', { params });
   return data;
 }
 
 export async function createOffer(payload: Partial<Offer>): Promise<Offer> {
-  const { data } = await axiosInstance.post("/admin/offers", payload);
+  const { data } = await axiosInstance.post('/admin/offers', payload);
   return data.data;
 }
 

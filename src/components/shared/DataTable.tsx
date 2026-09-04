@@ -2,6 +2,23 @@
 import { Fragment, type ReactNode } from 'react';
 import { flexRender, type Row, type Table as TanstackTable } from '@tanstack/react-table';
 
+/**
+ * Column-level display hints.
+ *
+ * `align: "right"` is for counts: a column of numbers is only comparable at a
+ * glance when the digits line up, which needs the cells right-aligned and the
+ * header with them.
+ */
+declare module '@tanstack/react-table' {
+  // Both parameters are required by the library's declaration, and neither is
+  // referenced here — the hint is the same for every column type.
+  /* eslint-disable @typescript-eslint/no-unused-vars */
+  interface ColumnMeta<TData, TValue> {
+    align?: 'left' | 'right';
+  }
+  /* eslint-enable @typescript-eslint/no-unused-vars */
+}
+
 export function DataTable<TData>({
   table,
   mobileTitle,
@@ -22,12 +39,16 @@ export function DataTable<TData>({
                 {hg.headers.map((header) => (
                   <th
                     key={header.id}
-                    className="px-4 py-3 text-left text-sm font-semibold text-foreground"
+                    className={`px-4 py-2.5 text-[11px] font-semibold uppercase tracking-[0.07em] text-muted-foreground ${
+                      header.column.columnDef.meta?.align === 'right' ? 'text-right' : 'text-left'
+                    }`}
                   >
                     {header.isPlaceholder ? null : (
                       <div
                         onClick={header.column.getToggleSortingHandler()}
-                        className="flex items-center gap-2"
+                        className={`flex items-center gap-2 ${
+                          header.column.columnDef.meta?.align === 'right' ? 'justify-end' : ''
+                        }`}
                         style={{ cursor: header.column.getCanSort() ? 'pointer' : undefined }}
                       >
                         {flexRender(header.column.columnDef.header, header.getContext())}
@@ -49,7 +70,12 @@ export function DataTable<TData>({
             {rows.map((row) => (
               <tr key={row.id} className="border-b transition-colors hover:bg-muted/50">
                 {row.getVisibleCells().map((cell) => (
-                  <td key={cell.id} className="px-4 py-3 text-sm text-foreground">
+                  <td
+                    key={cell.id}
+                    className={`px-4 py-3 text-sm text-foreground ${
+                      cell.column.columnDef.meta?.align === 'right' ? 'text-right' : ''
+                    }`}
+                  >
                     {flexRender(cell.column.columnDef.cell, cell.getContext())}
                   </td>
                 ))}

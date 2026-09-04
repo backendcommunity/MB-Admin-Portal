@@ -1,22 +1,21 @@
 'use client';
 
-import React, { useMemo, useState } from 'react';
-import {
-  getCoreRowModel,
-  useReactTable,
-  type ColumnDef,
-  type SortingState,
-} from '@tanstack/react-table';
-
-import { useApiQuery } from '@/lib/api/query';
-import { deleteProject, type Project, type ProjectsListResponse } from '@/lib/api/projects';
-import AddProjectModal from '@/components/projects/AddProjectModal';
-import EditProjectModal from '@/components/projects/EditProjectModal';
-import ConfirmDelete from '@/components/users/ConfirmDelete';
+import { useMemo, useState } from 'react';
+import { useRouter } from 'next/navigation';
+import { useQuery } from '@tanstack/react-query';
+import { getCoreRowModel, useReactTable, type ColumnDef } from '@tanstack/react-table';
 import { MoreHorizontal } from 'lucide-react';
+import { toast } from 'sonner';
+
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 import {
   Select,
   SelectContent,
@@ -24,76 +23,141 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu';
-import { DataTable } from '@/components/shared/DataTable';
 import { PageHeader } from '@/components/shared/PageHeader';
-import { StatusBadge } from '@/components/shared/StatusBadge';
+import { DataTable } from '@/components/shared/DataTable';
 import { LoadingState, ErrorState } from '@/components/shared/LoadingState';
 import { EmptyState } from '@/components/shared/EmptyState';
+import { StatusBadge } from '@/components/shared/StatusBadge';
+import ConfirmDelete from '@/components/users/ConfirmDelete';
+import ImportProjectModal from '@/components/projects/ImportProjectModal';
+import { LEVELS, MODES, deleteProject, fetchProjects, type Project } from '@/lib/api/projects';
+
+const PAGE = 25;
+
+function levelTone(level: string): 'success' | 'info' | 'warning' | 'neutral' {
+  if (level === 'Beginner') return 'success';
+  if (level === 'Intermediate') return 'info';
+  if (level === 'Advanced') return 'warning';
+  return 'neutral';
+}
 
 export default function ProjectsTable() {
-  const [pageIndex, setPageIndex] = useState(0);
-  const [pageSize, setPageSize] = useState(10);
+  const router = useRouter();
   const [q, setQ] = useState('');
-  const [statusFilter, setStatusFilter] = useState('all');
-  const [difficultyFilter, setDifficultyFilter] = useState('all');
-  const [sorting, setSorting] = useState<SortingState>([]);
-  const [showAdd, setShowAdd] = useState(false);
-  const [editing, setEditing] = useState<Project | null>(null);
-  const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [level, setLevel] = useState('ALL');
+  const [mode, setMode] = useState('ALL');
+  const [status, setStatus] = useState('ALL');
+  const [page, setPage] = useState(1);
+  const [importing, setImporting] = useState(false);
+  const [confirming, setConfirming] = useState<Project | null>(null);
 
-  const sortParam = sorting[0]
-    ? `&sort=${sorting[0].id}&order=${sorting[0].desc ? 'desc' : 'asc'}`
-    : '';
-  const statusParam = statusFilter !== 'all' ? `&status=${statusFilter}` : '';
-  const difficultyParam = difficultyFilter !== 'all' ? `&difficulty=${difficultyFilter}` : '';
-
-  const { data, isLoading, isError, refetch } = useApiQuery<ProjectsListResponse>(
-    ['projects', pageIndex, pageSize, q, statusFilter, difficultyFilter, sorting],
-    `/admin/projects?page=${pageIndex + 1}&limit=${pageSize}&q=${encodeURIComponent(q)}${statusParam}${difficultyParam}${sortParam}`,
+  const params = useMemo(
+    () => ({
+      page,
+      limit: PAGE,
+      ...(q.trim() ? { q: q.trim() } : {}),
+      ...(level !== 'ALL' ? { level } : {}),
+      ...(mode !== 'ALL' ? { mode } : {}),
+      ...(status !== 'ALL' ? { status } : {}),
+    }),
+    [q, level, mode, status, page],
   );
 
-  const projects = data?.data || [];
-  const total = data?.total || 0;
+  const { data, isLoading, isError, refetch } = useQuery({
+    queryKey: ['admin-projects', params],
+    queryFn: () => fetchProjects(params),
+  });
 
-  const columns = useMemo<ColumnDef<Project, unknown>[]>(
+  const rows = useMemo(() => data?.data ?? [], [data]);
+  const total = data?.total ?? 0;
+  const pages = Math.max(1, Math.ceil(total / PAGE));
+
+  const columns = useMemo<ColumnDef<Project>[]>(
     () => [
-      { accessorKey: 'title', header: 'Title' },
-      { accessorKey: 'difficulty', header: 'Difficulty' },
-      { accessorKey: 'submissionsCount', header: 'Submissions' },
       {
-        accessorKey: 'status',
+        id: 'project',
+        header: 'Project',
+        cell: ({ row }) => (
+          <button
+            type="button"
+            className="block max-w-xs text-left"
+            onClick={() => router.push(`/projects/${row.original.id}`)}
+          >
+            <span className="block truncate font-medium">{row.original.title}</span>
+            <span className="block truncate font-mono text-xs text-muted-foreground">
+              /{row.original.slug}
+            </span>
+          </button>
+        ),
+      },
+      {
+        id: 'playground',
+        header: 'Playground',
+        cell: ({ row }) => (
+          <span>
+            <span className="block font-mono text-xs">{row.original.mode}</span>
+            {row.original.mode === 'terminal' && row.original.language ? (
+              <span className="block text-xs text-muted-foreground">
+                {row.original.language} · {row.original.entrypoint}
+              </span>
+            ) : null}
+          </span>
+        ),
+      },
+      {
+        id: 'level',
+        header: 'Level',
+        cell: ({ row }) => (
+          <StatusBadge label={row.original.level || '—'} tone={levelTone(row.original.level)} />
+        ),
+      },
+      {
+        id: 'projectTasks',
+        header: 'ProjectTasks',
+        meta: { align: 'right' as const },
+        cell: ({ row }) => (
+          <span className="tabular-nums">{row.original.projectTaskCount ?? 0}</span>
+        ),
+      },
+      {
+        id: 'learners',
+        header: 'Builders',
+        meta: { align: 'right' as const },
+        cell: ({ row }) => <span className="tabular-nums">{row.original.learnerCount ?? 0}</span>,
+      },
+      {
+        id: 'solutions',
+        header: 'Solutions',
+        meta: { align: 'right' as const },
+        cell: ({ row }) => <span className="tabular-nums">{row.original.solutionCount ?? 0}</span>,
+      },
+      {
+        id: 'status',
         header: 'Status',
-        cell: ({ row }) => {
-          const status = row.original.status;
-          return (
-            <StatusBadge label={status} tone={status === 'PUBLISHED' ? 'success' : 'warning'} />
-          );
-        },
+        cell: ({ row }) => (
+          <StatusBadge
+            label={row.original.status}
+            tone={row.original.status === 'published' ? 'success' : 'warning'}
+          />
+        ),
       },
       {
         id: 'actions',
-        header: 'Actions',
-        enableSorting: false,
+        header: '',
         cell: ({ row }) => (
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <Button variant="ghost" size="icon" aria-label="Row actions">
-                <MoreHorizontal className="h-4 w-4" />
+              <Button variant="ghost" size="icon" aria-label={`Actions for ${row.original.title}`}>
+                <MoreHorizontal className="size-4" />
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
-              <DropdownMenuItem onSelect={() => setEditing(row.original)}>Edit</DropdownMenuItem>
-              <DropdownMenuSeparator />
+              <DropdownMenuItem onClick={() => router.push(`/projects/${row.original.id}`)}>
+                Open
+              </DropdownMenuItem>
               <DropdownMenuItem
-                className="text-destructive focus:text-destructive"
-                onSelect={() => setDeletingId(row.original.id)}
+                className="text-destructive"
+                onClick={() => setConfirming(row.original)}
               >
                 Delete
               </DropdownMenuItem>
@@ -102,189 +166,133 @@ export default function ProjectsTable() {
         ),
       },
     ],
-    [],
+    [router],
   );
 
-  const table = useReactTable({
-    data: projects,
-    columns,
-    pageCount: Math.ceil(total / pageSize) || -1,
-    state: { pagination: { pageIndex, pageSize }, sorting },
-    onSortingChange: setSorting,
-    onPaginationChange: (updater) => {
-      const next = typeof updater === 'function' ? updater({ pageIndex, pageSize }) : updater;
-      setPageIndex(next.pageIndex ?? 0);
-      setPageSize(next.pageSize ?? pageSize);
-    },
-    manualPagination: true,
-    manualSorting: true,
-    getCoreRowModel: getCoreRowModel(),
-  });
+  const table = useReactTable({ data: rows, columns, getCoreRowModel: getCoreRowModel() });
+
+  const filter = (
+    label: string,
+    value: string,
+    onChange: (next: string) => void,
+    options: readonly string[],
+    allLabel: string,
+  ) => (
+    <Select
+      value={value}
+      onValueChange={(next) => {
+        onChange(next);
+        // A narrower filter can leave the current page past the end.
+        setPage(1);
+      }}
+    >
+      <SelectTrigger className="w-auto min-w-36" aria-label={label}>
+        <SelectValue />
+      </SelectTrigger>
+      <SelectContent>
+        <SelectItem value="ALL">{allLabel}</SelectItem>
+        {options.map((option) => (
+          <SelectItem key={option} value={option}>
+            {option}
+          </SelectItem>
+        ))}
+      </SelectContent>
+    </Select>
+  );
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-5">
       <PageHeader
         title="Projects"
-        description="Manage projects, status, and submissions."
-        actions={<Button onClick={() => setShowAdd(true)}>New Project</Button>}
+        description={`${total} project${total === 1 ? '' : 's'}. Something a builder ships, graded task by task inside a playground.`}
+        actions={
+          <div className="flex flex-wrap gap-2">
+            <Button variant="outline" onClick={() => setImporting(true)}>
+              Import JSON
+            </Button>
+            <Button onClick={() => router.push('/projects/new')}>New project</Button>
+          </div>
+        }
       />
 
-      <Card className="p-4 sm:p-6">
-        <div className="mb-4 space-y-3">
-          <Input
-            placeholder="Search projects"
-            value={q}
-            onChange={(e) => {
-              setQ(e.target.value);
-              setPageIndex(0);
-            }}
-            className="w-full"
-          />
+      <div className="flex flex-wrap items-center gap-2">
+        <Input
+          value={q}
+          onChange={(event) => {
+            setQ(event.target.value);
+            setPage(1);
+          }}
+          placeholder="Search title or summary…"
+          className="max-w-xs"
+          aria-label="Search projects"
+        />
+        {filter('Filter by playground', mode, setMode, MODES, 'Any playground')}
+        {filter('Filter by level', level, setLevel, LEVELS, 'Any level')}
+        {filter('Filter by status', status, setStatus, ['published', 'draft'], 'Any status')}
+      </div>
 
-          <div className="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap sm:items-center">
-            <Select
-              value={statusFilter}
-              onValueChange={(v) => {
-                setStatusFilter(v);
-                setPageIndex(0);
-              }}
-            >
-              <SelectTrigger className="w-full sm:w-36">
-                <SelectValue placeholder="All status" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All status</SelectItem>
-                <SelectItem value="DRAFT">Draft</SelectItem>
-                <SelectItem value="PUBLISHED">Published</SelectItem>
-              </SelectContent>
-            </Select>
+      {isLoading ? <LoadingState /> : null}
+      {isError ? <ErrorState onRetry={() => refetch()} /> : null}
 
-            <Select
-              value={difficultyFilter}
-              onValueChange={(v) => {
-                setDifficultyFilter(v);
-                setPageIndex(0);
-              }}
-            >
-              <SelectTrigger className="w-full sm:w-36">
-                <SelectValue placeholder="All difficulty" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All difficulty</SelectItem>
-                <SelectItem value="Beginner">Beginner</SelectItem>
-                <SelectItem value="Intermediate">Intermediate</SelectItem>
-                <SelectItem value="Advanced">Advanced</SelectItem>
-              </SelectContent>
-            </Select>
+      {!isLoading && !isError && rows.length === 0 ? (
+        <EmptyState title="No projects" description="Nothing matches those filters." />
+      ) : null}
 
+      {rows.length > 0 ? (
+        <Card className="overflow-hidden p-0">
+          <DataTable table={table} mobileTitle={(row) => row.original.title} />
+        </Card>
+      ) : null}
+
+      {pages > 1 ? (
+        <div className="flex items-center justify-between text-xs text-muted-foreground">
+          <span>
+            Page {page} of {pages} · {total} project{total === 1 ? '' : 's'}
+          </span>
+          <div className="flex gap-2">
             <Button
               variant="outline"
-              onClick={() => refetch()}
-              className="col-span-2 sm:col-span-1"
+              size="sm"
+              disabled={page === 1}
+              onClick={() => setPage((p) => p - 1)}
             >
-              Refresh
+              Previous
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={page >= pages}
+              onClick={() => setPage((p) => p + 1)}
+            >
+              Next
             </Button>
           </div>
         </div>
+      ) : null}
 
-        {isLoading ? (
-          <LoadingState label="Loading projects..." />
-        ) : isError ? (
-          <ErrorState message="Error loading projects." onRetry={refetch} />
-        ) : projects.length === 0 ? (
-          <EmptyState
-            title="No projects found"
-            description="Try adjusting your filters or create a new one."
-          />
-        ) : (
-          <>
-            <DataTable table={table} mobileTitle={(r) => r.original.title} />
-
-            {/* Pagination */}
-            <div className="mt-6 flex flex-col gap-3 border-t border-border pt-4 sm:flex-row sm:items-center sm:justify-between">
-              <div className="text-sm text-muted-foreground">
-                Showing {Math.min(pageIndex * pageSize + 1, total)}–
-                {Math.min((pageIndex + 1) * pageSize, total)} of {total} projects
-              </div>
-              <div className="flex items-center gap-2">
-                <Select
-                  value={String(pageSize)}
-                  onValueChange={(v) => {
-                    table.setPageSize(Number(v));
-                    setPageIndex(0);
-                  }}
-                >
-                  <SelectTrigger className="w-28">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="10">10 / page</SelectItem>
-                    <SelectItem value="20">20 / page</SelectItem>
-                    <SelectItem value="50">50 / page</SelectItem>
-                  </SelectContent>
-                </Select>
-
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => setPageIndex(Math.max(0, pageIndex - 1))}
-                  disabled={pageIndex === 0}
-                >
-                  Previous
-                </Button>
-
-                <span className="text-sm text-muted-foreground">
-                  Page {pageIndex + 1} of {Math.ceil(total / pageSize) || 1}
-                </span>
-
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => setPageIndex(pageIndex + 1)}
-                  disabled={(pageIndex + 1) * pageSize >= total}
-                >
-                  Next
-                </Button>
-              </div>
-            </div>
-          </>
-        )}
-      </Card>
-
-      <AddProjectModal
-        open={showAdd}
-        onClose={() => setShowAdd(false)}
-        onCreated={() => {
-          setShowAdd(false);
-          setPageIndex(0);
+      <ImportProjectModal
+        open={importing}
+        onOpenChange={setImporting}
+        onImported={(id) => {
           refetch();
-        }}
-      />
-
-      <EditProjectModal
-        open={Boolean(editing)}
-        project={editing}
-        onClose={() => setEditing(null)}
-        onUpdated={() => {
-          setEditing(null);
-          refetch();
+          router.push(`/projects/${id}`);
         }}
       />
 
       <ConfirmDelete
-        open={Boolean(deletingId)}
-        title="Delete project"
-        description={`Permanently delete project ${deletingId}?`}
-        onCancel={() => setDeletingId(null)}
+        open={Boolean(confirming)}
+        onCancel={() => setConfirming(null)}
+        title={`Delete “${confirming?.title ?? ''}”?`}
+        description="This removes the project with its ProjectTasks and Tasks. It is refused if any builder has started it or any solution references it."
         onConfirm={async () => {
-          if (!deletingId) return;
+          if (!confirming) return;
           try {
-            await deleteProject(deletingId);
-            setDeletingId(null);
-            setPageIndex(0);
+            await deleteProject(confirming.id);
+            toast.success(`Deleted “${confirming.title}”.`);
+            setConfirming(null);
             refetch();
-          } catch (err) {
-            console.error(err);
+          } catch (error) {
+            toast.error('Could not delete it', { description: (error as Error).message });
           }
         }}
       />

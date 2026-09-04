@@ -1,17 +1,10 @@
-import CohortDetailClient from "@/components/bootcamps/CohortDetailClient";
+import { ProtectedPage } from '@/components/shared/ProtectedPage';
+import CohortDetailClient from '@/components/bootcamps/CohortDetailClient';
 
-type Props = {
-  params: {
-    id: string;
-    cohortId: string;
-  };
-};
-
-export default function CohortDetailPage({ params }: Props) {
+export default function CohortDetailPage() {
   return (
-    <CohortDetailClient
-      bootcampId={params.id}
-      cohortId={params.cohortId}
-    />
+    <ProtectedPage allowedRoles={['SUPER_ADMIN', 'ADMIN', 'INSTRUCTOR']}>
+      <CohortDetailClient />
+    </ProtectedPage>
   );
 }

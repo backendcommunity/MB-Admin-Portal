@@ -1,17 +1,16 @@
-"use client";
+'use client';
 
-import { LayoutDashboard } from "lucide-react";
-import { ProtectedPage } from "@/components/shared/ProtectedPage";
-import { EmptyModulePage } from "@/modules/EmptyModulePage";
-import AnalyticsDashboard from "@/components/analytics/AnalyticsDashboard";
-import { useAuthStore } from "@/store/authStore";
+import { ProtectedPage } from '@/components/shared/ProtectedPage';
+import AnalyticsDashboard from '@/components/analytics/AnalyticsDashboard';
+import InstructorDashboard from '@/components/dashboard/InstructorDashboard';
+import { useAuthStore } from '@/store/authStore';
 
 export default function DashboardPage() {
   const role = useAuthStore((state) => state.userRole);
-  const isAdmin = role === "ADMIN" || role === "SUPER_ADMIN";
+  const isAdmin = role === 'ADMIN' || role === 'SUPER_ADMIN';
 
   return (
-    <ProtectedPage allowedRoles={["SUPER_ADMIN", "ADMIN", "INSTRUCTOR"]}>
+    <ProtectedPage allowedRoles={['SUPER_ADMIN', 'ADMIN', 'INSTRUCTOR']}>
       {isAdmin ? (
         <section className="flex flex-col gap-6">
           <header className="space-y-1">
@@ -23,11 +22,7 @@ export default function DashboardPage() {
           <AnalyticsDashboard />
         </section>
       ) : (
-        <EmptyModulePage
-          title="Dashboard"
-          description="Overview of your course activity and student progress will appear here."
-          icon={LayoutDashboard}
-        />
+        <InstructorDashboard />
       )}
     </ProtectedPage>
   );

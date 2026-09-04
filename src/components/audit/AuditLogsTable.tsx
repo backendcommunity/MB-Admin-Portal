@@ -32,15 +32,15 @@ import { EmptyState } from '@/components/shared/EmptyState';
 
 // Action → StatusBadge-like tone classes using semantic design tokens only
 const ACTION_CLASSES: Record<string, string> = {
-  CREATE: 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-400',
+  CREATE: 'bg-success-wash text-success',
   UPDATE: 'bg-primary/10 text-primary',
   DELETE: 'bg-destructive/10 text-destructive',
-  APPROVE: 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-400',
-  REJECT: 'bg-amber-500/10 text-amber-700 dark:text-amber-400',
+  APPROVE: 'bg-success-wash text-success',
+  REJECT: 'bg-warning-wash text-warning',
   SUSPEND: 'bg-destructive/10 text-destructive',
-  RESTORE: 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-400',
+  RESTORE: 'bg-success-wash text-success',
   CANCEL: 'bg-destructive/10 text-destructive',
-  GRANT: 'bg-violet-500/10 text-violet-700 dark:text-violet-400',
+  GRANT: 'bg-accent text-accent-foreground',
 };
 
 export default function AuditLogsTable() {

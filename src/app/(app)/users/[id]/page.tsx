@@ -1,5 +1,10 @@
-import UserDetailClient from "@/components/users/UserDetailClient";
+import { ProtectedPage } from '@/components/shared/ProtectedPage';
+import UserDetailClient from '@/components/users/UserDetailClient';
 
 export default function UserDetailPage() {
-  return <UserDetailClient />;
+  return (
+    <ProtectedPage allowedRoles={['SUPER_ADMIN', 'ADMIN']}>
+      <UserDetailClient />
+    </ProtectedPage>
+  );
 }
