@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
+import Link from 'next/link';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { getCoreRowModel, useReactTable, type ColumnDef } from '@tanstack/react-table';
 import { MoreHorizontal } from 'lucide-react';
@@ -297,6 +298,9 @@ export default function UsersTable() {
             >
               Needs attention
             </Button>
+            <Button variant="outline" asChild>
+              <Link href="/users/imports">View imports</Link>
+            </Button>
             <Button variant="outline" onClick={() => setImporting(true)}>
               Import users
             </Button>
@@ -391,7 +395,13 @@ export default function UsersTable() {
       <ImportUsersModal
         open={importing}
         onOpenChange={setImporting}
-        onImported={() => queryClient.invalidateQueries({ queryKey: ['admin-users'] })}
+        onImported={(id) => {
+          queryClient.invalidateQueries({ queryKey: ['admin-users'] });
+          // So an admin can see per-row outcome (and retry any failure)
+          // instead of the id going nowhere — the import continues
+          // processing in the background either way.
+          router.push(`/users/imports/${id}`);
+        }}
       />
     </div>
   );

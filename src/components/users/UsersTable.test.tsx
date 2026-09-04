@@ -1,8 +1,9 @@
 import React from 'react';
-import { render, screen } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
 import UsersTable from './UsersTable';
+import { createUserImport } from '@/lib/api/userImports';
 
 const row = {
   id: 'u1',
@@ -42,9 +43,14 @@ vi.mock('@tanstack/react-query', async () => {
   };
 });
 
+const push = vi.fn();
 vi.mock('next/navigation', () => ({
-  useRouter: () => ({ push: vi.fn() }),
+  useRouter: () => ({ push }),
   useSearchParams: () => new URLSearchParams(),
+}));
+
+vi.mock('@/lib/api/userImports', () => ({
+  createUserImport: vi.fn(),
 }));
 
 // UsersTable now also reads `useQueryClient()` (to invalidate ['admin-users']
@@ -84,5 +90,30 @@ describe('UsersTable', () => {
   it('never renders a password field', () => {
     const { container } = renderTable();
     expect(container.textContent).not.toMatch(/password/i);
+  });
+
+  it('links to the past-imports results page', () => {
+    renderTable();
+    const link = screen.getByRole('link', { name: /view imports/i });
+    expect(link).toHaveAttribute('href', '/users/imports');
+  });
+
+  it("navigates to the new import's results page instead of discarding its id", async () => {
+    vi.mocked(createUserImport).mockResolvedValue({
+      success: true,
+      id: 'imp-42',
+      totalRows: 1,
+      queued: 1,
+      enqueueFailed: 0,
+    });
+
+    renderTable();
+    fireEvent.click(screen.getByRole('button', { name: /^import users$/i }));
+
+    const textarea = await screen.findByRole('textbox', { name: /roster csv or json/i });
+    fireEvent.change(textarea, { target: { value: 'email,name\nada@x.io,Ada\n' } });
+    fireEvent.click(await screen.findByRole('button', { name: /^import$/i }));
+
+    await waitFor(() => expect(push).toHaveBeenCalledWith('/users/imports/imp-42'));
   });
 });
