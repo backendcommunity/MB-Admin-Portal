@@ -93,7 +93,18 @@ export default function ImportUsersModal({
       const created = await createUserImport({
         filename: filename.trim() || 'import.csv',
         includeActivationVideo,
-        rows: result.rows,
+        // The server is the sole authority on name derivation
+        // (`deriveNameFromEmail`) — send `name` only for a row whose name
+        // actually came from the file. `result.rows` carries a locally
+        // derived guess for preview purposes only (see `deriveName`'s
+        // docstring in `lib/users/import.ts`); sending that guess as `name`
+        // would make the server treat it as a real, non-derived name and
+        // never set `nameWasDerived`/`nameIsProvisional`.
+        rows: result.rows.map((row) =>
+          result.derivedEmails.includes(row.email)
+            ? { email: row.email }
+            : { name: row.name, email: row.email },
+        ),
       });
       toast.success(`${created.queued} account(s) queued for creation.`, {
         description:
