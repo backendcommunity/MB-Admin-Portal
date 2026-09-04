@@ -1,5 +1,6 @@
 import React from 'react';
 import { render, screen } from '@testing-library/react';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
 import UsersTable from './UsersTable';
 
@@ -46,9 +47,21 @@ vi.mock('next/navigation', () => ({
   useSearchParams: () => new URLSearchParams(),
 }));
 
+// UsersTable now also reads `useQueryClient()` (to invalidate ['admin-users']
+// after an import), which throws without a real QueryClientProvider in the
+// tree — react-query's own context, not the mocked `useQuery` above.
+function renderTable() {
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  return render(
+    <QueryClientProvider client={client}>
+      <UsersTable />
+    </QueryClientProvider>,
+  );
+}
+
 describe('UsersTable', () => {
   it('renders a user row', () => {
-    render(<UsersTable />);
+    renderTable();
     // DataTable renders desktop and mobile views together in jsdom, so the same
     // content appears more than once.
     expect(screen.getAllByText('Test User').length).toBeGreaterThan(0);
@@ -56,20 +69,20 @@ describe('UsersTable', () => {
   });
 
   it('shows the derived status and access, not raw columns', () => {
-    render(<UsersTable />);
+    renderTable();
     expect(screen.getAllByText('active').length).toBeGreaterThan(0);
     expect(screen.getAllByText('premium').length).toBeGreaterThan(0);
     expect(screen.getAllByText('Pro Annual').length).toBeGreaterThan(0);
   });
 
   it('shows the streak against the longest run, for scale', () => {
-    render(<UsersTable />);
+    renderTable();
     expect(screen.getAllByText('12').length).toBeGreaterThan(0);
     expect(screen.getAllByText('/ 31').length).toBeGreaterThan(0);
   });
 
   it('never renders a password field', () => {
-    const { container } = render(<UsersTable />);
+    const { container } = renderTable();
     expect(container.textContent).not.toMatch(/password/i);
   });
 });

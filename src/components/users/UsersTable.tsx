@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { getCoreRowModel, useReactTable, type ColumnDef } from '@tanstack/react-table';
 import { MoreHorizontal } from 'lucide-react';
 import { toast } from 'sonner';
@@ -29,6 +29,7 @@ import { LoadingState, ErrorState } from '@/components/shared/LoadingState';
 import { EmptyState } from '@/components/shared/EmptyState';
 import { StatusBadge } from '@/components/shared/StatusBadge';
 import AddUserModal from '@/components/users/AddUserModal';
+import ImportUsersModal from '@/components/users/ImportUsersModal';
 import {
   Avatar,
   FLAG_REASONS,
@@ -72,6 +73,7 @@ function fmt(iso: string) {
 
 export default function UsersTable() {
   const router = useRouter();
+  const queryClient = useQueryClient();
   const searchParams = useSearchParams();
   const [flagged, setFlagged] = useState(() => searchParams?.get('filter') === 'flagged');
   const [flagReason, setFlagReason] = useState('ALL');
@@ -82,6 +84,7 @@ export default function UsersTable() {
   const [source, setSource] = useState('ALL');
   const [page, setPage] = useState(1);
   const [adding, setAdding] = useState(false);
+  const [importing, setImporting] = useState(false);
 
   const params = useMemo(
     () => ({
@@ -294,6 +297,9 @@ export default function UsersTable() {
             >
               Needs attention
             </Button>
+            <Button variant="outline" onClick={() => setImporting(true)}>
+              Import users
+            </Button>
             <Button onClick={() => setAdding(true)}>Add user</Button>
           </div>
         }
@@ -380,6 +386,12 @@ export default function UsersTable() {
         open={adding}
         onOpenChange={setAdding}
         onCreated={(id) => router.push(`/users/${id}`)}
+      />
+
+      <ImportUsersModal
+        open={importing}
+        onOpenChange={setImporting}
+        onImported={() => queryClient.invalidateQueries({ queryKey: ['admin-users'] })}
       />
     </div>
   );
