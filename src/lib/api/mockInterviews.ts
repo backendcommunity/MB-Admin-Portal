@@ -42,12 +42,24 @@ export type Attempt = {
   score: number | null;
   startedAt: string | null;
   completedAt: string | null;
-  /** Shaped by `personRow` — an instructor gets a name and nothing identifying. */
+  /**
+   * Shaped by `personRow` (an allowlist, not a blocklist): every caller gets
+   * the first five fields, and only platform staff also get the other five.
+   * The staff-only keys are genuinely absent for an instructor — not
+   * present-with-null — so they are optional here rather than nullable.
+   */
   candidate: {
     name: string;
     avatar: string | null;
-    email?: string | null;
+    progress: number | null;
+    /** The learner's lifetime points total from `User`, not this attempt's score. */
+    score: number | null;
+    createdAt: string | null;
     id?: string | null;
+    email?: string | null;
+    username?: string | null;
+    country?: string | null;
+    isPremium?: boolean;
   };
 };
 

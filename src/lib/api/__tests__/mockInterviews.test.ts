@@ -43,6 +43,83 @@ describe('createTemplate', () => {
   });
 });
 
+describe('fetchTemplate — candidate shape', () => {
+  // `personRow` is an allowlist: a staff caller gets ten fields, an
+  // instructor gets only the first five — genuinely absent, not null.
+  it('carries all ten fields for a staff (admin) caller', async () => {
+    const candidate = {
+      name: 'Ada Lovelace',
+      avatar: null,
+      progress: 42,
+      score: 900,
+      createdAt: '2026-01-01T00:00:00.000Z',
+      id: 'u-1',
+      email: 'ada@example.com',
+      username: 'ada',
+      country: 'NG',
+      isPremium: true,
+    };
+    get.mockResolvedValue({
+      data: {
+        success: true,
+        data: {
+          id: 't-1',
+          attempts: { stats: {}, recent: [{ id: 'a-1', candidate }] },
+        },
+      },
+    });
+
+    const detail = await fetchTemplate('t-1');
+    const seen = detail.attempts.recent[0].candidate;
+
+    expect(Object.keys(seen).sort()).toEqual(
+      [
+        'name',
+        'avatar',
+        'progress',
+        'score',
+        'createdAt',
+        'id',
+        'email',
+        'username',
+        'country',
+        'isPremium',
+      ].sort(),
+    );
+  });
+
+  it('carries exactly the five shared fields for an instructor caller, with staff keys absent (not null)', async () => {
+    const candidate = {
+      name: 'Ada Lovelace',
+      avatar: null,
+      progress: 42,
+      score: 900,
+      createdAt: '2026-01-01T00:00:00.000Z',
+    };
+    get.mockResolvedValue({
+      data: {
+        success: true,
+        data: {
+          id: 't-1',
+          attempts: { stats: {}, recent: [{ id: 'a-1', candidate }] },
+        },
+      },
+    });
+
+    const detail = await fetchTemplate('t-1');
+    const seen = detail.attempts.recent[0].candidate;
+
+    expect(Object.keys(seen).sort()).toEqual(
+      ['name', 'avatar', 'progress', 'score', 'createdAt'].sort(),
+    );
+    expect(seen).not.toHaveProperty('id');
+    expect(seen).not.toHaveProperty('email');
+    expect(seen).not.toHaveProperty('username');
+    expect(seen).not.toHaveProperty('country');
+    expect(seen).not.toHaveProperty('isPremium');
+  });
+});
+
 describe('constants', () => {
   it('the standard rubric totals 100 and every weight is positive', () => {
     expect(STANDARD_RUBRIC.reduce((n, r) => n + r.weight, 0)).toBe(100);
