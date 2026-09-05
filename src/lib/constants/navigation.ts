@@ -100,12 +100,10 @@ export const NAV_ITEMS: NavItem[] = [
     roles: ['SUPER_ADMIN', 'ADMIN', 'INSTRUCTOR'],
   },
   {
-    // requireStrictAdmin on all four routes (reverted from requireAdmin):
-    // template fields have no field-level guard yet either.
     label: 'Mock Interviews',
-    href: '/mock-interviews/templates',
+    href: '/mock-interviews',
     icon: Briefcase,
-    roles: ['SUPER_ADMIN', 'ADMIN'],
+    roles: ['SUPER_ADMIN', 'ADMIN', 'INSTRUCTOR'],
   },
   {
     label: 'Certifications',
