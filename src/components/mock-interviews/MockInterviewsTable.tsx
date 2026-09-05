@@ -68,7 +68,7 @@ export default function MockInterviewsTable() {
   const [style, setStyle] = useState('ALL');
   const [category, setCategory] = useState('ALL');
   const [difficulty, setDifficulty] = useState('ALL');
-  const [status, setStatus] = useState<'ALL' | 'published' | 'draft'>('ALL');
+  const [status, setStatus] = useState<'ALL' | 'published' | 'pending' | 'draft'>('ALL');
   const [page, setPage] = useState(1);
   const [confirming, setConfirming] = useState<MockInterviewTemplate | null>(null);
   const [importing, setImporting] = useState(false);
@@ -264,8 +264,8 @@ export default function MockInterviewsTable() {
         {filter(
           'Filter by status',
           status,
-          (next) => setStatus(next as 'ALL' | 'published' | 'draft'),
-          ['published', 'draft'],
+          (next) => setStatus(next as 'ALL' | 'published' | 'pending' | 'draft'),
+          ['published', 'pending', 'draft'],
           'Any status',
         )}
       </div>

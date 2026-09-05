@@ -113,7 +113,7 @@ export type TemplateListParams = {
   style?: string;
   category?: string;
   difficulty?: string;
-  status?: 'published' | 'draft';
+  status?: 'published' | 'pending' | 'draft';
 };
 
 export type PaginatedTemplates = {
