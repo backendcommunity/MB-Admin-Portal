@@ -457,7 +457,10 @@ export type LibraryRow = { id: string; title: string; meta?: string };
 const LIBRARY_SOURCES: Record<string, { url: string; metaKey?: string }> = {
   course: { url: '/admin/courses', metaKey: 'slug' },
   project: { url: '/admin/projects', metaKey: 'difficulty' },
-  mock: { url: '/admin/mock-interview-templates', metaKey: 'format' },
+  // scope=attachable: this is the catalogue picker attaching an EXISTING
+  // template, so it needs the caller's own rows plus platform-owned ones —
+  // not the narrower `mine` default the admin list wants.
+  mock: { url: '/admin/mock-interview-templates?scope=attachable', metaKey: 'format' },
   // hasCohorts: a bootcamp with no cohort has no dates and nothing for a
   // learner to start, so it is not worth offering as a step.
   bootcamp: { url: '/admin/bootcamps?hasCohorts=true', metaKey: 'cohortCount' },

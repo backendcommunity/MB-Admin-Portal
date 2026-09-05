@@ -120,7 +120,10 @@ export default function ImportCourseModal({
       const [categories, projects, mocks, courses] = await Promise.allSettled([
         fetchCategories(),
         axiosInstance.get('/admin/projects?limit=100'),
-        axiosInstance.get('/admin/mock-interview-templates?limit=100'),
+        // scope=attachable: this picker attaches an existing template from the
+        // shared catalogue (own rows plus platform-owned ones), not the narrower
+        // `mine` default the admin list wants.
+        axiosInstance.get('/admin/mock-interview-templates?limit=100&scope=attachable'),
         axiosInstance.get('/admin/courses?limit=100'),
       ]);
 
