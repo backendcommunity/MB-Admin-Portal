@@ -54,6 +54,31 @@ describe('MockInterviewsTable', () => {
     expect(screen.getAllByText('Published').length).toBeGreaterThan(0);
   });
 
+  // Review finding: every fixture above defaults `isPublic: true` and
+  // `addedBy: null`, so nothing would fail if the Status column always said
+  // "Published" or the Owner column always said "Platform" — both are true
+  // for every row in this suite by coincidence, not by assertion. A DRAFT
+  // row (isPublic: false) with a non-null `addedBy` pins down the other
+  // branch of each column.
+  it('renders a DRAFT row as Draft, and labels a non-null addedBy as Authored (never a claimed role)', async () => {
+    fetchTemplates.mockResolvedValue({
+      data: [template({ isPublic: false, addedBy: 'instructor-1' })],
+      total: 1,
+      page: 1,
+      limit: 25,
+    });
+    wrap(<MockInterviewsTable />);
+
+    await screen.findByText('Go Backend');
+    expect(screen.getAllByText('Draft').length).toBeGreaterThan(0);
+    expect(screen.queryAllByText('Published').length).toBe(0);
+    expect(screen.getAllByText('Authored').length).toBeGreaterThan(0);
+    // `addedBy` is just an id — the payload carries no role for it, and
+    // "Instructor" would claim one the data does not have (an admin-authored
+    // row looks identical on the wire).
+    expect(screen.queryAllByText('Instructor').length).toBe(0);
+  });
+
   it('badges a learner-generated template', async () => {
     fetchTemplates.mockResolvedValue({
       data: [template({ isCustom: true })],
