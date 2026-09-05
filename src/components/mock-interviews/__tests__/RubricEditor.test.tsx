@@ -15,7 +15,7 @@ describe('RubricEditor', () => {
     expect(screen.queryByRole('alert')).toBeNull();
   });
 
-  it('flags a weight of zero — the scorer would discard it silently', () => {
+  it('flags a weight of zero — the create/update endpoint requires >= 1', () => {
     render(
       <RubricEditor
         value={[{ criterion: 'Fake', weight: 0, description: '' }]}
@@ -23,6 +23,26 @@ describe('RubricEditor', () => {
       />,
     );
     expect(screen.getByRole('alert')).toHaveTextContent(/greater than zero/i);
+  });
+
+  it("flags a weight of 0.5 — clears the importer's >0 discard rule but still fails the endpoint's >= 1 minimum", () => {
+    render(
+      <RubricEditor
+        value={[{ criterion: 'Fake', weight: 0.5, description: '' }]}
+        onChange={() => {}}
+      />,
+    );
+    expect(screen.getByRole('alert')).toBeInTheDocument();
+  });
+
+  it('accepts a weight of 1.5 — the server uses .number().min(1), not .integer()', () => {
+    render(
+      <RubricEditor
+        value={[{ criterion: 'Real', weight: 1.5, description: '' }]}
+        onChange={() => {}}
+      />,
+    );
+    expect(screen.queryByRole('alert')).toBeNull();
   });
 
   it('adds a criterion', () => {

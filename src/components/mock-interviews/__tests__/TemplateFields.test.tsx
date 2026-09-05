@@ -1,6 +1,7 @@
 import { describe, it, expect, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import type { ComponentType } from 'react';
 import {
   IdentityFields,
   RoleFields,
@@ -17,6 +18,12 @@ import type { TemplateInput } from '@/lib/api/mockInterviews';
  * on every call, not just the end result.
  */
 
+type GroupProps = {
+  value: TemplateInput;
+  onChange: (patch: TemplateInput) => void;
+  disabled?: boolean;
+};
+
 const fullValue: TemplateInput = {
   name: 'Existing name',
   summary: 'Existing summary',
@@ -31,54 +38,87 @@ const fullValue: TemplateInput = {
   questions: 5,
 };
 
-describe('IdentityFields', () => {
-  it('emits only the changed field, not the whole object', async () => {
+/**
+ * Every plain text/number field, across every group, driven from one table.
+ *
+ * `name` MUST match this component's report entry in
+ * `.superpowers/sdd/2026-09-05-mock-interview-crud/task-10-report.md`
+ * exactly — Tasks 12 and 13 query these labels with `getByLabelText`. `Name`
+ * and `Duration` carry a required-field asterisk in their rendered label
+ * (`"Name *"`, `"Duration *"`), so their regex is anchored to the start only.
+ *
+ * `format` is deliberately absent: its `onChange` is a no-op by contract (the
+ * API refuses anything but `Chat`), so it never emits a patch at all — that
+ * is covered separately below.
+ */
+const textFieldCases: Array<{
+  label: string;
+  name: RegExp;
+  Group: ComponentType<GroupProps>;
+  field: keyof TemplateInput;
+  type: string;
+}> = [
+  { label: 'Name', name: /^name/i, Group: IdentityFields, field: 'name', type: 'X' },
+  { label: 'Summary', name: /^summary/i, Group: IdentityFields, field: 'summary', type: 'X' },
+  {
+    label: 'Description',
+    name: /^description/i,
+    Group: IdentityFields,
+    field: 'description',
+    type: 'X',
+  },
+  { label: 'Company', name: /^company/i, Group: RoleFields, field: 'company', type: 'X' },
+  { label: 'Position', name: /^position/i, Group: RoleFields, field: 'position', type: 'X' },
+  { label: 'Seniority', name: /^seniority/i, Group: RoleFields, field: 'seniority', type: 'X' },
+  { label: 'Category', name: /^category/i, Group: InterviewFields, field: 'category', type: 'X' },
+  { label: 'Duration', name: /^duration/i, Group: InterviewFields, field: 'duration', type: '9' },
+  {
+    label: 'Questions',
+    name: /^questions/i,
+    Group: InterviewFields,
+    field: 'questions',
+    type: '9',
+  },
+];
+
+describe.each(textFieldCases)('$label', ({ name, Group, field, type }) => {
+  it('emits a patch with exactly one key — its own field, never the whole object', async () => {
     const onChange = vi.fn();
-    render(<IdentityFields value={fullValue} onChange={onChange} />);
+    render(<Group value={fullValue} onChange={onChange} />);
 
-    await userEvent.type(screen.getByLabelText(/^name/i), 'X');
+    await userEvent.type(screen.getByLabelText(name), type);
 
+    expect(onChange.mock.calls.length).toBeGreaterThan(0);
     for (const call of onChange.mock.calls) {
-      expect(Object.keys(call[0])).toEqual(['name']);
+      expect(Object.keys(call[0])).toEqual([field]);
     }
   });
 });
 
-describe('RoleFields', () => {
-  it('emits only the changed field, not the whole object', async () => {
+/** The two Select-backed fields need a different interaction than typing. */
+const selectFieldCases: Array<{
+  label: string;
+  name: RegExp;
+  field: keyof TemplateInput;
+  option: string;
+}> = [
+  { label: 'Style', name: /^style/i, field: 'style', option: 'Coding' },
+  { label: 'Difficulty', name: /^difficulty/i, field: 'difficulty', option: 'Hard' },
+];
+
+describe.each(selectFieldCases)('$label select', ({ name, field, option }) => {
+  it('emits a patch with exactly one key when an option is chosen', async () => {
     const onChange = vi.fn();
-    render(<RoleFields value={fullValue} onChange={onChange} />);
+    render(<InterviewFields value={fullValue} onChange={onChange} />);
 
-    await userEvent.type(screen.getByLabelText(/^company/i), 'X');
+    await userEvent.click(screen.getByLabelText(name));
+    await userEvent.click(await screen.findByRole('option', { name: option }));
 
-    for (const call of onChange.mock.calls) {
-      expect(Object.keys(call[0])).toEqual(['company']);
-    }
+    expect(onChange).toHaveBeenCalledWith({ [field]: option });
   });
 });
 
-describe('InterviewFields', () => {
-  it('emits only the changed field for a text input, not the whole object', async () => {
-    const onChange = vi.fn();
-    render(<InterviewFields value={fullValue} onChange={onChange} />);
-
-    await userEvent.type(screen.getByLabelText(/^category/i), 'X');
-
-    for (const call of onChange.mock.calls) {
-      expect(Object.keys(call[0])).toEqual(['category']);
-    }
-  });
-
-  it('emits only the changed field for the Style select, not the whole object', async () => {
-    const onChange = vi.fn();
-    render(<InterviewFields value={fullValue} onChange={onChange} />);
-
-    await userEvent.click(screen.getByLabelText(/^style/i));
-    await userEvent.click(await screen.findByRole('option', { name: 'Coding' }));
-
-    expect(onChange).toHaveBeenCalledWith({ style: 'Coding' });
-  });
-
+describe('Format field', () => {
   it('renders format options other than Chat as disabled, so the gap is visible', async () => {
     render(<InterviewFields value={fullValue} onChange={() => {}} />);
 

@@ -4,7 +4,11 @@ import { Trash2 } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { STANDARD_RUBRIC, type RubricCriterion } from '@/lib/mockInterviews/constants';
+import {
+  SERVER_LIMITS,
+  STANDARD_RUBRIC,
+  type RubricCriterion,
+} from '@/lib/mockInterviews/constants';
 
 /**
  * Weighted criteria the report's `overallScore` is recomputed from.
@@ -14,9 +18,12 @@ import { STANDARD_RUBRIC, type RubricCriterion } from '@/lib/mockInterviews/cons
  * sum — but the prompt shows them to the model as percentages. Both are true,
  * so the editor nudges toward 100 and never blocks on it.
  *
- * A weight of zero or less IS refused: `parseRubric` filters on `weight > 0`
- * and discards the rest without saying so, which would leave a criterion
- * sitting here looking saved and never scored.
+ * A weight below `SERVER_LIMITS.RUBRIC_MIN_WEIGHT` (1) IS refused — the
+ * create/update endpoint's Joi schema requires `>= 1`. This is deliberately
+ * NOT the same threshold as the *import parser's* `weight > 0` discard rule
+ * (that one silently drops non-positive weights instead of rejecting the
+ * write); a value like 0.5 clears `> 0` but still 422s here, so the editor
+ * must compare against the endpoint's minimum, not the importer's.
  */
 export function RubricEditor({
   value,
@@ -28,7 +35,7 @@ export function RubricEditor({
   disabled?: boolean;
 }) {
   const total = value.reduce((sum, row) => sum + (Number(row.weight) || 0), 0);
-  const invalid = value.filter((row) => !(Number(row.weight) > 0));
+  const invalid = value.filter((row) => !(Number(row.weight) >= SERVER_LIMITS.RUBRIC_MIN_WEIGHT));
 
   const patch = (index: number, next: Partial<RubricCriterion>) =>
     onChange(value.map((row, i) => (i === index ? { ...row, ...next } : row)));
@@ -60,11 +67,12 @@ export function RubricEditor({
               />
               <Input
                 type="number"
-                min={1}
+                min={SERVER_LIMITS.RUBRIC_MIN_WEIGHT}
+                step="any"
                 value={row.weight}
                 aria-label={`Weight for ${row.criterion || `criterion ${index + 1}`}`}
                 disabled={disabled}
-                aria-invalid={!(Number(row.weight) > 0)}
+                aria-invalid={!(Number(row.weight) >= SERVER_LIMITS.RUBRIC_MIN_WEIGHT)}
                 onChange={(event) => patch(index, { weight: Number(event.target.value) })}
               />
               <Input
@@ -128,8 +136,8 @@ export function RubricEditor({
 
       {invalid.length > 0 ? (
         <p role="alert" className="text-xs text-destructive">
-          Every weight must be greater than zero — the scorer discards anything else silently, so
-          the criterion would never be applied.
+          Every weight must be at least {SERVER_LIMITS.RUBRIC_MIN_WEIGHT} (greater than zero isn't
+          enough) — saving with anything less is rejected.
         </p>
       ) : null}
     </div>
