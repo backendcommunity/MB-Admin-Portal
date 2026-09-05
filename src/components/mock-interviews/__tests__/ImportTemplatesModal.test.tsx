@@ -62,6 +62,26 @@ describe('ImportTemplatesModal', () => {
     expect(screen.getByText(/1 of 2/i)).toBeInTheDocument();
   });
 
+  it('warns that the already-created row will be duplicated on a retry', async () => {
+    // There's no resume logic — pressing Import again replays from row 1, so
+    // whatever already succeeded gets created a second time. The failure
+    // message has to say so, not just report where the run stopped.
+    createTemplate
+      .mockResolvedValueOnce({ id: 'ok-1' })
+      .mockRejectedValueOnce(new Error('duration must be a number'));
+
+    open();
+    fireEvent.click(screen.getByRole('button', { name: /load sample/i }));
+    fireEvent.click(screen.getByRole('button', { name: /^import$/i }));
+
+    await screen.findByText(/stopped/i);
+    expect(screen.getByText(/already created/i)).toBeInTheDocument();
+    // Anchored to the specific warning phrase — the sample's own notes panel
+    // separately says "duplicate topics removed", so a bare /duplicate/i
+    // would match two elements here.
+    expect(screen.getByText(/import will create a duplicate/i)).toBeInTheDocument();
+  });
+
   it('imports as drafts for an instructor, who cannot publish', async () => {
     asRole('INSTRUCTOR');
     open();

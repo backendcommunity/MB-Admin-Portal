@@ -85,7 +85,13 @@ describe('TemplateDetailClient', () => {
 
     fireEvent.click(screen.getByRole('tab', { name: /interview/i }));
     expect(screen.getByLabelText(/^style$/i)).toBeInTheDocument();
-    expect(screen.queryByLabelText(/^name$/i)).toBeNull();
+    // Not `/^name$/i`: Name is a required field and renders as "Name *" (see
+    // Task 10's accessible-names table), so an exact-match anchor never
+    // matches it whether the field is mounted or not — that made the
+    // original version of this assertion pass regardless of what the
+    // component actually did. `/^name/i` (no trailing anchor) matches the
+    // real label text and is the one that can actually fail.
+    expect(screen.queryByLabelText(/^name/i)).toBeNull();
   });
 
   it('shows the attempt count in the tab label', async () => {
@@ -171,6 +177,51 @@ describe('TemplateDetailClient', () => {
     wrap();
     expect(await screen.findByRole('button', { name: /submit for review/i })).toBeInTheDocument();
     expect(screen.getByText(/refused server-side/i)).toBeInTheDocument();
+  });
+
+  it('publishing carries an unsaved edit along instead of losing it on refetch', async () => {
+    // Reproduces the bug exactly: edit a field, hit Publish (not Save), and
+    // confirm the edit is still there afterward. Before the fix, Publish
+    // sent only `{ isPublic }` and the seeding effect (keyed on `data`
+    // itself, which gets a new identity on every refetch) reseeded `form`
+    // from the server response and silently reverted the edit.
+    updateTemplate.mockImplementation(async (id: string, payload: any) => {
+      // The server always echoes back the full row, so the next fetchTemplate
+      // must reflect whatever was actually sent — mirroring a real API.
+      fetchTemplate.mockResolvedValue(detail({ ...payload }));
+      return { id };
+    });
+    wrap();
+
+    const nameField = await screen.findByLabelText(/^name/i);
+    fireEvent.change(nameField, { target: { value: 'EDITED NAME' } });
+    expect(screen.getByLabelText(/^name/i)).toHaveValue('EDITED NAME');
+
+    fireEvent.click(screen.getByRole('button', { name: /^publish$/i }));
+
+    await waitFor(() => expect(updateTemplate).toHaveBeenCalled());
+    const [, payload] = updateTemplate.mock.calls[0];
+    // The publish call itself must carry the edit, not just the flag.
+    expect(payload.name).toBe('EDITED NAME');
+
+    await waitFor(() => expect(screen.getByLabelText(/^name/i)).toHaveValue('EDITED NAME'));
+  });
+
+  it('disables Save while a publish is in flight, and Publish while a save is', async () => {
+    let resolveUpdate!: (value: unknown) => void;
+    updateTemplate.mockReturnValue(
+      new Promise((resolve) => {
+        resolveUpdate = resolve;
+      }),
+    );
+    wrap();
+    await screen.findByLabelText(/name/i);
+
+    fireEvent.click(screen.getByRole('button', { name: /^publish$/i }));
+    expect(screen.getByRole('button', { name: /^save$/i })).toBeDisabled();
+
+    resolveUpdate({ id: 't-1' });
+    await waitFor(() => expect(screen.getByRole('button', { name: /^save$/i })).toBeEnabled());
   });
 
   it('saves via updateTemplate, then invalidates the admin list and refetches', async () => {

@@ -70,10 +70,26 @@ export default function ImportTemplatesModal({
     } catch (error) {
       // Whatever was written before this point stays. Saying how far it got
       // is what makes a half-finished import fixable by hand.
+      //
+      // There's no resume logic here — pressing Import again replays from
+      // row 1, so the rows that already succeeded would be created a second
+      // time. The message has to say so explicitly, not just where it
+      // stopped, or a retry silently duplicates whatever this run already
+      // wrote.
+      const already = created.length;
+      const dupeWarning =
+        already > 0
+          ? ` ${already === 1 ? 'Row 1 was' : `Rows 1–${already} were`} already created — remove ${
+              already === 1 ? 'it' : 'them'
+            } from the JSON before retrying, or Import will create ${
+              already === 1 ? 'a duplicate' : 'duplicates'
+            }.`
+          : '';
       setFailure(
         `The import stopped after ${created.length} of ${result.docs.length}: ` +
           ((error as { response?: { data?: { message?: string } } }).response?.data?.message ??
-            (error as Error).message),
+            (error as Error).message) +
+          dupeWarning,
       );
     } finally {
       setBusy(false);

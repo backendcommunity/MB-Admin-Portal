@@ -97,9 +97,16 @@ export default function TemplateDetailClient() {
   const [saving, setSaving] = useState(false);
   const [publishing, setPublishing] = useState(false);
 
+  // Keyed on the id, not on `data` itself: `data` gets a new object identity
+  // on every refetch (a background window-focus refetch, or the refetch this
+  // component's own Save/Publish trigger) even when it's the same record. An
+  // effect keyed on `data` would reseed `form` from the server on every one
+  // of those and silently discard whatever the admin was mid-typing. Keying
+  // on the id means this only re-seeds when the record actually changes.
   useEffect(() => {
     if (data) setForm(toDraft(data));
-  }, [data]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [data?.id]);
 
   const patch = (next: TemplateInput) => setForm((current) => ({ ...(current ?? {}), ...next }));
 
@@ -127,10 +134,22 @@ export default function TemplateDetailClient() {
     }
   };
 
+  /**
+   * Publish sends the whole current `form`, not just `{ isPublic }`.
+   *
+   * The alternative — leaving Publish scoped to the flag alone — has to
+   * either disable the button while the form is dirty (so publishing after
+   * an edit takes two separate clicks and a trip to Save first) or silently
+   * drop the unsaved edit on the refetch that follows, which is the exact
+   * data-loss bug this replaces. Folding the save into Publish means the
+   * button does what it looks like it does — "make this live, as it stands
+   * right now" — in one action, with no separate dirty-state gate to get
+   * wrong.
+   */
   const togglePublish = async () => {
     setPublishing(true);
     try {
-      await updateTemplate(templateId, { isPublic: !data.isPublic });
+      await updateTemplate(templateId, { ...form, isPublic: !data.isPublic });
       queryClient.invalidateQueries({ queryKey: ['admin-mock-interviews'] });
       await refetch();
       toast.success(data.isPublic ? 'Unpublished.' : 'Published.');
@@ -170,11 +189,11 @@ export default function TemplateDetailClient() {
             <Button
               variant="ghost"
               onClick={() => router.push('/mock-interviews')}
-              disabled={saving}
+              disabled={saving || publishing}
             >
               Back
             </Button>
-            <Button onClick={save} disabled={saving}>
+            <Button onClick={save} disabled={saving || publishing}>
               {saving ? 'Saving…' : 'Save'}
             </Button>
           </>
@@ -186,11 +205,11 @@ export default function TemplateDetailClient() {
       {tab === 'overview' ? (
         <div className="space-y-4">
           <Section title="Identity">
-            <IdentityFields value={form} onChange={patch} disabled={saving} />
+            <IdentityFields value={form} onChange={patch} disabled={saving || publishing} />
           </Section>
 
           <Section title="Role">
-            <RoleFields value={form} onChange={patch} disabled={saving} />
+            <RoleFields value={form} onChange={patch} disabled={saving || publishing} />
           </Section>
 
           <Section title="Access">
@@ -202,7 +221,7 @@ export default function TemplateDetailClient() {
                 <p className="text-xs text-muted-foreground">ID: {data.id}</p>
               </div>
               {canPublish ? (
-                <Button variant="outline" onClick={togglePublish} disabled={publishing}>
+                <Button variant="outline" onClick={togglePublish} disabled={publishing || saving}>
                   {publishing ? 'Working…' : data.isPublic ? 'Unpublish' : 'Publish'}
                 </Button>
               ) : (
@@ -222,7 +241,7 @@ export default function TemplateDetailClient() {
 
       {tab === 'interview' ? (
         <Section title="Interview">
-          <InterviewFields value={form} onChange={patch} disabled={saving} />
+          <InterviewFields value={form} onChange={patch} disabled={saving || publishing} />
         </Section>
       ) : null}
 
@@ -232,7 +251,7 @@ export default function TemplateDetailClient() {
             <TopicsField
               value={form.topics ?? []}
               onChange={(topics) => patch({ topics })}
-              disabled={saving}
+              disabled={saving || publishing}
             />
           </Section>
 
@@ -240,7 +259,7 @@ export default function TemplateDetailClient() {
             <RubricEditor
               value={form.evaluationRubric ?? []}
               onChange={(evaluationRubric) => patch({ evaluationRubric })}
-              disabled={saving}
+              disabled={saving || publishing}
             />
           </Section>
         </div>
