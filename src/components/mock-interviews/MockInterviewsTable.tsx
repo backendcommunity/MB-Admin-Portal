@@ -87,13 +87,6 @@ export default function MockInterviewsTable() {
   const columns = useMemo<ColumnDef<MockInterviewTemplate>[]>(
     () => [
       {
-        // Carries both the name and the publish status. DataTable renders a
-        // desktop table and a mobile card from the same cell defs, and only
-        // the head column (this one) gets a distinct mobile rendering via
-        // `mobileTitle` below — a body column's cell renders identically in
-        // both, so a status badge kept on its own column would show twice.
-        // Folding it in here, with a mobile title that never repeats the bare
-        // name or the bare status word, keeps both readable exactly once.
         id: 'template',
         header: 'Template',
         cell: ({ row }) => (
@@ -105,10 +98,6 @@ export default function MockInterviewsTable() {
             <span className="flex flex-wrap items-center gap-2">
               <span className="block truncate font-medium">{row.original.name}</span>
               {row.original.isCustom ? <StatusBadge label="Custom" tone="info" /> : null}
-              <StatusBadge
-                label={row.original.isPublic ? 'Published' : 'Draft'}
-                tone={row.original.isPublic ? 'success' : 'warning'}
-              />
             </span>
             <span className="block truncate text-xs text-muted-foreground">
               {row.original.company ?? '—'} · {row.original.topics?.length ?? 0} topics
@@ -148,6 +137,16 @@ export default function MockInterviewsTable() {
         header: 'Attempts',
         meta: { align: 'right' as const },
         cell: ({ row }) => <span className="tabular-nums">{row.original.attemptCount ?? 0}</span>,
+      },
+      {
+        id: 'status',
+        header: 'Status',
+        cell: ({ row }) => (
+          <StatusBadge
+            label={row.original.isPublic ? 'Published' : 'Draft'}
+            tone={row.original.isPublic ? 'success' : 'warning'}
+          />
+        ),
       },
       {
         id: 'owner',

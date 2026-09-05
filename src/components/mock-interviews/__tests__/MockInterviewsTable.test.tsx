@@ -44,8 +44,14 @@ describe('MockInterviewsTable', () => {
   it('renders a row per template', async () => {
     fetchTemplates.mockResolvedValue({ data: [template()], total: 1, page: 1, limit: 25 });
     wrap(<MockInterviewsTable />);
+    // The name is unique — DataTable's mobile title collapses it with the
+    // role so it never repeats the bare name (see mobileTitle below). Status
+    // has its own column, though, and DataTable renders a desktop table and
+    // a mobile card list from the same cell defs, so "Published" appears
+    // twice — assert on presence, not uniqueness, as CoursesTable.test.tsx
+    // does for every plain column value.
     expect(await screen.findByText('Go Backend')).toBeInTheDocument();
-    expect(screen.getByText('Published')).toBeInTheDocument();
+    expect(screen.getAllByText('Published').length).toBeGreaterThan(0);
   });
 
   it('badges a learner-generated template', async () => {
