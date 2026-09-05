@@ -16,6 +16,11 @@ import { LoadingState, ErrorState } from '@/components/shared/LoadingState';
 import { EmptyState } from '@/components/shared/EmptyState';
 import { StatusBadge } from '@/components/shared/StatusBadge';
 import {
+  deriveLifecycle,
+  LifecycleBadge,
+  SubmitForReviewControl,
+} from '@/components/shared/PublishLifecycle';
+import {
   IdentityFields,
   RoleFields,
   InterviewFields,
@@ -183,6 +188,16 @@ export default function TemplateDetailClient() {
   const stats = data.attempts.stats;
   const recent = data.attempts.recent;
 
+  // The owner's rule: `isWaiting` overrides `isPublic`. A resubmitted
+  // template can carry `isPublic: true` from before and still not be live —
+  // `data.isPublic` alone would lie about that, so `isLive` folds in
+  // `isWaiting` explicitly rather than trusting the flag on its own.
+  const lifecycleState = deriveLifecycle({
+    isWaiting: data.isWaiting,
+    waitingLink: data.waitingLink,
+    isLive: !data.isWaiting && data.isPublic,
+  });
+
   return (
     <div>
       <p className="mb-1 text-sm text-muted-foreground">
@@ -195,12 +210,10 @@ export default function TemplateDetailClient() {
       <PageHeader
         title={data.name}
         description={data.summary || undefined}
-        badge={
-          <StatusBadge
-            label={data.isPublic ? 'Published' : 'Draft'}
-            tone={data.isPublic ? 'success' : 'warning'}
-          />
-        }
+        // Shown for staff only — an instructor sees the same truthful state
+        // via `SubmitForReviewControl`'s own badge in the Access section
+        // below, so it is never duplicated between the two.
+        badge={canPublish ? <LifecycleBadge state={lifecycleState} /> : undefined}
         actions={
           <>
             <Button
@@ -242,14 +255,13 @@ export default function TemplateDetailClient() {
                   {publishing ? 'Working…' : data.isPublic ? 'Unpublish' : 'Publish'}
                 </Button>
               ) : (
-                <div className="text-right">
-                  <Button variant="outline" disabled>
-                    Submit for review
-                  </Button>
-                  <p className="mt-1 max-w-[220px] text-xs text-muted-foreground">
-                    An admin publishes — the flag is refused server-side, not merely hidden here.
-                  </p>
-                </div>
+                <SubmitForReviewControl
+                  type="mock-interview"
+                  id={templateId}
+                  state={lifecycleState}
+                  note={data.waitingLink}
+                  onSubmitted={refetch}
+                />
               )}
             </div>
           </Section>

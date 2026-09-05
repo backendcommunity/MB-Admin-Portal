@@ -79,6 +79,38 @@ describe('MockInterviewsTable', () => {
     expect(screen.queryAllByText('Instructor').length).toBe(0);
   });
 
+  // Three states, not two: a resubmitted-for-review template can carry
+  // `isPublic: true` left over from before it was pulled back — `isWaiting`
+  // overrides that, so the column must say "Pending review", never
+  // "Published".
+  it('renders a resubmitted template (isWaiting true, isPublic still true) as Pending review, not Published', async () => {
+    fetchTemplates.mockResolvedValue({
+      data: [template({ isPublic: true, isWaiting: true })],
+      total: 1,
+      page: 1,
+      limit: 25,
+    });
+    wrap(<MockInterviewsTable />);
+
+    await screen.findByText('Go Backend');
+    expect(screen.getAllByText('Pending review').length).toBeGreaterThan(0);
+    expect(screen.queryAllByText('Published').length).toBe(0);
+  });
+
+  it('renders a freshly submitted draft (isWaiting true, isPublic false) as Pending review, not Draft', async () => {
+    fetchTemplates.mockResolvedValue({
+      data: [template({ isPublic: false, isWaiting: true })],
+      total: 1,
+      page: 1,
+      limit: 25,
+    });
+    wrap(<MockInterviewsTable />);
+
+    await screen.findByText('Go Backend');
+    expect(screen.getAllByText('Pending review').length).toBeGreaterThan(0);
+    expect(screen.queryAllByText('Draft').length).toBe(0);
+  });
+
   it('badges a learner-generated template', async () => {
     fetchTemplates.mockResolvedValue({
       data: [template({ isCustom: true })],

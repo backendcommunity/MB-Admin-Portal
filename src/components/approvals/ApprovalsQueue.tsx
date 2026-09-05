@@ -88,6 +88,7 @@ export default function ApprovalsQueue() {
             <SelectItem value="ROADMAP">Roadmap</SelectItem>
             <SelectItem value="OFFER">Offer</SelectItem>
             <SelectItem value="SOLUTION">Solution</SelectItem>
+            <SelectItem value="MOCK_INTERVIEW">Mock Interview</SelectItem>
           </SelectContent>
         </Select>
         <Button variant="outline" size="sm" onClick={() => refetch()}>

@@ -1,11 +1,13 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
 import { useAuthStore } from '@/store/authStore';
 
 const fetchTemplate = vi.fn();
 const updateTemplate = vi.fn();
+const submitForReview = vi.fn();
 
 vi.mock('@/lib/api/mockInterviews', () => ({
   fetchTemplate: (...a: unknown[]) => fetchTemplate(...a),
@@ -15,6 +17,14 @@ vi.mock('next/navigation', () => ({
   useRouter: () => ({ push: vi.fn() }),
   useParams: () => ({ id: 't-1' }),
 }));
+vi.mock('@/lib/api/instructor', async () => {
+  const actual =
+    await vi.importActual<typeof import('@/lib/api/instructor')>('@/lib/api/instructor');
+  return {
+    ...actual,
+    submitForReview: (...args: unknown[]) => submitForReview(...args),
+  };
+});
 
 // The portal has no `@/lib/auth/useAuth` hook — the real session lives in the
 // `useAuthStore` zustand store (`userRole` + `authResolved`). This matches
@@ -41,6 +51,8 @@ const detail = (over: Partial<any> = {}) => ({
   topics: ['golang'],
   evaluationRubric: [],
   isPublic: false,
+  isWaiting: false,
+  waitingLink: null,
   isCustom: false,
   sourceJd: null,
   createdById: null,
@@ -174,9 +186,45 @@ describe('TemplateDetailClient', () => {
     first.unmount();
 
     asRole('INSTRUCTOR');
+    fetchTemplate.mockResolvedValue(
+      detail({ isWaiting: true, waitingLink: 'The rubric needs a rework.' }),
+    );
     wrap();
-    expect(await screen.findByRole('button', { name: /submit for review/i })).toBeInTheDocument();
-    expect(screen.getByText(/refused server-side/i)).toBeInTheDocument();
+    expect(await screen.findByRole('button', { name: /resubmit/i })).toBeInTheDocument();
+    expect(screen.getByText('The rubric needs a rework.')).toBeInTheDocument();
+  });
+
+  it('wires the instructor Submit for review button to the real endpoint, with the mock-interview kind', async () => {
+    submitForReview.mockResolvedValue({
+      success: true,
+      id: 't-1',
+      type: 'MOCK_INTERVIEW',
+      status: 'PENDING_REVIEW',
+    });
+    asRole('INSTRUCTOR');
+    wrap();
+
+    await userEvent.click(await screen.findByRole('button', { name: /submit for review/i }));
+
+    await waitFor(() => expect(submitForReview).toHaveBeenCalledWith('mock-interview', 't-1'));
+    await waitFor(() => expect(fetchTemplate).toHaveBeenCalledTimes(2));
+  });
+
+  it('the header badge tells the truth: Pending review (not Published) once isWaiting is set, even with isPublic true', async () => {
+    fetchTemplate.mockResolvedValue(detail({ isPublic: true, isWaiting: true }));
+    wrap();
+
+    await screen.findByLabelText(/^name/i);
+    expect(screen.queryByText(/^published$/i)).toBeNull();
+    expect(screen.getByText(/in review/i)).toBeInTheDocument();
+  });
+
+  it('the header badge reads Published only when isWaiting is false and isPublic is true', async () => {
+    fetchTemplate.mockResolvedValue(detail({ isPublic: true, isWaiting: false }));
+    wrap();
+
+    await screen.findByLabelText(/^name/i);
+    expect(screen.getByText(/^published$/i)).toBeInTheDocument();
   });
 
   it('publishing carries an unsaved edit along instead of losing it on refetch', async () => {

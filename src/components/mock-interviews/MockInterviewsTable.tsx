@@ -46,6 +46,22 @@ function difficultyTone(difficulty: string): 'success' | 'info' | 'warning' | 'n
   return 'neutral';
 }
 
+/**
+ * Three states, not two: `isPublic` alone used to drive this column, which
+ * read a resubmitted-for-review template (`isWaiting: true`, `isPublic`
+ * still `true` from before) as "Published" — the owner's rule is
+ * `public <=> isWaiting === false && isPublic === true`, `isWaiting`
+ * overriding `isPublic`.
+ */
+function templateStatus(row: MockInterviewTemplate): {
+  label: string;
+  tone: 'success' | 'info' | 'warning';
+} {
+  if (!row.isWaiting && row.isPublic) return { label: 'Published', tone: 'success' };
+  if (row.isWaiting) return { label: 'Pending review', tone: 'info' };
+  return { label: 'Draft', tone: 'warning' };
+}
+
 export default function MockInterviewsTable() {
   const router = useRouter();
   const [q, setQ] = useState('');
@@ -143,12 +159,10 @@ export default function MockInterviewsTable() {
       {
         id: 'status',
         header: 'Status',
-        cell: ({ row }) => (
-          <StatusBadge
-            label={row.original.isPublic ? 'Published' : 'Draft'}
-            tone={row.original.isPublic ? 'success' : 'warning'}
-          />
-        ),
+        cell: ({ row }) => {
+          const { label, tone } = templateStatus(row.original);
+          return <StatusBadge label={label} tone={tone} />;
+        },
       },
       {
         id: 'owner',

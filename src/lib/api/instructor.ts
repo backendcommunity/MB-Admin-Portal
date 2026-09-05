@@ -1,14 +1,23 @@
 import { axiosInstance } from '@/lib/api/axios';
 
 /**
- * The five kinds an instructor can author and submit for review.
+ * The six kinds an instructor can author and submit for review.
  * `roadmap` is what the API calls a Path — the portal's own naming is `path`
  * in some places and `roadmap` in others, and the endpoint accepts either
  * (case-insensitive, `path` is an alias) — but the response always echoes
  * back the canonical `"ROADMAP"`. Bootcamp submits the identity row; a
- * cohort has no submit state of its own.
+ * cohort has no submit state of its own. `mock-interview` is the kebab form
+ * the API's `canonicalKind` accepts as an alias for `MOCK_INTERVIEW` (it
+ * uppercases whatever is sent, so the dash survives and matches its own
+ * `"MOCK-INTERVIEW"` check).
  */
-export type SubmittableType = 'course' | 'project' | 'bootcamp' | 'roadmap' | 'offer';
+export type SubmittableType =
+  | 'course'
+  | 'project'
+  | 'bootcamp'
+  | 'roadmap'
+  | 'offer'
+  | 'mock-interview';
 
 export type SubmitForReviewResponse = {
   success: boolean;
