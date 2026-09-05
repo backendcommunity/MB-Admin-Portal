@@ -186,10 +186,15 @@ describe('TemplateDetailClient', () => {
     // itself, which gets a new identity on every refetch) reseeded `form`
     // from the server response and silently reverted the edit.
     updateTemplate.mockImplementation(async (id: string, payload: any) => {
-      // The server always echoes back the full row, so the next fetchTemplate
-      // must reflect whatever was actually sent — mirroring a real API.
-      fetchTemplate.mockResolvedValue(detail({ ...payload }));
-      return { id };
+      // The server always echoes back the full updated row — not just the
+      // id — so the mock has to do the same for this test to actually
+      // exercise the real code path (the component now syncs `form` from
+      // this return value; a response that omits every field would make
+      // the sync itself the thing that clobbers `name`, defeating the
+      // point of this test).
+      const updated = { ...detail(), ...payload, id };
+      fetchTemplate.mockResolvedValue(updated);
+      return updated;
     });
     wrap();
 
@@ -205,6 +210,42 @@ describe('TemplateDetailClient', () => {
     expect(payload.name).toBe('EDITED NAME');
 
     await waitFor(() => expect(screen.getByLabelText(/^name/i)).toHaveValue('EDITED NAME'));
+  });
+
+  it('keeps form.isPublic in sync after Publish, so a later unrelated Save cannot silently revert it', async () => {
+    // Reproduces the round-2 regression exactly: `togglePublish` sent
+    // `{ ...form, isPublic: !data.isPublic }` but never called `setForm`,
+    // and the seeding effect is keyed on the id alone (round 1's fix), which
+    // does not change after a publish — so `form.isPublic` stayed frozen at
+    // its pre-publish value. A later Save, editing something unrelated,
+    // would ship that stale flag and flip the template back to draft with
+    // no toast, no warning. This asserts on the mock's recorded payload
+    // directly, not on rendered DOM state — react-query's structural
+    // sharing can reuse the previous `data` reference when a refetch
+    // returns a value it considers equivalent, which let an earlier,
+    // weaker version of this kind of test pass even against the bug.
+    updateTemplate.mockImplementation(async (id: string, payload: any) => {
+      const updated = { ...detail(), ...payload, id };
+      fetchTemplate.mockResolvedValue(updated);
+      return updated;
+    });
+    wrap();
+
+    await screen.findByLabelText(/^name/i);
+    fireEvent.click(screen.getByRole('button', { name: /^publish$/i }));
+    await waitFor(() => expect(updateTemplate).toHaveBeenCalledTimes(1));
+    const [, publishPayload] = updateTemplate.mock.calls[0];
+    expect(publishPayload.isPublic).toBe(true);
+
+    const nameField = await screen.findByLabelText(/^name/i);
+    fireEvent.change(nameField, { target: { value: 'A LATER UNRELATED EDIT' } });
+
+    fireEvent.click(screen.getByRole('button', { name: /^save$/i }));
+    await waitFor(() => expect(updateTemplate).toHaveBeenCalledTimes(2));
+
+    const [, savePayload] = updateTemplate.mock.calls[1];
+    expect(savePayload.isPublic).toBe(true);
+    expect(savePayload.name).toBe('A LATER UNRELATED EDIT');
   });
 
   it('disables Save while a publish is in flight, and Publish while a save is', async () => {

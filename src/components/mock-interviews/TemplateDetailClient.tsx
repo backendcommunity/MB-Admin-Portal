@@ -120,7 +120,17 @@ export default function TemplateDetailClient() {
   const save = async () => {
     setSaving(true);
     try {
-      await updateTemplate(templateId, form);
+      // Sync `form` from what the server actually wrote, not from whatever
+      // this render still holds — the seeding effect above is deliberately
+      // keyed on the id alone (see its comment) so a background refetch
+      // can't clobber an in-progress edit, but that also means it will
+      // NOT re-run after this save's own refetch, even though the id is
+      // unchanged. Without this line, any server-side coercion or
+      // trimming of what was sent (or the same isPublic-drift shape
+      // Publish had) would silently go unreflected in `form`, and a
+      // second Save would ship stale values the server never returned.
+      const updated = await updateTemplate(templateId, form);
+      setForm(toDraft(updated));
       queryClient.invalidateQueries({ queryKey: ['admin-mock-interviews'] });
       await refetch();
       toast.success('Saved.');
@@ -149,7 +159,14 @@ export default function TemplateDetailClient() {
   const togglePublish = async () => {
     setPublishing(true);
     try {
-      await updateTemplate(templateId, { ...form, isPublic: !data.isPublic });
+      // Same reasoning as `save` above: sync `form` from the server's own
+      // response rather than leaving it to the (now id-keyed, so it won't
+      // re-fire here) seeding effect. Without this, `form.isPublic` stays
+      // frozen at its pre-publish value — invisible, since the header badge
+      // reads `data.isPublic` — and the next unrelated Save ships that stale
+      // flag and silently flips the template back to draft.
+      const updated = await updateTemplate(templateId, { ...form, isPublic: !data.isPublic });
+      setForm(toDraft(updated));
       queryClient.invalidateQueries({ queryKey: ['admin-mock-interviews'] });
       await refetch();
       toast.success(data.isPublic ? 'Unpublished.' : 'Published.');
