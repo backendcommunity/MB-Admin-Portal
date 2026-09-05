@@ -41,11 +41,22 @@ describe('NAV_ITEMS', () => {
   });
 
   it('now offers an instructor Mock Interviews, not the old templates path', () => {
-    // Mock interview templates got the same treatment as Ships: a Joi
-    // validator and a publish gate now field-guard the writable fields, so
-    // instructors get full CRUD on their own templates. The nav points at
-    // the new `/mock-interviews` section — the old `/mock-interviews/templates`
-    // path is a redirect now, not a destination.
+    // This SUPERSEDES the ruling this section used to record (commit
+    // 60c22a0, "fix(nav): stop offering INSTRUCTOR sections the API
+    // refuses"), quoted verbatim so overturning it leaves a trace instead of
+    // vanishing without a record of what was decided before:
+    //
+    //   "Ship (/offers) and Mock Interview templates are requireStrictAdmin
+    //   on every route because pricing (amount, paddle_price_id) and
+    //   template fields have no field-level guard yet, so an instructor got
+    //   a 403 on every request after clicking them."
+    //
+    // That ruling's stated premise no longer holds: template fields now have
+    // a field-level guard (a Joi validator plus a publish gate), and the
+    // product owner has since chosen instructor own-row CRUD for this
+    // section. The nav points at the new `/mock-interviews` section — the
+    // old `/mock-interviews/templates` path is a redirect now, not a
+    // destination.
     expect(forRole('INSTRUCTOR')).toContain('/mock-interviews');
     expect(hrefs).not.toContain('/mock-interviews/templates');
   });
