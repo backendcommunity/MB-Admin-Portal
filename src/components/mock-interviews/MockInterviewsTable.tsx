@@ -29,6 +29,7 @@ import { LoadingState, ErrorState } from '@/components/shared/LoadingState';
 import { EmptyState } from '@/components/shared/EmptyState';
 import { StatusBadge } from '@/components/shared/StatusBadge';
 import ConfirmDelete from '@/components/users/ConfirmDelete';
+import ImportTemplatesModal from '@/components/mock-interviews/ImportTemplatesModal';
 import { STYLES, CATEGORIES, DIFFICULTIES } from '@/lib/mockInterviews/constants';
 import {
   deleteTemplate,
@@ -54,6 +55,7 @@ export default function MockInterviewsTable() {
   const [status, setStatus] = useState<'ALL' | 'published' | 'draft'>('ALL');
   const [page, setPage] = useState(1);
   const [confirming, setConfirming] = useState<MockInterviewTemplate | null>(null);
+  const [importing, setImporting] = useState(false);
 
   const params = useMemo(
     () => ({
@@ -219,13 +221,7 @@ export default function MockInterviewsTable() {
         description={`${total} template${total === 1 ? '' : 's'}. Practice interviews a learner attempts, judged against a rubric.`}
         actions={
           <div className="flex flex-wrap gap-2">
-            <Button
-              variant="outline"
-              onClick={() => {
-                // TODO(task-13): swap for <ImportTemplatesModal /> once it exists.
-                toast.info('Coming in the next task');
-              }}
-            >
+            <Button variant="outline" onClick={() => setImporting(true)}>
               Import JSON
             </Button>
             <Button onClick={() => router.push('/mock-interviews/new')}>New template</Button>
@@ -328,6 +324,14 @@ export default function MockInterviewsTable() {
                 (error as Error).message,
             });
           }
+        }}
+      />
+
+      <ImportTemplatesModal
+        open={importing}
+        onOpenChange={setImporting}
+        onImported={() => {
+          refetch();
         }}
       />
     </div>
