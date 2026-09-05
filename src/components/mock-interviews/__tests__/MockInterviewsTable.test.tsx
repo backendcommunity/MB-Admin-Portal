@@ -1,0 +1,134 @@
+import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { render, screen, waitFor } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+
+const fetchTemplates = vi.fn();
+const deleteTemplate = vi.fn();
+
+vi.mock('@/lib/api/mockInterviews', () => ({
+  fetchTemplates: (...args: unknown[]) => fetchTemplates(...args),
+  deleteTemplate: (...args: unknown[]) => deleteTemplate(...args),
+}));
+vi.mock('next/navigation', () => ({ useRouter: () => ({ push: vi.fn() }) }));
+vi.mock('sonner', () => ({
+  toast: { success: vi.fn(), error: vi.fn(), info: vi.fn() },
+}));
+
+import MockInterviewsTable from '@/components/mock-interviews/MockInterviewsTable';
+import { toast } from 'sonner';
+
+const wrap = (ui: React.ReactElement) => {
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  return render(<QueryClientProvider client={client}>{ui}</QueryClientProvider>);
+};
+
+const template = (over: Partial<any> = {}) => ({
+  id: 't-1',
+  name: 'Go Backend',
+  position: 'Backend Engineer',
+  seniority: 'Senior',
+  style: 'Technical',
+  difficulty: 'Medium',
+  topics: ['golang'],
+  isPublic: true,
+  isCustom: false,
+  addedBy: null,
+  attemptCount: 2,
+  ...over,
+});
+
+beforeEach(() => vi.clearAllMocks());
+
+describe('MockInterviewsTable', () => {
+  it('renders a row per template', async () => {
+    fetchTemplates.mockResolvedValue({ data: [template()], total: 1, page: 1, limit: 25 });
+    wrap(<MockInterviewsTable />);
+    expect(await screen.findByText('Go Backend')).toBeInTheDocument();
+    expect(screen.getByText('Published')).toBeInTheDocument();
+  });
+
+  it('badges a learner-generated template', async () => {
+    fetchTemplates.mockResolvedValue({
+      data: [template({ isCustom: true })],
+      total: 1,
+      page: 1,
+      limit: 25,
+    });
+    wrap(<MockInterviewsTable />);
+    expect(await screen.findByText(/custom/i)).toBeInTheDocument();
+  });
+
+  it('says "nothing authored yet" when the account has no templates at all', async () => {
+    fetchTemplates.mockResolvedValue({ data: [], total: 0, page: 1, limit: 25 });
+    wrap(<MockInterviewsTable />);
+    expect(await screen.findByText(/not authored/i)).toBeInTheDocument();
+  });
+
+  it('requests scope=mine — the list is the author’s own content, not the catalogue', async () => {
+    fetchTemplates.mockResolvedValue({ data: [], total: 0, page: 1, limit: 25 });
+    wrap(<MockInterviewsTable />);
+    await waitFor(() => expect(fetchTemplates).toHaveBeenCalled());
+    expect(fetchTemplates.mock.calls[0][0]).toMatchObject({ scope: 'mine' });
+  });
+
+  // The two empty states are different problems and must read differently —
+  // this locks in the "filters active" wording, which no other test above
+  // exercises (they only cover the "nothing authored at all" case).
+  it('says "nothing matches" — not "not authored" — when a filter narrows the list to zero', async () => {
+    fetchTemplates.mockResolvedValue({ data: [template()], total: 1, page: 1, limit: 25 });
+    wrap(<MockInterviewsTable />);
+    await screen.findByText('Go Backend');
+
+    fetchTemplates.mockResolvedValue({ data: [], total: 0, page: 1, limit: 25 });
+    await userEvent.type(
+      screen.getByLabelText('Search mock interview templates'),
+      'nothing-will-match',
+    );
+
+    expect(await screen.findByText(/nothing matches those filters/i)).toBeInTheDocument();
+    expect(screen.queryByText(/not authored/i)).not.toBeInTheDocument();
+  });
+
+  // The API's rejection message carries the attempt count
+  // ("Cannot delete: 3 learner attempts…") — that detail is the whole point
+  // of the message, so it must reach the toast verbatim, not a generic string.
+  it('surfaces the API error message verbatim when a delete is refused', async () => {
+    fetchTemplates.mockResolvedValue({ data: [template()], total: 1, page: 1, limit: 25 });
+    deleteTemplate.mockRejectedValue({
+      response: { data: { message: 'Cannot delete: 3 learner attempts reference this template.' } },
+    });
+    wrap(<MockInterviewsTable />);
+    await screen.findByText('Go Backend');
+
+    await userEvent.click(screen.getAllByRole('button', { name: /actions for go backend/i })[0]);
+    await userEvent.click(await screen.findByText('Delete'));
+    await userEvent.click(await screen.findByRole('button', { name: 'Delete' }));
+
+    await waitFor(() => expect(deleteTemplate).toHaveBeenCalledWith('t-1'));
+    await waitFor(() =>
+      expect(toast.error).toHaveBeenCalledWith(
+        'Could not delete it',
+        expect.objectContaining({
+          description: 'Cannot delete: 3 learner attempts reference this template.',
+        }),
+      ),
+    );
+  });
+
+  // A narrower filter can leave the current page past the end of the new,
+  // smaller result set — nothing else above ever advances past page 1.
+  it('resets to page 1 when a filter changes, after paging forward', async () => {
+    fetchTemplates.mockResolvedValue({ data: [template()], total: 30, page: 1, limit: 25 });
+    wrap(<MockInterviewsTable />);
+    await screen.findByText('Go Backend');
+
+    await userEvent.click(screen.getByRole('button', { name: 'Next' }));
+    await waitFor(() => expect(fetchTemplates.mock.calls.at(-1)?.[0]).toMatchObject({ page: 2 }));
+
+    await userEvent.type(screen.getByLabelText('Search mock interview templates'), 'x');
+    await waitFor(() =>
+      expect(fetchTemplates.mock.calls.at(-1)?.[0]).toMatchObject({ page: 1, q: 'x' }),
+    );
+  });
+});
