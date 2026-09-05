@@ -43,7 +43,7 @@ const detail = (over: Partial<any> = {}) => ({
   isPublic: false,
   isCustom: false,
   sourceJd: null,
-  addedBy: null,
+  createdById: null,
   createdAt: '2026-08-01',
   attemptCount: 1,
   attempts: {

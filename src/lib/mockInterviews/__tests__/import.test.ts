@@ -102,8 +102,8 @@ describe('coercions — reported, then imported', () => {
   });
 
   it('names server-owned and dead fields rather than dropping them silently', () => {
-    const r = parse([{ ...ok, level: 'Senior', addedBy: 'x', isCustom: true, sourceJd: 'jd' }]);
-    for (const field of ['level', 'addedBy', 'isCustom', 'sourceJd']) {
+    const r = parse([{ ...ok, level: 'Senior', createdById: 'x', isCustom: true, sourceJd: 'jd' }]);
+    for (const field of ['level', 'createdById', 'isCustom', 'sourceJd']) {
       expect(r.notes.join(' ')).toContain(field);
       expect(r.docs[0]).not.toHaveProperty(field);
     }

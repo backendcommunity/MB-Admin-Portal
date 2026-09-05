@@ -20,7 +20,7 @@ import type { TemplateInput } from '@/lib/api/mockInterviews';
  */
 
 /** Server-owned or dead (`level` is NULL on every row and aliased to `seniority`). */
-const IGNORED = ['id', 'createdAt', 'addedBy', 'isCustom', 'sourceJd', 'level'];
+const IGNORED = ['id', 'createdAt', 'createdById', 'isCustom', 'sourceJd', 'level'];
 
 const KNOWN = [
   'name',

@@ -153,11 +153,11 @@ export default function MockInterviewsTable() {
       {
         id: 'owner',
         header: 'Owner',
-        // `addedBy` is just an id — this payload carries no role for whoever
-        // it points to, so "Instructor" claimed a role the data does not
-        // carry (an admin-authored template reads identically). "Authored"
-        // says only what's actually known: someone owns this row.
-        cell: ({ row }) => <span>{row.original.addedBy ? 'Authored' : 'Platform'}</span>,
+        // `createdById` is just an id — this payload carries no role for
+        // whoever it points to, so "Instructor" claimed a role the data does
+        // not carry (an admin-authored template reads identically).
+        // "Authored" says only what's actually known: someone owns this row.
+        cell: ({ row }) => <span>{row.original.createdById ? 'Authored' : 'Platform'}</span>,
       },
       {
         id: 'actions',

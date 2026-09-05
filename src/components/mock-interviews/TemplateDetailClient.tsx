@@ -233,7 +233,7 @@ export default function TemplateDetailClient() {
             <div className="flex flex-col items-start justify-between gap-4 sm:flex-row sm:items-center">
               <div className="space-y-1">
                 <p className="text-xs text-muted-foreground">
-                  Added by {data.addedBy ?? 'the platform'} · Created {fmt(data.createdAt)}
+                  Added by {data.createdById ?? 'the platform'} · Created {fmt(data.createdAt)}
                 </p>
                 <p className="text-xs text-muted-foreground">ID: {data.id}</p>
               </div>
