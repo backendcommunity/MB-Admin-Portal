@@ -1,4 +1,4 @@
-import { DIFFICULTIES, STYLES } from '@/lib/mockInterviews/constants';
+import { DIFFICULTIES, SERVER_LIMITS, STYLES } from '@/lib/mockInterviews/constants';
 import type { TemplateInput } from '@/lib/api/mockInterviews';
 
 /**
@@ -9,10 +9,14 @@ import type { TemplateInput } from '@/lib/api/mockInterviews';
  * against the OLD convention (genre in `format`, no `style`) imports as
  * intended rather than producing a template with no genre.
  *
- * Errors block the whole payload; coercions are reported and proceed. Nothing
- * here writes: the caller replays the same POST the form makes, once per row,
- * so there is one validation path and a partial failure is visible at the row
- * that failed.
+ * Errors block the whole payload; coercions are reported and proceed. The
+ * importer replays one POST per row, so a doc the server's Joi schema would
+ * refuse has to be caught here first — otherwise a batch can write some rows
+ * before the schema stops it on a later one, which is exactly what "nothing
+ * is written until you press Import" promises won't happen. Every bound
+ * checked below mirrors `SERVER_LIMITS` (constants.ts) field for field. The
+ * rubric weight is the one exception that's DROPPED rather than refused,
+ * matching how a too-low weight was always handled — see the rubric section.
  */
 
 /** Server-owned or dead (`level` is NULL on every row and aliased to `seniority`). */
@@ -51,6 +55,19 @@ const empty = (): ImportResult => ({
 });
 
 const str = (v: unknown) => (typeof v === 'string' ? v.trim() : '');
+
+/** Pushes a blocking error and reports `true` when `value` is over `max` characters. */
+function tooLong(
+  out: ImportResult,
+  at: string,
+  field: string,
+  value: string,
+  max: number,
+): boolean {
+  if (value.length <= max) return false;
+  out.errors.push(`${at}: "${field}" is ${value.length} characters — the limit is ${max}.`);
+  return true;
+}
 
 export function parseTemplateImport(
   text: string,
@@ -93,9 +110,60 @@ export function parseTemplateImport(
     }
     seen.add(key);
 
+    // ── duration: the server requires an INTEGER in [1, 600] ──
     const duration = Number(row.duration);
-    if (!Number.isFinite(duration) || duration <= 0) {
+    if (!Number.isFinite(duration)) {
       out.errors.push(`${at} ("${name}") has no usable duration.`);
+      return;
+    }
+    if (
+      !Number.isInteger(duration) ||
+      duration < SERVER_LIMITS.DURATION_MIN ||
+      duration > SERVER_LIMITS.DURATION_MAX
+    ) {
+      out.errors.push(
+        `${at} ("${name}"): duration must be a whole number of minutes from ${SERVER_LIMITS.DURATION_MIN} to ${SERVER_LIMITS.DURATION_MAX} (got ${row.duration}).`,
+      );
+      return;
+    }
+
+    // ── questions: optional, but the server requires an INTEGER in [1, 100] when present ──
+    let questions: number | null = null;
+    if (row.questions !== undefined && row.questions !== null) {
+      const q = Number(row.questions);
+      if (
+        !Number.isFinite(q) ||
+        !Number.isInteger(q) ||
+        q < SERVER_LIMITS.QUESTIONS_MIN ||
+        q > SERVER_LIMITS.QUESTIONS_MAX
+      ) {
+        out.errors.push(
+          `${at} ("${name}"): questions must be a whole number from ${SERVER_LIMITS.QUESTIONS_MIN} to ${SERVER_LIMITS.QUESTIONS_MAX} (got ${row.questions}).`,
+        );
+        return;
+      }
+      questions = q;
+    }
+
+    // ── string length caps — every one of these mirrors the server's Joi
+    // `.max()` exactly. Refusing is deliberate: truncating a description to
+    // fit would lose text the caller would never know was dropped. ──
+    const summary = str(row.summary);
+    const description = str(row.description);
+    const company = str(row.company);
+    const position = str(row.position);
+    const seniorityValue = str(row.seniority);
+    const category = str(row.category);
+
+    if (
+      tooLong(out, at, 'name', name, SERVER_LIMITS.NAME_MAX) ||
+      tooLong(out, at, 'summary', summary, SERVER_LIMITS.SUMMARY_MAX) ||
+      tooLong(out, at, 'description', description, SERVER_LIMITS.DESCRIPTION_MAX) ||
+      tooLong(out, at, 'company', company, SERVER_LIMITS.COMPANY_MAX) ||
+      tooLong(out, at, 'position', position, SERVER_LIMITS.POSITION_MAX) ||
+      tooLong(out, at, 'seniority', seniorityValue, SERVER_LIMITS.SENIORITY_MAX) ||
+      tooLong(out, at, 'category', category, SERVER_LIMITS.CATEGORY_MAX)
+    ) {
       return;
     }
 
@@ -133,43 +201,85 @@ export function parseTemplateImport(
       difficulty = 'Medium';
     }
 
-    // ── topics ──
+    // ── topics: de-duplicate, drop non-strings, and refuse one over the cap ──
     let topics: string[] = [];
     if (Array.isArray(row.topics)) {
-      const strings = row.topics.filter((t: unknown) => typeof t === 'string' && t.trim());
-      const lost = row.topics.length - strings.length;
-      if (lost) {
+      const strings: string[] = [];
+      let nonStringCount = 0;
+      let lengthError: string | null = null;
+
+      for (const t of row.topics) {
+        if (typeof t !== 'string' || !t.trim()) {
+          nonStringCount += 1;
+          continue;
+        }
+        const trimmed = t.trim();
+        if (trimmed.length > SERVER_LIMITS.TOPIC_MAX) {
+          lengthError = `${at}: topic "${trimmed}" is ${trimmed.length} characters — the limit is ${SERVER_LIMITS.TOPIC_MAX}.`;
+          break;
+        }
+        strings.push(trimmed);
+      }
+
+      if (lengthError) {
+        out.errors.push(lengthError);
+        return;
+      }
+
+      if (nonStringCount) {
         out.notes.push(
-          `${at}: ${lost} topic entr${lost === 1 ? 'y was' : 'ies were'} not a string — dropped.`,
+          `${at}: ${nonStringCount} topic entr${nonStringCount === 1 ? 'y was' : 'ies were'} not a string — dropped.`,
         );
       }
-      topics = [...new Set(strings.map((t: string) => t.trim()))];
+      topics = [...new Set(strings)];
       if (topics.length !== strings.length) out.notes.push(`${at}: duplicate topics removed.`);
     } else if (row.topics !== undefined) {
       out.notes.push(`${at}: "topics" is not an array — ignored.`);
     }
 
     // ── rubric ──
-    // A non-positive weight is DROPPED and named. `parseRubric` on the server
-    // discards it silently, which would leave a criterion that looks saved
-    // and is never scored.
+    // A weight below the server's minimum is DROPPED and named — the one
+    // exception to "blocking, not silent" in this function. `parseRubric` on
+    // the server filters on `weight >= RUBRIC_MIN_WEIGHT` and discards
+    // anything else without saying so, which would leave a criterion that
+    // looks saved and is never scored. Criterion and description length,
+    // like every other bound, BLOCK the payload instead — truncating text
+    // without telling anyone loses it silently, which is worse than refusing
+    // the file.
     const evaluationRubric: Array<{ criterion: string; weight: number; description: string }> = [];
     if (Array.isArray(row.evaluationRubric)) {
-      row.evaluationRubric.forEach((c: any, j: number) => {
+      let blockingError: string | null = null;
+
+      for (let j = 0; j < row.evaluationRubric.length; j += 1) {
+        const c = row.evaluationRubric[j];
         const criterion = str(c?.criterion);
-        const weight = Number(c?.weight);
         if (!criterion) {
           out.notes.push(`${at}: rubric entry ${j + 1} has no criterion — dropped.`);
-          return;
+          continue;
         }
-        if (!(weight > 0)) {
+        if (criterion.length > SERVER_LIMITS.RUBRIC_CRITERION_MAX) {
+          blockingError = `${at}: rubric entry ${j + 1} ("${criterion}") is ${criterion.length} characters — the limit is ${SERVER_LIMITS.RUBRIC_CRITERION_MAX}.`;
+          break;
+        }
+        const rubricDescription = str(c?.description);
+        if (rubricDescription.length > SERVER_LIMITS.RUBRIC_DESCRIPTION_MAX) {
+          blockingError = `${at}: "${criterion}"'s description is ${rubricDescription.length} characters — the limit is ${SERVER_LIMITS.RUBRIC_DESCRIPTION_MAX}.`;
+          break;
+        }
+        const weight = Number(c?.weight);
+        if (!(weight >= SERVER_LIMITS.RUBRIC_MIN_WEIGHT)) {
           out.notes.push(
-            `${at}: "${criterion}" has weight ${c?.weight ?? 'none'} — dropped, the scorer discards it silently.`,
+            `${at}: "${criterion}" has weight ${c?.weight ?? 'none'} — dropped, the server requires at least ${SERVER_LIMITS.RUBRIC_MIN_WEIGHT} and the scorer discards anything less silently.`,
           );
-          return;
+          continue;
         }
-        evaluationRubric.push({ criterion, weight, description: str(c?.description) });
-      });
+        evaluationRubric.push({ criterion, weight, description: rubricDescription });
+      }
+
+      if (blockingError) {
+        out.errors.push(blockingError);
+        return;
+      }
     } else if (row.evaluationRubric !== undefined) {
       out.notes.push(`${at}: "evaluationRubric" is not an array — ignored.`);
     }
@@ -180,21 +290,19 @@ export function parseTemplateImport(
       isPublic = false;
     }
 
-    const questions = Number(row.questions);
-
     out.docs.push({
       name,
-      summary: str(row.summary),
-      description: str(row.description),
-      company: str(row.company),
-      position: str(row.position),
-      seniority: str(row.seniority),
+      summary,
+      description,
+      company,
+      position,
+      seniority: seniorityValue,
       style: (style || 'Technical') as TemplateInput['style'],
       format,
-      category: str(row.category),
+      category,
       difficulty: (difficulty || 'Medium') as TemplateInput['difficulty'],
       duration,
-      questions: Number.isFinite(questions) && questions > 0 ? questions : null,
+      questions,
       topics,
       evaluationRubric,
       isPublic,

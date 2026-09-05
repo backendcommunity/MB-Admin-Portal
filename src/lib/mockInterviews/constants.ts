@@ -21,6 +21,32 @@ export const UNSHIPPED_FORMATS = ['Audio', 'Video'] as const;
 
 export const DIFFICULTIES = ['Easy', 'Medium', 'Hard'] as const;
 
+/**
+ * The server's write bounds, mirrored field for field from
+ * `academy/src/modules/admin/validators/mock-interview-templates.ts` (the
+ * sibling API repo) — that Joi schema is the single source of truth. Two
+ * repos cannot share a schema, so this is the one place in this repo to
+ * update if that file's bounds ever change.
+ */
+export const SERVER_LIMITS = {
+  NAME_MAX: 200,
+  SUMMARY_MAX: 500,
+  DESCRIPTION_MAX: 20000,
+  COMPANY_MAX: 120,
+  POSITION_MAX: 120,
+  SENIORITY_MAX: 60,
+  CATEGORY_MAX: 120,
+  TOPIC_MAX: 80,
+  RUBRIC_CRITERION_MAX: 120,
+  RUBRIC_DESCRIPTION_MAX: 500,
+  /** A weight below this is DROPPED, not refused — see the importer's rubric section. */
+  RUBRIC_MIN_WEIGHT: 1,
+  DURATION_MIN: 1,
+  DURATION_MAX: 600,
+  QUESTIONS_MIN: 1,
+  QUESTIONS_MAX: 100,
+} as const;
+
 /** Suggestions, not a closed set — the field is free text. */
 export const SENIORITIES = ['Junior', 'Mid-level', 'Senior', 'Staff'] as const;
 export const CATEGORIES = [
