@@ -37,6 +37,20 @@ function makeFile(name: string, type: string, size: number): File {
   return new File([new Uint8Array(size)], name, { type });
 }
 
+/**
+ * Renders with a spy `onChange` and a *static* `value` — the point is to
+ * inspect exactly what the component hands its consumer after an insert,
+ * independent of whatever ends up in the live DOM. (The editor stays
+ * uncontrolled once focused, same as in real usage, so this doesn't need a
+ * stateful wrapper the way the DOM-inspecting tests above do.)
+ */
+function renderWithSpy(initial: string) {
+  const onChange = vi.fn();
+  render(<RichTextField value={initial} onChange={onChange} label="Body" id="body" />);
+  const editor = screen.getByLabelText('Body') as HTMLDivElement;
+  return { editor, onChange };
+}
+
 async function flush() {
   await act(async () => {
     await Promise.resolve();
@@ -181,5 +195,66 @@ describe('RichTextField media uploads', () => {
     });
 
     expect(screen.getByTitle('Insert image')).not.toBeDisabled();
+  });
+});
+
+describe('RichTextField media uploads — onChange propagation', () => {
+  // This is the value that actually gets saved: the previous suite only ever
+  // asserted on `editor.innerHTML`, which proves the DOM was mutated and
+  // nothing about whether — or how — that mutation reached the consumer.
+  // Dropping `onChange(sanitizeHtml(...))` entirely, or replacing it with an
+  // unsanitized `onChange(node.innerHTML)`, both left every one of those
+  // tests green. These assert on the argument the spy actually received.
+
+  beforeEach(() => {
+    uploadProseMedia.mockReset();
+  });
+
+  it('hands onChange the sanitized value — with the caret-inserted image — not raw innerHTML', async () => {
+    uploadProseMedia.mockResolvedValue('https://media.example.com/courses/media/e.png');
+    // The style attribute is not in richtext.ts's ALLOWED[p] list, so a
+    // sanitize pass strips it; a raw `onChange(node.innerHTML)` would not.
+    const { editor, onChange } = renderWithSpy('<p style="color:red">Hello World</p>');
+    await waitFor(() => expect(editor.innerHTML).toBe('<p style="color:red">Hello World</p>'));
+
+    placeCaret(editor, 5); // between "Hello" and " World"
+    fireEvent.click(screen.getByTitle('Insert image'));
+    const input = screen.getByTestId('richtext-image-input') as HTMLInputElement;
+    fireEvent.change(input, { target: { files: [makeFile('pic.png', 'image/png', 1024)] } });
+    await flush();
+
+    expect(onChange).toHaveBeenCalledTimes(1);
+    const value = onChange.mock.calls[0][0] as string;
+
+    expect(value).toBe(
+      '<p>Hello<img src="https://media.example.com/courses/media/e.png" alt=""> World</p>',
+    );
+    expect(value).not.toContain('style=');
+    // Idempotence under the sanitizer is the general-purpose net: if the
+    // argument were unsanitized (and it isn't already sanitizer-clean, as
+    // arranged by the `style` attribute above), sanitizeHtml would change
+    // it and this equality would fail.
+    expect(sanitizeHtml(value)).toBe(value);
+  });
+
+  it('hands onChange the sanitized value — with the caret-inserted video — not raw innerHTML', async () => {
+    uploadProseMedia.mockResolvedValue('https://media.example.com/courses/media/f.mp4');
+    const { editor, onChange } = renderWithSpy('<p style="color:red">Watch this</p>');
+    await waitFor(() => expect(editor.innerHTML).toBe('<p style="color:red">Watch this</p>'));
+
+    placeCaret(editor, 10); // end of "Watch this"
+    fireEvent.click(screen.getByTitle('Insert video'));
+    const input = screen.getByTestId('richtext-video-input') as HTMLInputElement;
+    fireEvent.change(input, { target: { files: [makeFile('clip.mp4', 'video/mp4', 2048)] } });
+    await flush();
+
+    expect(onChange).toHaveBeenCalledTimes(1);
+    const value = onChange.mock.calls[0][0] as string;
+
+    expect(value).toBe(
+      '<p>Watch this<video src="https://media.example.com/courses/media/f.mp4" controls=""></video></p>',
+    );
+    expect(value).not.toContain('style=');
+    expect(sanitizeHtml(value)).toBe(value);
   });
 });
