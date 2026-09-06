@@ -1,11 +1,13 @@
 'use client';
 
-import { useEffect, useMemo, useRef, useState, type ClipboardEvent } from 'react';
+import { useEffect, useMemo, useRef, useState, type ChangeEvent, type ClipboardEvent } from 'react';
 import { markdownToHtml, sanitizeHtml, looksLikeHtml, looksLikeMarkdown } from '@/lib/richtext';
+import { uploadProseMedia } from '@/lib/api/courses';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 
 type Mode = 'write' | 'markdown' | 'html';
+type MediaKind = 'image' | 'video';
 
 const TOOLBAR: Array<{ cmd: string; label: string; title: string }> = [
   { cmd: 'h2', label: 'H2', title: 'Heading' },
@@ -18,9 +20,55 @@ const TOOLBAR: Array<{ cmd: string; label: string; title: string }> = [
   { cmd: 'quote', label: '❝', title: 'Quote' },
   { cmd: 'link', label: 'Link', title: 'Link' },
   { cmd: 'hr', label: '―', title: 'Divider' },
+  { cmd: 'image', label: 'Image', title: 'Insert image' },
+  { cmd: 'video', label: 'Video', title: 'Insert video' },
 ];
 
 const SAFE_LINK = /^(?:https?:\/\/|mailto:|\/|#)/i;
+
+// Mirrors the API's per-kind caps (src/modules/admin/uploads.ts) so an
+// oversize file is rejected before the network round trip, with the same
+// numbers the server will otherwise enforce anyway.
+const MAX_IMAGE_BYTES = 8 * 1024 * 1024;
+const MAX_VIDEO_BYTES = 25 * 1024 * 1024;
+const IMAGE_ACCEPT = 'image/png,image/jpeg,image/gif,image/webp,image/avif';
+const VIDEO_ACCEPT = 'video/mp4,video/webm,video/quicktime';
+
+/**
+ * Places `el` at `range` inside `node` and leaves the caret just after it.
+ * `range` is null (or stale — pointing at nodes no longer in the tree, e.g.
+ * because a blur mid-upload re-sanitised and replaced innerHTML) whenever the
+ * original caret position could not be preserved; the fallback is the end of
+ * the document, which is always a valid place to land.
+ */
+function insertNodeAtRange(node: HTMLDivElement, range: Range | null, el: HTMLElement) {
+  node.focus();
+  const selection = window.getSelection();
+  if (!selection) return;
+
+  let target = range;
+  if (!target || !node.contains(target.startContainer)) {
+    target = document.createRange();
+    target.selectNodeContents(node);
+    target.collapse(false);
+  }
+
+  target.deleteContents();
+  target.insertNode(el);
+  target.setStartAfter(el);
+  target.setEndAfter(el);
+  selection.removeAllRanges();
+  selection.addRange(target);
+}
+
+/** Snapshots the live caret/selection so it can be restored after an async upload. */
+function captureRange(node: HTMLDivElement): Range | null {
+  const selection = window.getSelection();
+  if (!selection || selection.rangeCount === 0) return null;
+  const range = selection.getRangeAt(0);
+  if (!node.contains(range.commonAncestorContainer)) return null;
+  return range.cloneRange();
+}
 
 /**
  * Long-form fields store HTML. Authors arrive with it three ways — typed, pasted
@@ -48,7 +96,25 @@ export function RichTextField({
 }) {
   const [mode, setMode] = useState<Mode>('write');
   const [markdown, setMarkdown] = useState('');
+  const [uploading, setUploading] = useState<MediaKind | null>(null);
   const editorRef = useRef<HTMLDivElement>(null);
+  const imageInputRef = useRef<HTMLInputElement>(null);
+  const videoInputRef = useRef<HTMLInputElement>(null);
+  // Captured the instant the toolbar button is pressed — before the file
+  // picker opens and steals focus/selection from the contentEditable.
+  const pendingRangeRef = useRef<Range | null>(null);
+  // A ref alongside the `uploading` state: state updates are async, so a
+  // second upload fired between click and re-render would race past a
+  // `uploading !== null` check on state alone.
+  const uploadingRef = useRef(false);
+  const mountedRef = useRef(true);
+
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+    };
+  }, []);
 
   // The editor is uncontrolled while focused — writing innerHTML on every render
   // would collapse the caret to the start on each keystroke.
@@ -69,6 +135,17 @@ export function RichTextField({
     const node = editorRef.current;
     if (!node) return;
     node.focus();
+
+    if (cmd === 'image' || cmd === 'video') {
+      if (uploadingRef.current) return;
+      // Capture now, synchronously, while the editor still has focus/selection
+      // — opening the OS file picker blurs the contentEditable and the
+      // selection goes with it.
+      pendingRangeRef.current = captureRange(node);
+      (cmd === 'image' ? imageInputRef : videoInputRef).current?.click();
+      return;
+    }
+
     try {
       if (cmd === 'bold' || cmd === 'italic') document.execCommand(cmd);
       else if (cmd === 'h2') document.execCommand('formatBlock', false, 'h2');
@@ -123,6 +200,70 @@ export function RichTextField({
     if (note) toast.success(note);
   };
 
+  /**
+   * Fires once the OS file picker resolves. The caret was captured in `exec`
+   * before the picker opened; it is restored here — right before insertion —
+   * so the image/video lands where the author's cursor actually was, not
+   * wherever focus happens to be after an async round trip.
+   */
+  const handleMediaSelected = async (event: ChangeEvent<HTMLInputElement>, kind: MediaKind) => {
+    const input = event.target;
+    const file = input.files?.[0] ?? null;
+    // Reset so picking the same file twice in a row still fires onChange.
+    input.value = '';
+    if (!file) {
+      pendingRangeRef.current = null;
+      return;
+    }
+
+    if (uploadingRef.current) {
+      // Buttons are disabled while an upload is in flight, so this is a
+      // belt-and-braces guard rather than a reachable UI path.
+      pendingRangeRef.current = null;
+      return;
+    }
+
+    const maxBytes = kind === 'image' ? MAX_IMAGE_BYTES : MAX_VIDEO_BYTES;
+    if (file.size > maxBytes) {
+      pendingRangeRef.current = null;
+      toast.error(
+        `${kind === 'image' ? 'Images' : 'Videos'} must be ${Math.round(
+          maxBytes / (1024 * 1024),
+        )}MB or smaller.`,
+      );
+      return;
+    }
+
+    const range = pendingRangeRef.current;
+    pendingRangeRef.current = null;
+    uploadingRef.current = true;
+    setUploading(kind);
+
+    try {
+      const url = await uploadProseMedia(file);
+      // The editor may have unmounted while the request was in flight.
+      if (!mountedRef.current) return;
+      const node = editorRef.current;
+      if (!node) return;
+
+      const el = document.createElement(kind === 'image' ? 'img' : 'video');
+      el.setAttribute('src', url);
+      if (kind === 'image') el.setAttribute('alt', '');
+      else el.setAttribute('controls', '');
+
+      insertNodeAtRange(node, range, el);
+      onChange(sanitizeHtml(node.innerHTML));
+    } catch (error) {
+      const message =
+        (error as { response?: { data?: { message?: string } } })?.response?.data?.message ||
+        'Upload failed.';
+      toast.error(message);
+    } finally {
+      uploadingRef.current = false;
+      if (mountedRef.current) setUploading(null);
+    }
+  };
+
   return (
     <div className="space-y-2">
       <div className="flex flex-wrap items-center justify-between gap-2">
@@ -157,20 +298,49 @@ export function RichTextField({
       {mode === 'write' ? (
         <div>
           <div className="flex flex-wrap gap-1 rounded-t-md border border-b-0 border-input bg-muted p-1">
-            {TOOLBAR.map((button) => (
-              <button
-                key={button.cmd}
-                type="button"
-                title={button.title}
-                // mousedown default would blur the editor and drop the selection
-                onMouseDown={(event) => event.preventDefault()}
-                onClick={() => exec(button.cmd)}
-                className="rounded px-2 py-1 text-xs text-muted-foreground transition-colors hover:bg-background hover:text-primary"
-              >
-                {button.label}
-              </button>
-            ))}
+            {TOOLBAR.map((button) => {
+              const isActiveUpload = uploading === button.cmd;
+              return (
+                <button
+                  key={button.cmd}
+                  type="button"
+                  title={button.title}
+                  // mousedown default would blur the editor and drop the selection
+                  onMouseDown={(event) => event.preventDefault()}
+                  onClick={() => exec(button.cmd)}
+                  disabled={uploading !== null}
+                  aria-busy={isActiveUpload}
+                  className={cn(
+                    'rounded px-2 py-1 text-xs text-muted-foreground transition-colors hover:bg-background hover:text-primary',
+                    uploading !== null &&
+                      'cursor-not-allowed opacity-50 hover:bg-transparent hover:text-muted-foreground',
+                  )}
+                >
+                  {isActiveUpload ? 'Uploading…' : button.label}
+                </button>
+              );
+            })}
           </div>
+          <input
+            ref={imageInputRef}
+            type="file"
+            accept={IMAGE_ACCEPT}
+            data-testid="richtext-image-input"
+            className="hidden"
+            onChange={(event) => {
+              void handleMediaSelected(event, 'image');
+            }}
+          />
+          <input
+            ref={videoInputRef}
+            type="file"
+            accept={VIDEO_ACCEPT}
+            data-testid="richtext-video-input"
+            className="hidden"
+            onChange={(event) => {
+              void handleMediaSelected(event, 'video');
+            }}
+          />
           <div
             id={id}
             ref={editorRef}

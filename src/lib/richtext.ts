@@ -34,6 +34,8 @@ const ALLOWED: AllowedTags = {
   hr: [],
   a: ['href', 'title'],
   img: ['src', 'alt'],
+  video: ['src', 'controls', 'poster', 'width', 'height'],
+  source: ['src', 'type'],
   table: [],
   thead: [],
   tbody: [],
@@ -67,9 +69,19 @@ const DROP_WITH_CONTENT = new Set([
   'template',
 ]);
 
-const VOID_TAGS = new Set(['br', 'hr', 'img']);
+/**
+ * `source` is void (self-closing, never wraps content); `video` is NOT — it must
+ * go on the `open` stack like any other container so nesting and auto-closing of
+ * an unclosed `<video>` work the same way they do for every other element.
+ */
+const VOID_TAGS = new Set(['br', 'hr', 'img', 'source']);
 
 const SAFE_URL = /^(?:https?:\/\/|mailto:|\/|#)/i;
+/**
+ * Images only. There is no reason a `<video src>`/`poster` needs to carry an
+ * inline payload the size of a data URI, so the video/poster URL check below
+ * intentionally does not reach this — see `safeUrl`.
+ */
 const SAFE_IMG_DATA = /^data:image\/(?:png|jpe?g|gif|webp|avif);base64,[a-z0-9+/=\s]+$/i;
 
 export function escapeHtml(input: string): string {
@@ -95,10 +107,13 @@ function decodeEntities(value: string): string {
  * `java\tscript:` and friends: control characters and whitespace inside a URL are
  * stripped before the scheme is tested, so an obfuscated scheme cannot slip past.
  */
-function safeUrl(value: string, attr: string): string | null {
+function safeUrl(value: string, attr: string, tag: string): string | null {
+  // eslint-disable-next-line no-control-regex -- stripping control characters is the point
   const url = value.replace(/[\u0000-\u0020\u007f]/g, '');
   if (SAFE_URL.test(url)) return url;
-  if (attr === 'src' && SAFE_IMG_DATA.test(url)) return url;
+  // Data-URI escape hatch is for <img src> only, never for video/poster --
+  // there is no reason those need to carry an arbitrary inline payload.
+  if (tag === 'img' && attr === 'src' && SAFE_IMG_DATA.test(url)) return url;
   return null;
 }
 
@@ -116,8 +131,8 @@ function renderAttrs(tag: string, rawAttrs: string): string {
     if (!allowed.includes(name)) continue;
     const value = decodeEntities(match[2] ?? match[3] ?? match[4] ?? '');
 
-    if (name === 'href' || name === 'src') {
-      const url = safeUrl(value, name);
+    if (name === 'href' || name === 'src' || name === 'poster') {
+      const url = safeUrl(value, name, tag);
       if (!url) continue;
       out.push(`${name}="${escapeHtml(url)}"`);
       continue;
@@ -291,7 +306,7 @@ export function markdownToHtml(markdown: string | null | undefined): string {
 }
 
 const HTML_HINT =
-  /<\/?(?:p|h[1-6]|ul|ol|li|pre|code|blockquote|strong|em|b|i|a|img|hr|table|div|span|br)\b/i;
+  /<\/?(?:p|h[1-6]|ul|ol|li|pre|code|blockquote|strong|em|b|i|a|img|video|source|hr|table|div|span|br)\b/i;
 const MD_HINT =
   /(?:^#{1,6}\s)|(?:^\s*[-*+]\s+)|(?:^\s*\d+[.)]\s+)|\*\*[^*]+\*\*|\[[^\]]+\]\([^)]+\)|(?:^```)|(?:^\s*>\s)/m;
 

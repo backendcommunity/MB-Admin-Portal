@@ -562,6 +562,23 @@ export async function uploadImage(file: File, scope: UploadScope, ownerId: strin
   return data.data.publicUrl;
 }
 
+/**
+ * Inline media dropped into prose by the rich-text editor (course/chapter/path/
+ * article/bootcamp-lesson bodies all share one control). Unlike the scopes
+ * above there is no owning entity yet — the editor may be composing a record
+ * that hasn't been saved — so this never sends an `id`; the API mints the
+ * object key itself from a server-generated UUID.
+ */
+export async function uploadProseMedia(file: File) {
+  const { data } = await axiosInstance.post<{
+    success: boolean;
+    data: { publicUrl: string; key: string; contentType: string; bytes: number };
+  }>('/admin/uploads?scope=prose-media', file, {
+    headers: { 'Content-Type': file.type || 'application/octet-stream' },
+  });
+  return data.data.publicUrl;
+}
+
 /* ────────────────────────────── reusing existing content ────────────────────────────── */
 
 export type LibraryKind = 'quiz' | 'exercise' | 'video' | 'article' | 'chapter';
