@@ -98,10 +98,64 @@ describe('RichTextField media uploads', () => {
     fireEvent.change(input, { target: { files: [makeFile('clip.mp4', 'video/mp4', 2048)] } });
     await flush();
 
-    expect(editor.innerHTML).toBe(
+    // `draggable` is an editing affordance set on the live node, never stored:
+    // <video> is not draggable by default the way <img> is, so without it an
+    // author could select a clip inside the editor but never move it.
+    const video = editor.querySelector('video') as HTMLVideoElement;
+    expect(video.draggable).toBe(true);
+
+    // What gets SAVED is the sanitised markup, which carries no `draggable`.
+    expect(sanitizeHtml(editor.innerHTML)).toBe(
       '<p>Watch this<video src="https://media.example.com/courses/media/b.mp4" controls=""></video></p>',
     );
-    expect(sanitizeHtml(editor.innerHTML)).toBe(editor.innerHTML);
+  });
+
+  /**
+   * React's onBlur is focusout, which BUBBLES. Clicking a <video controls>
+   * moves focus to the video, so a handler reading `event.target` got the
+   * VIDEO — whose innerHTML is "" — and saved that, wiping the whole field.
+   * Reproduced in a real browser before the fix: editor and stored value both
+   * became "".
+   */
+  it('does not wipe the field when focus moves to a video inside it', async () => {
+    const onChange = vi.fn();
+    render(
+      <RichTextField
+        id="b"
+        label="Body"
+        value={'<p>Keep me</p><video src="https://media.example.com/v.mp4" controls></video>'}
+        onChange={onChange}
+      />,
+    );
+
+    const editor = screen.getByLabelText('Body');
+    await waitFor(() => expect(editor.querySelector('video')).not.toBeNull());
+    const video = editor.querySelector('video') as HTMLVideoElement;
+    onChange.mockClear();
+
+    // focusout bubbling up from the video, exactly as clicking it produces.
+    fireEvent.blur(editor, { target: video, relatedTarget: video });
+
+    expect(onChange).not.toHaveBeenCalledWith('');
+    expect(editor.innerHTML).toContain('Keep me');
+  });
+
+  it('still reports the sanitised value when focus genuinely leaves the field', async () => {
+    const onChange = vi.fn();
+    render(<RichTextField id="c" label="Body" value="<p>Text</p>" onChange={onChange} />);
+
+    const editor = screen.getByLabelText('Body');
+    await waitFor(() => expect(editor.innerHTML).toBe('<p>Text</p>'));
+    editor.innerHTML = '<p>Text</p><script>alert(1)</script>';
+    onChange.mockClear();
+
+    fireEvent.blur(editor, { relatedTarget: document.body });
+
+    // The value was already the sanitised form, so there is nothing new to
+    // report — but the DOM must still be reconciled, or the author keeps
+    // looking at markup that would never be saved.
+    expect(editor.innerHTML).toBe('<p>Text</p>');
+    expect(editor.querySelector('script')).toBeNull();
   });
 
   it('inserts an uploaded image, and it survives the sanitizer', async () => {

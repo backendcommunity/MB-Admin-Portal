@@ -35,25 +35,74 @@ const IMAGE_ACCEPT = 'image/png,image/jpeg,image/gif,image/webp,image/avif';
 const VIDEO_ACCEPT = 'video/mp4,video/webm,video/quicktime';
 
 /**
- * Places `el` at `range` inside `node` and leaves the caret just after it.
- * `range` is null (or stale — pointing at nodes no longer in the tree, e.g.
- * because a blur mid-upload re-sanitised and replaced innerHTML) whenever the
- * original caret position could not be preserved; the fallback is the end of
- * the document, which is always a valid place to land.
+ * A caret position stored as a route through the tree (child indices from the
+ * editor root) plus an offset, rather than as a live `Range`.
+ *
+ * This matters because of the file picker. Opening it blurs the editor, the
+ * blur handler runs, and anything that assigns `innerHTML` — even the same
+ * markup — destroys every node the old `Range` pointed at. The browser does
+ * not invalidate the Range; it silently re-anchors it to the start of the
+ * editor, so an insert "succeeds" at entirely the wrong place. That was the
+ * reported bug: a caret in the middle of the second paragraph produced an
+ * image at the very top of the document.
+ *
+ * A path is just numbers, so it survives the round trip and re-resolves
+ * against whatever tree exists when the upload finishes.
  */
-function insertNodeAtRange(node: HTMLDivElement, range: Range | null, el: HTMLElement) {
+type CaretPath = { path: number[]; offset: number };
+
+function caretPathFrom(root: HTMLElement): CaretPath | null {
+  const selection = window.getSelection();
+  if (!selection || selection.rangeCount === 0) return null;
+  const range = selection.getRangeAt(0);
+  if (!root.contains(range.startContainer)) return null;
+
+  const path: number[] = [];
+  let node: Node = range.startContainer;
+  while (node !== root) {
+    const parent: Node | null = node.parentNode;
+    if (!parent) return null;
+    path.unshift(Array.prototype.indexOf.call(parent.childNodes, node));
+    node = parent;
+  }
+  return { path, offset: range.startOffset };
+}
+
+/** Resolves a stored path back to a live range, or null if the tree moved under it. */
+function rangeFromCaretPath(root: HTMLElement, caret: CaretPath | null): Range | null {
+  if (!caret) return null;
+  let node: Node = root;
+  for (const index of caret.path) {
+    const next: Node | undefined = node.childNodes[index];
+    if (!next) return null;
+    node = next;
+  }
+  const limit =
+    node.nodeType === Node.TEXT_NODE ? (node.textContent?.length ?? 0) : node.childNodes.length;
+  const range = document.createRange();
+  range.setStart(node, Math.min(caret.offset, limit));
+  range.collapse(true);
+  return range;
+}
+
+/**
+ * Places `el` at the stored caret and leaves the cursor just after it. Falls
+ * back to the end of the document only when the path no longer resolves —
+ * the author edited elsewhere, or the content changed shape while the upload
+ * was in flight.
+ */
+function insertNodeAtCaret(node: HTMLDivElement, caret: CaretPath | null, el: HTMLElement) {
   node.focus();
   const selection = window.getSelection();
   if (!selection) return;
 
-  let target = range;
+  let target = rangeFromCaretPath(node, caret);
   if (!target || !node.contains(target.startContainer)) {
     target = document.createRange();
     target.selectNodeContents(node);
     target.collapse(false);
   }
 
-  target.deleteContents();
   target.insertNode(el);
   target.setStartAfter(el);
   target.setEndAfter(el);
@@ -61,13 +110,17 @@ function insertNodeAtRange(node: HTMLDivElement, range: Range | null, el: HTMLEl
   selection.addRange(target);
 }
 
-/** Snapshots the live caret/selection so it can be restored after an async upload. */
-function captureRange(node: HTMLDivElement): Range | null {
-  const selection = window.getSelection();
-  if (!selection || selection.rangeCount === 0) return null;
-  const range = selection.getRangeAt(0);
-  if (!node.contains(range.commonAncestorContainer)) return null;
-  return range.cloneRange();
+/**
+ * `<video>` is not draggable by default the way `<img>` is, so inside a
+ * contentEditable an author can select a clip but never move it — the second
+ * reported bug. The attribute is set on the live DOM rather than written into
+ * the stored markup: it is an editing affordance, not content, and the
+ * sanitiser would strip it on save anyway.
+ */
+function makeVideosDraggable(root: HTMLElement) {
+  root.querySelectorAll('video').forEach((video) => {
+    video.draggable = true;
+  });
 }
 
 /**
@@ -102,7 +155,7 @@ export function RichTextField({
   const videoInputRef = useRef<HTMLInputElement>(null);
   // Captured the instant the toolbar button is pressed — before the file
   // picker opens and steals focus/selection from the contentEditable.
-  const pendingRangeRef = useRef<Range | null>(null);
+  const pendingCaretRef = useRef<CaretPath | null>(null);
   // A ref alongside the `uploading` state: state updates are async, so a
   // second upload fired between click and re-render would race past a
   // `uploading !== null` check on state alone.
@@ -121,9 +174,11 @@ export function RichTextField({
   useEffect(() => {
     if (mode !== 'write') return;
     const node = editorRef.current;
-    if (node && document.activeElement !== node && node.innerHTML !== value) {
+    if (!node) return;
+    if (document.activeElement !== node && node.innerHTML !== value) {
       node.innerHTML = value ?? '';
     }
+    makeVideosDraggable(node);
   }, [value, mode]);
 
   const preview = useMemo(
@@ -141,7 +196,7 @@ export function RichTextField({
       // Capture now, synchronously, while the editor still has focus/selection
       // — opening the OS file picker blurs the contentEditable and the
       // selection goes with it.
-      pendingRangeRef.current = captureRange(node);
+      pendingCaretRef.current = caretPathFrom(node);
       (cmd === 'image' ? imageInputRef : videoInputRef).current?.click();
       return;
     }
@@ -212,20 +267,20 @@ export function RichTextField({
     // Reset so picking the same file twice in a row still fires onChange.
     input.value = '';
     if (!file) {
-      pendingRangeRef.current = null;
+      pendingCaretRef.current = null;
       return;
     }
 
     if (uploadingRef.current) {
       // Buttons are disabled while an upload is in flight, so this is a
       // belt-and-braces guard rather than a reachable UI path.
-      pendingRangeRef.current = null;
+      pendingCaretRef.current = null;
       return;
     }
 
     const maxBytes = kind === 'image' ? MAX_IMAGE_BYTES : MAX_VIDEO_BYTES;
     if (file.size > maxBytes) {
-      pendingRangeRef.current = null;
+      pendingCaretRef.current = null;
       toast.error(
         `${kind === 'image' ? 'Images' : 'Videos'} must be ${Math.round(
           maxBytes / (1024 * 1024),
@@ -234,8 +289,8 @@ export function RichTextField({
       return;
     }
 
-    const range = pendingRangeRef.current;
-    pendingRangeRef.current = null;
+    const caret = pendingCaretRef.current;
+    pendingCaretRef.current = null;
     uploadingRef.current = true;
     setUploading(kind);
 
@@ -251,7 +306,8 @@ export function RichTextField({
       if (kind === 'image') el.setAttribute('alt', '');
       else el.setAttribute('controls', '');
 
-      insertNodeAtRange(node, range, el);
+      insertNodeAtCaret(node, caret, el);
+      makeVideosDraggable(node);
       onChange(sanitizeHtml(node.innerHTML));
     } catch (error) {
       const message =
@@ -349,11 +405,33 @@ export function RichTextField({
             aria-multiline="true"
             aria-label={label}
             suppressContentEditableWarning
-            onInput={(event) => onChange((event.target as HTMLDivElement).innerHTML)}
+            onInput={(event) => onChange(event.currentTarget.innerHTML)}
             onBlur={(event) => {
-              const clean = sanitizeHtml((event.target as HTMLDivElement).innerHTML);
-              (event.target as HTMLDivElement).innerHTML = clean;
-              onChange(clean);
+              // `currentTarget`, never `target`. React's onBlur is focusout,
+              // which BUBBLES: clicking a <video controls> moves focus to the
+              // video, so `target` was the video and `target.innerHTML` the
+              // empty string — the handler saved "" and wiped the whole field.
+              // That was the reported data loss.
+              const node = event.currentTarget;
+
+              // Focus moving to something inside the editor (a video, a link)
+              // is not the author leaving the field.
+              const next = event.relatedTarget as Node | null;
+              if (next && node.contains(next)) return;
+
+              const clean = sanitizeHtml(node.innerHTML);
+
+              // Reconcile the DOM too, so what the author sees matches what
+              // would be stored — EXCEPT while a caret is being held for an
+              // upload. Assigning innerHTML re-creates every node, and the
+              // file picker's own blur lands here: doing it then is what sent
+              // an uploaded image to the top of the document instead of the
+              // caret. The caret path survives that, but there is no reason to
+              // churn the DOM underneath it.
+              if (pendingCaretRef.current === null && clean !== node.innerHTML) {
+                node.innerHTML = clean;
+              }
+              if (clean !== value) onChange(clean);
             }}
             onPaste={onPaste}
             style={{ minHeight }}
