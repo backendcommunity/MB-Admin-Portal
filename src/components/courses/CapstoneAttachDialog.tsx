@@ -141,6 +141,10 @@ function ProductPicker({
       const base = kind === 'project' ? '/admin/projects' : '/admin/mock-interview-templates';
       const search = new URLSearchParams({ limit: '20' });
       if (debounced) search.set('q', debounced);
+      // The picker attaches an EXISTING template from the shared catalogue, so it
+      // needs the caller's own rows plus the platform-owned ones — not just the
+      // narrower `mine` default the admin list wants.
+      if (kind === 'mock') search.set('scope', 'attachable');
       const response = await axiosInstance.get(`${base}?${search.toString()}`);
       return {
         rows: ((response.data?.data ?? []) as ProductRow[]).map((row) => ({

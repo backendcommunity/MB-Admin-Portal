@@ -24,7 +24,10 @@ const RESPONSES: Record<string, Record<string, unknown>> = {
     active: true,
     cohortCount: 3,
   },
-  '/admin/mock-interview-templates': {
+  // Keyed on the exact URL (including `scope=attachable`) rather than just the
+  // path, so a regression that drops the scope param fails this fixture
+  // instead of silently matching via `startsWith` on the bare path.
+  '/admin/mock-interview-templates?scope=attachable': {
     id: 'm1',
     name: 'Mid-level Backend Engineer — Coding Interview',
     format: 'CHAT',

@@ -9,6 +9,15 @@ const nextConfig: NextConfig = {
    * up as the dev server failing to read a file that was legitimately deleted.
    */
   distDir: process.env.NEXT_DIST_DIR || '.next',
+  async redirects() {
+    return [
+      {
+        source: '/mock-interviews/templates',
+        destination: '/mock-interviews',
+        permanent: false,
+      },
+    ];
+  },
 };
 
 export default nextConfig;
