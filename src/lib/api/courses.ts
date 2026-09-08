@@ -459,6 +459,33 @@ export async function detachExercise(courseId: string, exerciseId: string, scope
   return data;
 }
 
+/**
+ * The shared library row itself — NOT the QuizCourse/ExerciseCourse join.
+ * `id` here must be the quiz/exercise's own id (a `ChapterItem`'s `refId`,
+ * never its `id`, which is the join row used for reorder/attach/detach).
+ * Editing through these reaches every course and chapter the row is
+ * attached to, not just the one the drawer was opened from.
+ */
+export async function fetchQuizDetail(id: string) {
+  const { data } = await axiosInstance.get(`/quizzes/${id}`);
+  return data?.data ?? data;
+}
+
+export async function updateQuizLibrary(id: string, payload: Record<string, unknown>) {
+  const { data } = await axiosInstance.put(`/quizzes/${id}`, payload);
+  return data?.data ?? data;
+}
+
+export async function fetchExerciseDetail(id: string) {
+  const { data } = await axiosInstance.get(`/exercises/${id}`);
+  return data?.data ?? data;
+}
+
+export async function updateExerciseLibrary(id: string, payload: Record<string, unknown>) {
+  const { data } = await axiosInstance.put(`/exercises/${id}`, payload);
+  return data?.data ?? data;
+}
+
 export async function attachProject(
   courseId: string,
   payload: { projectId: string; order?: number; isOptional?: boolean },

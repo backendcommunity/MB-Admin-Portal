@@ -61,6 +61,23 @@ export function toApiQuestions(questions: DraftQuestion[]): ApiQuestion[] {
 }
 
 /**
+ * The reverse of `toApiQuestions` — used when opening the editor on a quiz that
+ * already lives on the server, where `answer` is stored as text rather than an
+ * index. Resolved back against the question's own options so the editor's radio
+ * can mark the right one; -1 (nothing marked) if the stored text does not
+ * exactly match one of its own options, rather than guessing.
+ */
+export function fromApiQuestions(questions: ApiQuestion[]): DraftQuestion[] {
+  return (questions ?? []).map((question) => ({
+    prompt: question.question ?? '',
+    options: question.options ?? [],
+    answer: (question.options ?? []).findIndex((option) => option === question.correctAnswer),
+    ...(question.explanation ? { explanation: question.explanation } : {}),
+    ...(typeof question.points === 'number' ? { points: question.points } : {}),
+  }));
+}
+
+/**
  * What is still missing before the API would accept these, in the wording the
  * drawer shows the author. The API requires a non-empty `correctAnswer`, so a
  * question whose correct option is blank fails validation — which used to

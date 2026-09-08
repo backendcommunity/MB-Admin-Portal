@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
   Dialog,
   DialogContent,
@@ -20,6 +20,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { TagInput } from '@/components/shared/form/TagInput';
+import { LanguageMultiSelect } from '@/components/shared/form/LanguageMultiSelect';
 import { RichTextField } from '@/components/shared/form/RichTextField';
 import { CodeArea } from '@/components/shared/form/CodeArea';
 import { axiosInstance } from '@/lib/api/axios';
@@ -32,8 +33,12 @@ import {
   createArticle,
   createChapter,
   createVideo,
+  fetchExerciseDetail,
+  fetchQuizDetail,
   updateArticle,
   updateChapter,
+  updateExerciseLibrary,
+  updateQuizLibrary,
   updateVideo,
   type Chapter,
   type ChapterItem,
@@ -44,7 +49,12 @@ import { blocksToContent, parseBlocks, type ArticleBlock } from '@/lib/courses/b
 import { toast } from 'sonner';
 import { PayloadDialog } from '@/components/shared/PayloadDialog';
 import { LibraryPicker } from '@/components/courses/LibraryPicker';
-import { questionGaps, toApiQuestions, type DraftQuestion } from '@/lib/courses/quiz';
+import {
+  fromApiQuestions,
+  questionGaps,
+  toApiQuestions,
+  type DraftQuestion,
+} from '@/lib/courses/quiz';
 import { ITEM_LABELS, ITEM_OWNED, missingFor, type ItemKind } from '@/lib/courses/items';
 import { cn } from '@/lib/utils';
 
@@ -86,6 +96,7 @@ export default function ItemDrawer({
   const [loadedFor, setLoadedFor] = useState('');
   const [mode, setMode] = useState<'existing' | 'new'>('new');
   const [payloadOpen, setPayloadOpen] = useState(false);
+  const [libraryLoading, setLibraryLoading] = useState(false);
 
   // Keyed by what the drawer is editing, so re-opening on a different item resets
   // the form without an effect and without clobbering in-progress typing.
@@ -96,6 +107,12 @@ export default function ItemDrawer({
   if (open && target && signature !== loadedFor) {
     setLoadedFor(signature);
     setAdvanced(false);
+    // Set here (during render) rather than inside the fetch effect below: the
+    // effect only ever flips this back to `false` from within its promise
+    // callbacks, never calls it synchronously from the effect body itself.
+    setLibraryLoading(
+      (target.kind === 'quiz' || target.kind === 'exercise') && Boolean(target.item?.refId),
+    );
     // Editing an existing row goes straight to the form; adding a new one opens on
     // "Use existing", because reusing authored content is usually the better move.
     const isEditing =
@@ -152,7 +169,9 @@ export default function ItemDrawer({
       });
     } else if (target.kind === 'quiz') {
       setState({
-        title: '',
+        // Editing an attachment: seed the title from the chapter's item summary
+        // so the drawer isn't blank while the full library row loads below.
+        title: target.item?.title ?? '',
         description: '',
         passingScore: 60,
         timeLimit: 15,
@@ -163,7 +182,7 @@ export default function ItemDrawer({
       });
     } else if (target.kind === 'exercise') {
       setState({
-        title: '',
+        title: target.item?.title ?? '',
         description: '',
         instructions: '',
         solution: '',
@@ -179,6 +198,74 @@ export default function ItemDrawer({
       });
     }
   }
+
+  // A chapter's item list only carries a quiz/exercise's title/meta summary —
+  // editing needs the full shared library row, fetched by `refId` (the
+  // quiz/exercise's own id). Never `item.id` here: that's the QuizCourse /
+  // ExerciseCourse join row id, which is what reorder/attach/detach use, and
+  // fetching/updating the library row with it would 404 (or silently touch
+  // the wrong row if some other join happened to share that id).
+  useEffect(() => {
+    if (!open || !target) return;
+    if (target.kind !== 'quiz' && target.kind !== 'exercise') return;
+    if (!('item' in target) || !target.item) return;
+    const kind = target.kind;
+    const refId = target.item.refId;
+    if (!refId) return;
+
+    // `libraryLoading` is already `true` here — set during render, above,
+    // the moment the drawer opened on this target.
+    let cancelled = false;
+    const request = kind === 'quiz' ? fetchQuizDetail(refId) : fetchExerciseDetail(refId);
+    request
+      .then((row: Record<string, unknown>) => {
+        if (cancelled) return;
+        if (kind === 'quiz') {
+          setState((current) => ({
+            ...current,
+            title: String(row.title ?? current.title ?? ''),
+            description: String(row.description ?? ''),
+            passingScore: Number(row.passingScore ?? 60),
+            timeLimit: Number(row.timeLimit ?? 15),
+            maxAttempts: Number(row.maxAttempts ?? 5),
+            difficulty: row.difficulty ?? 'Easy',
+            questions: fromApiQuestions((row.questions as never) ?? []),
+          }));
+        } else {
+          setState((current) => ({
+            ...current,
+            title: String(row.title ?? current.title ?? ''),
+            description: String(row.description ?? ''),
+            instructions: String(row.instructions ?? ''),
+            solution: String(row.solution ?? ''),
+            starterCode: String(row.starterCode ?? ''),
+            hint: String(row.hint ?? ''),
+            languages: (row.languages as string[]) ?? [],
+            graderType: row.graderType ?? 'OUTPUT_MATCH',
+            testCases: (row.testCases as never) ?? [{ input: '', expectedOutput: '' }],
+            points: Number(row.points ?? 10),
+            passMark: Number(row.passMark ?? 60),
+            difficulty: row.difficulty ?? 'Easy',
+          }));
+        }
+      })
+      .catch((error) => {
+        if (cancelled) return;
+        const message =
+          (error as { response?: { data?: { message?: string } } }).response?.data?.message ??
+          (error as Error).message;
+        toast.error('Could not load the shared item', { description: message });
+      })
+      .finally(() => {
+        if (!cancelled) setLibraryLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+    // Re-runs only when the drawer opens on a different target — `signature`
+    // already captures the item id, so it stands in for `target` itself.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, signature]);
 
   if (!target) return null;
 
@@ -314,26 +401,47 @@ export default function ItemDrawer({
         else if (target.item) await updateArticle(courseId, chapterId, target.item.id, payload);
         else await createArticle(courseId, chapterId, payload);
       } else if (target.kind === 'quiz') {
-        let quizId = str('existingId');
-        if (!quizId) {
-          const { data } = await axiosInstance.post('/quizzes', {
+        if (target.item) {
+          // Editing an attachment updates the shared library row itself, by
+          // its OWN id (`refId`) — never `target.item.id`, which is the
+          // QuizCourse join row this chapter attaches through. This reaches
+          // every course/chapter the quiz is attached to, not just this one.
+          const quizId = target.item.refId;
+          if (!quizId) throw new Error('Missing the shared quiz id.');
+          await updateQuizLibrary(quizId, {
             title: str('title'),
             description: str('description'),
             passingScore: num('passingScore'),
             timeLimit: num('timeLimit'),
             maxAttempts: num('maxAttempts'),
             difficulty: state.difficulty,
-            // The editor holds indexes; the API stores the correct option as text.
             questions: toApiQuestions(state.questions as DraftQuestion[]),
           });
-          quizId = data?.data?.id ?? data?.id;
+        } else {
+          let quizId = str('existingId');
+          if (!quizId) {
+            const { data } = await axiosInstance.post('/quizzes', {
+              title: str('title'),
+              description: str('description'),
+              passingScore: num('passingScore'),
+              timeLimit: num('timeLimit'),
+              maxAttempts: num('maxAttempts'),
+              difficulty: state.difficulty,
+              // The editor holds indexes; the API stores the correct option as text.
+              questions: toApiQuestions(state.questions as DraftQuestion[]),
+            });
+            quizId = data?.data?.id ?? data?.id;
+          }
+          if (!quizId) throw new Error('The quiz was not created.');
+          await attachQuiz(courseId, { quizId, chapterId });
         }
-        if (!quizId) throw new Error('The quiz was not created.');
-        await attachQuiz(courseId, { quizId, chapterId });
       } else {
-        let exerciseId = str('existingId');
-        if (!exerciseId) {
-          const { data } = await axiosInstance.post('/exercises', {
+        if (target.item) {
+          // Same rule as quizzes above: PUT by `refId` (the Exercise row's own
+          // id), not `target.item.id` (the ExerciseCourse join row).
+          const exerciseId = target.item.refId;
+          if (!exerciseId) throw new Error('Missing the shared exercise id.');
+          await updateExerciseLibrary(exerciseId, {
             title: str('title'),
             description: str('description'),
             instructions: str('instructions'),
@@ -347,10 +455,28 @@ export default function ItemDrawer({
             passMark: num('passMark'),
             difficulty: state.difficulty,
           });
-          exerciseId = data?.data?.id ?? data?.id;
+        } else {
+          let exerciseId = str('existingId');
+          if (!exerciseId) {
+            const { data } = await axiosInstance.post('/exercises', {
+              title: str('title'),
+              description: str('description'),
+              instructions: str('instructions'),
+              solution: str('solution'),
+              starterCode: str('starterCode'),
+              hint: str('hint') || 'No hint provided.',
+              languages: state.languages,
+              graderType: state.graderType,
+              testCases: state.testCases,
+              points: num('points'),
+              passMark: num('passMark'),
+              difficulty: state.difficulty,
+            });
+            exerciseId = data?.data?.id ?? data?.id;
+          }
+          if (!exerciseId) throw new Error('The exercise was not created.');
+          await attachExercise(courseId, { exerciseId, chapterId });
         }
-        if (!exerciseId) throw new Error('The exercise was not created.');
-        await attachExercise(courseId, { exerciseId, chapterId });
       }
 
       toast.success('Saved.');
@@ -423,6 +549,13 @@ export default function ItemDrawer({
                   : owned
                     ? `Saved straight into this chapter — ${ITEM_LABELS[kind].toLowerCase()}s cannot exist without one.`
                     : `Created in the ${kind} library, then attached here. Detaching later leaves it in the library.`}
+            </p>
+          ) : null}
+
+          {editing && !owned ? (
+            <p className="rounded-md bg-warning-wash px-3 py-2 text-xs text-warning">
+              <strong>Editing shared content.</strong> This is the library {kind}, not a copy —
+              saving changes it in every course and chapter it is attached to, not just this one.
             </p>
           ) : null}
 
@@ -620,13 +753,13 @@ export default function ItemDrawer({
                     value={str('instructions')}
                     onChange={(instructions) => patch({ instructions })}
                   />
+                  <Field label="Languages" required>
+                    <LanguageMultiSelect
+                      value={(state.languages as string[]) ?? []}
+                      onChange={(languages) => patch({ languages })}
+                    />
+                  </Field>
                   <div className="grid gap-4 md:grid-cols-2">
-                    <Field label="Languages" required>
-                      <TagInput
-                        value={(state.languages as string[]) ?? []}
-                        onChange={(languages) => patch({ languages })}
-                      />
-                    </Field>
                     <Field label="Grader">
                       <Select
                         value={str('graderType')}
@@ -846,16 +979,18 @@ export default function ItemDrawer({
             Cancel
           </Button>
           {editing || mode === 'new' ? (
-            <Button onClick={save} disabled={busy}>
+            <Button onClick={save} disabled={busy || libraryLoading}>
               {busy
                 ? 'Saving…'
-                : target.kind === 'chapter'
-                  ? 'Save chapter'
-                  : editing
-                    ? 'Save item'
-                    : capstone
-                      ? 'Add to capstone'
-                      : 'Add to chapter'}
+                : libraryLoading
+                  ? 'Loading…'
+                  : target.kind === 'chapter'
+                    ? 'Save chapter'
+                    : editing
+                      ? 'Save item'
+                      : capstone
+                        ? 'Add to capstone'
+                        : 'Add to chapter'}
             </Button>
           ) : null}
         </DialogFooter>
