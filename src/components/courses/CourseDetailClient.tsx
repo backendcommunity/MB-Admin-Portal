@@ -197,16 +197,19 @@ export default function CourseDetailClient() {
       if (!course) return;
       const chapter = course.chapters.find((row) => row.id === scope);
       if (!chapter) return;
-      const owned = chapter.items.filter(
-        (item) => item.kind === 'video' || item.kind === 'article',
-      );
-      const next = moved(owned, from, to);
+      // One interleaved sequence — videos, articles, quizzes and exercises all
+      // carry an `order` now, so a quiz can land between two videos. Reorder
+      // sends `id` (a QuizCourse/ExerciseCourse join row for attached kinds,
+      // the row itself for owned kinds); never `refId`, which the reorder
+      // endpoint has never heard of.
+      const next = moved(chapter.items, from, to);
       await reorderChapterItems(
         courseId,
         chapter.id,
         next.map((item) => item.id),
       );
       await refetch();
+      queryClient.invalidateQueries({ queryKey: ['admin-courses'] });
     },
   });
 
@@ -286,12 +289,13 @@ export default function CourseDetailClient() {
   };
 
   const moveItem = async (chapter: Chapter, index: number, direction: -1 | 1) => {
-    // Only owned items carry an order column; attached quizzes and exercises
-    // render after them and are not part of the sequence.
-    const owned = chapter.items.filter((item) => item.kind === 'video' || item.kind === 'article');
+    // One interleaved sequence across the whole chapter — a quiz or exercise
+    // moves between two videos the same way a video moves between two
+    // articles. See the itemDrag comment above for the id/refId note.
+    const items = chapter.items;
     const target = index + direction;
-    if (target < 0 || target >= owned.length) return;
-    const next = [...owned];
+    if (target < 0 || target >= items.length) return;
+    const next = [...items];
     const [moved] = next.splice(index, 1);
     next.splice(target, 0, moved);
     await reorderChapterItems(
@@ -300,6 +304,7 @@ export default function CourseDetailClient() {
       next.map((item) => item.id),
     );
     await refetch();
+    queryClient.invalidateQueries({ queryKey: ['admin-courses'] });
   };
 
   const capstone = [
@@ -446,9 +451,6 @@ export default function CourseDetailClient() {
             />
           ) : (
             course.chapters.map((chapter, chapterIndex) => {
-              const owned = chapter.items.filter(
-                (item) => item.kind === 'video' || item.kind === 'article',
-              );
               return (
                 <Card
                   key={chapter.id}
@@ -547,21 +549,24 @@ export default function CourseDetailClient() {
                         Empty chapter — add a video or article.
                       </p>
                     ) : (
-                      chapter.items.map((item) => {
-                        const ownedIndex = owned.findIndex((candidate) => candidate.id === item.id);
-                        const isOwned = ownedIndex !== -1;
+                      chapter.items.map((item, itemIndex) => {
+                        // Videos and articles are owned by the chapter (renamed inline,
+                        // edited straight into their own row); quizzes and exercises are
+                        // attached library rows — edited via the drawer, never inline, so
+                        // a rename here can't silently rewrite a row shared elsewhere.
+                        // Reordering and Edit apply to every kind alike: one interleaved
+                        // sequence, per the owner's decision.
+                        const isOwned = item.kind === 'video' || item.kind === 'article';
                         return (
                           <div
                             key={item.id}
-                            {...(isOwned ? itemDrag.handlers(ownedIndex, chapter.id) : {})}
+                            {...itemDrag.handlers(itemIndex, chapter.id)}
                             className="flex flex-wrap items-center gap-2 rounded-md border border-border bg-muted/30 px-2.5 py-1.5 text-sm data-[dragging=true]:opacity-50 data-[dragover=true]:border-primary"
                           >
-                            {isOwned ? (
-                              <GripVertical
-                                className="h-3.5 w-3.5 shrink-0 cursor-grab text-muted-foreground active:cursor-grabbing"
-                                aria-hidden
-                              />
-                            ) : null}
+                            <GripVertical
+                              className="h-3.5 w-3.5 shrink-0 cursor-grab text-muted-foreground active:cursor-grabbing"
+                              aria-hidden
+                            />
                             <span className="rounded border border-border px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
                               {item.kind}
                             </span>
@@ -611,41 +616,37 @@ export default function CourseDetailClient() {
                             <span className="whitespace-nowrap text-xs text-muted-foreground">
                               {itemMeta(item)}
                             </span>
-                            {isOwned ? (
-                              <>
-                                <Button
-                                  size="icon"
-                                  variant="ghost"
-                                  aria-label="Move item up"
-                                  disabled={ownedIndex === 0}
-                                  onClick={() => moveItem(chapter, ownedIndex, -1)}
-                                >
-                                  <ChevronUp className="h-4 w-4" />
-                                </Button>
-                                <Button
-                                  size="icon"
-                                  variant="ghost"
-                                  aria-label="Move item down"
-                                  disabled={ownedIndex === owned.length - 1}
-                                  onClick={() => moveItem(chapter, ownedIndex, 1)}
-                                >
-                                  <ChevronDown className="h-4 w-4" />
-                                </Button>
-                                <Button
-                                  size="sm"
-                                  variant="outline"
-                                  onClick={() =>
-                                    setDrawer({
-                                      kind: item.kind as 'video' | 'article',
-                                      chapterId: chapter.id,
-                                      item,
-                                    })
-                                  }
-                                >
-                                  Edit
-                                </Button>
-                              </>
-                            ) : null}
+                            <Button
+                              size="icon"
+                              variant="ghost"
+                              aria-label="Move item up"
+                              disabled={itemIndex === 0}
+                              onClick={() => moveItem(chapter, itemIndex, -1)}
+                            >
+                              <ChevronUp className="h-4 w-4" />
+                            </Button>
+                            <Button
+                              size="icon"
+                              variant="ghost"
+                              aria-label="Move item down"
+                              disabled={itemIndex === chapter.items.length - 1}
+                              onClick={() => moveItem(chapter, itemIndex, 1)}
+                            >
+                              <ChevronDown className="h-4 w-4" />
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() =>
+                                setDrawer({
+                                  kind: item.kind,
+                                  chapterId: chapter.id,
+                                  item,
+                                })
+                              }
+                            >
+                              Edit
+                            </Button>
                             <Button
                               size="icon"
                               variant="ghost"
@@ -865,7 +866,13 @@ export default function CourseDetailClient() {
         target={drawer}
         courseId={course.id}
         onClose={() => setDrawer(null)}
-        onSaved={() => refetch()}
+        onSaved={() => {
+          refetch();
+          // Every drawer save is a create, edit or attach — all change the
+          // course's item count or content, which the list's 60s-stale query
+          // would otherwise keep showing wrong for up to a minute.
+          queryClient.invalidateQueries({ queryKey: ['admin-courses'] });
+        }}
       />
 
       <PayloadDialog
@@ -936,6 +943,9 @@ export default function CourseDetailClient() {
               }
             }
             await refetch();
+            // A chapter or item delete changes the course's item count too —
+            // same 60s-stale-list reason as the course-level invalidations above.
+            queryClient.invalidateQueries({ queryKey: ['admin-courses'] });
             toast.success('Removed.');
           } catch (error) {
             const message =
