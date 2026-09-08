@@ -459,6 +459,33 @@ export async function detachExercise(courseId: string, exerciseId: string, scope
   return data;
 }
 
+/**
+ * The shared library row itself — NOT the QuizCourse/ExerciseCourse join.
+ * `id` here must be the quiz/exercise's own id (a `ChapterItem`'s `refId`,
+ * never its `id`, which is the join row used for reorder/attach/detach).
+ * Editing through these reaches every course and chapter the row is
+ * attached to, not just the one the drawer was opened from.
+ */
+export async function fetchQuizDetail(id: string) {
+  const { data } = await axiosInstance.get(`/quizzes/${id}`);
+  return data?.data ?? data;
+}
+
+export async function updateQuizLibrary(id: string, payload: Record<string, unknown>) {
+  const { data } = await axiosInstance.put(`/quizzes/${id}`, payload);
+  return data?.data ?? data;
+}
+
+export async function fetchExerciseDetail(id: string) {
+  const { data } = await axiosInstance.get(`/exercises/${id}`);
+  return data?.data ?? data;
+}
+
+export async function updateExerciseLibrary(id: string, payload: Record<string, unknown>) {
+  const { data } = await axiosInstance.put(`/exercises/${id}`, payload);
+  return data?.data ?? data;
+}
+
 export async function attachProject(
   courseId: string,
   payload: { projectId: string; order?: number; isOptional?: boolean },
@@ -557,6 +584,23 @@ export async function uploadImage(file: File, scope: UploadScope, ownerId: strin
     success: boolean;
     data: { publicUrl: string; key: string; contentType: string; bytes: number };
   }>(`/admin/uploads?${search.toString()}`, file, {
+    headers: { 'Content-Type': file.type || 'application/octet-stream' },
+  });
+  return data.data.publicUrl;
+}
+
+/**
+ * Inline media dropped into prose by the rich-text editor (course/chapter/path/
+ * article/bootcamp-lesson bodies all share one control). Unlike the scopes
+ * above there is no owning entity yet — the editor may be composing a record
+ * that hasn't been saved — so this never sends an `id`; the API mints the
+ * object key itself from a server-generated UUID.
+ */
+export async function uploadProseMedia(file: File) {
+  const { data } = await axiosInstance.post<{
+    success: boolean;
+    data: { publicUrl: string; key: string; contentType: string; bytes: number };
+  }>('/admin/uploads?scope=prose-media', file, {
     headers: { 'Content-Type': file.type || 'application/octet-stream' },
   });
   return data.data.publicUrl;

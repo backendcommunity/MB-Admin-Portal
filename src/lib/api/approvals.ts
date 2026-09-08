@@ -1,6 +1,12 @@
-import { axiosInstance } from "@/lib/api/axios";
+import { axiosInstance } from '@/lib/api/axios';
 
-export type ApprovalType = "COURSE" | "PROJECT" | "ROADMAP" | "OFFER" | "SOLUTION";
+export type ApprovalType =
+  | 'COURSE'
+  | 'PROJECT'
+  | 'ROADMAP'
+  | 'OFFER'
+  | 'SOLUTION'
+  | 'MOCK_INTERVIEW';
 
 export type ApprovalItem = {
   id: string;
@@ -22,19 +28,19 @@ export type ApprovalsResponse = {
 };
 
 export async function fetchApprovals(params?: Record<string, unknown>) {
-  const response = await axiosInstance.get<ApprovalsResponse>("/admin/approvals", { params });
+  const response = await axiosInstance.get<ApprovalsResponse>('/admin/approvals', { params });
   return response.data;
 }
 
 export async function approvalAction(payload: {
   type: ApprovalType;
   id: string;
-  action: "approve" | "reject" | "request-changes";
+  action: 'approve' | 'reject' | 'request-changes';
   feedback?: string;
 }) {
   const response = await axiosInstance.patch<{ success: boolean }>(
     `/admin/approvals/${payload.type}/${payload.id}/${payload.action}`,
-    { feedback: payload.feedback }
+    { feedback: payload.feedback },
   );
   return response.data;
 }

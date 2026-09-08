@@ -16,7 +16,7 @@ describe('NAV_ITEMS', () => {
     expect(hrefs).not.toContain('/bootcamps/assignments');
   });
 
-  it('gives an instructor the six content sections plus their own two', () => {
+  it('gives an instructor the seven content sections plus their own two', () => {
     expect(forRole('INSTRUCTOR').sort()).toEqual(
       [
         '/dashboard',
@@ -24,6 +24,7 @@ describe('NAV_ITEMS', () => {
         '/projects',
         '/paths',
         '/bootcamps',
+        '/mock-interviews',
         '/offers',
         '/earnings',
       ].sort(),
@@ -39,13 +40,25 @@ describe('NAV_ITEMS', () => {
     expect(forRole('INSTRUCTOR').filter((h) => banned.includes(h))).toEqual([]);
   });
 
-  it('never offers an instructor Mock Interview templates', () => {
-    // requireStrictAdmin on all four routes, deliberately: mock interviews
-    // were not in the list of things instructors may author. /offers is no
-    // longer excluded here — instructors now get full CRUD on their own
-    // Ships, and the API is requireAdmin with ownership scoping plus a
-    // pricing field-guard.
-    expect(forRole('INSTRUCTOR')).not.toContain('/mock-interviews/templates');
+  it('now offers an instructor Mock Interviews, not the old templates path', () => {
+    // This SUPERSEDES the ruling this section used to record (commit
+    // 60c22a0, "fix(nav): stop offering INSTRUCTOR sections the API
+    // refuses"), quoted verbatim so overturning it leaves a trace instead of
+    // vanishing without a record of what was decided before:
+    //
+    //   "Ship (/offers) and Mock Interview templates are requireStrictAdmin
+    //   on every route because pricing (amount, paddle_price_id) and
+    //   template fields have no field-level guard yet, so an instructor got
+    //   a 403 on every request after clicking them."
+    //
+    // That ruling's stated premise no longer holds: template fields now have
+    // a field-level guard (a Joi validator plus a publish gate), and the
+    // product owner has since chosen instructor own-row CRUD for this
+    // section. The nav points at the new `/mock-interviews` section — the
+    // old `/mock-interviews/templates` path is a redirect now, not a
+    // destination.
+    expect(forRole('INSTRUCTOR')).toContain('/mock-interviews');
+    expect(hrefs).not.toContain('/mock-interviews/templates');
   });
 
   it('gives a super admin everything an admin has', () => {
