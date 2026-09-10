@@ -24,8 +24,11 @@ type Props = {
 
 /**
  * Archive requires typing the exact team name — the same "type to confirm"
- * pattern as a destructive delete, because archiving cuts billing and
- * visibility immediately even though the underlying rows survive.
+ * pattern as a destructive delete, because archiving cuts entitlement and
+ * visibility immediately even though the underlying rows survive. It never
+ * touches billing: the route 409s while an entitling subscription is
+ * attached, precisely so an operator must detach or cancel it deliberately
+ * first.
  */
 export default function ArchiveTeamDialog({
   open,
@@ -62,9 +65,9 @@ export default function ArchiveTeamDialog({
           <DialogTitle>Archive {teamName}</DialogTitle>
         </DialogHeader>
         <p className="text-sm text-muted-foreground">
-          Archiving stops billing and pulls the team&apos;s entitlement and visibility immediately.
-          Nothing is deleted: {memberCount} member{memberCount === 1 ? '' : 's'}, their progress,
-          groups, assignments, team paths
+          Archiving hides this team from every list immediately and its members lose team
+          entitlement. It does not touch billing. Nothing is deleted: {memberCount} member
+          {memberCount === 1 ? '' : 's'}, their progress, groups, assignments, team paths
           {typeof pathCount === 'number' ? ` (${pathCount})` : ''}, and invite history all survive
           and come back exactly as they were on restore.
         </p>

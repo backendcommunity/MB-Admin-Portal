@@ -12,6 +12,7 @@ import { TabBar } from '@/components/shared/TabBar';
 import { LoadingState, ErrorState } from '@/components/shared/LoadingState';
 import { Field, Section } from '@/components/shared/form/Section';
 import { StatusBadge } from '@/components/shared/StatusBadge';
+import { SuperAdminOnly } from '@/components/shared/SuperAdminOnly';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -175,14 +176,18 @@ function TeamDetailClient() {
         }
         actions={
           isArchived ? (
-            <Button onClick={doRestore} disabled={restoring}>
-              {restoring ? 'Restoring…' : 'Restore'}
-            </Button>
+            <SuperAdminOnly reason="Forbidden: super admin access required">
+              <Button onClick={doRestore} disabled={restoring}>
+                {restoring ? 'Restoring…' : 'Restore'}
+              </Button>
+            </SuperAdminOnly>
           ) : (
             <>
-              <Button variant="destructive" onClick={() => setArchiveOpen(true)}>
-                Archive team
-              </Button>
+              <SuperAdminOnly reason="Forbidden: super admin access required">
+                <Button variant="destructive" onClick={() => setArchiveOpen(true)}>
+                  Archive team
+                </Button>
+              </SuperAdminOnly>
               <Button onClick={save} disabled={saving}>
                 {saving ? 'Saving…' : 'Save changes'}
               </Button>

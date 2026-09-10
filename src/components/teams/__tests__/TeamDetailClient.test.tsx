@@ -12,6 +12,7 @@ vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
 
 import { fetchTeam, archiveTeam } from '@/lib/api/teams';
 import TeamDetailClient from '@/components/teams/TeamDetailClient';
+import { useAuthStore } from '@/store/authStore';
 
 const detail = (over = {}) => ({
   id: 'tm1',
@@ -68,6 +69,10 @@ function wrap(ui: React.ReactNode) {
 beforeEach(() => {
   vi.mocked(fetchTeam).mockResolvedValue(detail() as never);
   vi.mocked(archiveTeam).mockReset();
+  // Archive/Restore are SuperAdminOnly (see archive-restore-role-gate.test.tsx);
+  // these tests exercise the archive/restore flow itself, so run as a role
+  // that isn't gated out of it.
+  useAuthStore.setState({ userRole: 'SUPER_ADMIN' as never, authResolved: true });
 });
 
 describe('TeamDetailClient', () => {
