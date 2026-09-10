@@ -14,7 +14,7 @@
 import React from 'react';
 import { render, screen, fireEvent, waitFor, within } from '@testing-library/react';
 
-import ItemDrawer, { type DrawerTarget } from '../ItemDrawer';
+import ItemDrawer, { GRADERS, type DrawerTarget } from '../ItemDrawer';
 import type { ChapterItem } from '@/lib/api/courses';
 import { PLAYGROUND_LANGUAGES } from '@/lib/courses/blocks';
 
@@ -253,5 +253,86 @@ describe('editing an attached exercise', () => {
     // Not one of the thirteen checkboxes — it has no checkbox of its own.
     const group = screen.getByRole('group', { name: 'Languages' });
     expect(within(group).queryByRole('checkbox', { name: 'COBOL' })).not.toBeInTheDocument();
+  });
+
+  it('loads a stored executor code back into the matching language checkbox', async () => {
+    // academy now stores/grades against executor codes ("java"), not the
+    // picker's display names ("Java") — the load path must translate back.
+    fetchExerciseDetail.mockResolvedValue({
+      id: 'exercise-777',
+      title: 'Old Exercise Title',
+      description: 'Reverse a string',
+      instructions: 'Write a function',
+      solution: 'def solve(): pass',
+      starterCode: '',
+      hint: '',
+      languages: ['java'],
+      graderType: 'OUTPUT_MATCH',
+      graderConfig: {},
+      testCases: [{ input: 'abc', expectedOutput: 'cba' }],
+      points: 10,
+      passMark: 60,
+      difficulty: 'Easy',
+    });
+    render(
+      <ItemDrawer
+        open
+        target={exerciseTarget(attachedExerciseItem)}
+        courseId="course-1"
+        onClose={vi.fn()}
+        onSaved={vi.fn()}
+      />,
+    );
+    await screen.findByDisplayValue('Reverse a string');
+
+    const group = screen.getByRole('group', { name: 'Languages' });
+    expect(within(group).getByRole('checkbox', { name: 'Java' })).toBeChecked();
+  });
+
+  it('PUTs languages back out as executor codes, alongside graderConfig', async () => {
+    fetchExerciseDetail.mockResolvedValue({
+      id: 'exercise-777',
+      title: 'Old Exercise Title',
+      description: 'Reverse a string',
+      instructions: 'Write a function',
+      solution: 'def solve(): pass',
+      starterCode: '',
+      hint: '',
+      languages: ['java'],
+      graderType: 'OUTPUT_MATCH',
+      graderConfig: { driver: 'public class Main {}' },
+      testCases: [{ input: 'abc', expectedOutput: 'cba' }],
+      points: 10,
+      passMark: 60,
+      difficulty: 'Easy',
+    });
+    render(
+      <ItemDrawer
+        open
+        target={exerciseTarget(attachedExerciseItem)}
+        courseId="course-1"
+        onClose={vi.fn()}
+        onSaved={vi.fn()}
+      />,
+    );
+    await screen.findByDisplayValue('Reverse a string');
+    fireEvent.click(await screen.findByRole('button', { name: 'Save item' }));
+
+    await waitFor(() => expect(updateExerciseLibrary).toHaveBeenCalled());
+    const [, payload] = updateExerciseLibrary.mock.calls[0];
+    // Display names never reach the API — only the executor codes it stores.
+    expect(payload.languages).toEqual(['java']);
+    expect(payload.graderConfig).toEqual({ driver: 'public class Main {}' });
+  });
+});
+
+describe('exercise grader picker', () => {
+  it('does not offer CUSTOM — the academy API rejects it outright', () => {
+    // A Radix Select popup is never opened in this test file (see the
+    // Languages-checkbox tests' sibling, BlockEditor.test.tsx: no
+    // ResizeObserver polyfill, it hangs jsdom) — pin the exported options
+    // list instead of the rendered popup contents.
+    expect(GRADERS).toEqual(['OUTPUT_MATCH', 'FUNCTION_CALL', 'TEST_CASES']);
+    expect(GRADERS).not.toContain('CUSTOM');
   });
 });
