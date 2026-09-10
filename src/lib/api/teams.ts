@@ -16,15 +16,6 @@ export type TeamSeatUsage = {
   available: number;
 };
 
-export type TeamSummary = {
-  id: string;
-  name: string;
-  owner: TeamOwner;
-  processor: TeamProcessor;
-  subscriptionStatus: string | null;
-  seats: TeamSeatUsage;
-};
-
 export type TeamMemberRow = {
   id: string;
   role: string;
@@ -42,12 +33,26 @@ export type TeamInviteRow = {
   createdAt: string;
 };
 
-export type TeamDetail = {
+export type TeamSummary = {
   id: string;
   name: string;
   owner: TeamOwner;
   processor: TeamProcessor;
+  subscriptionStatus: string | null;
+  seats: TeamSeatUsage;
+  /**
+   * The seat-gap the nightly reconcile last reported — alert bookkeeping,
+   * never a seat figure. Kept beside `seats` under its own name because
+   * conflating the two is the bug this rewrite fixes.
+   */
+  seatGap: number | null;
+  archivedAt: string | null;
+  createdAt: string;
+};
+
+export type TeamDetail = TeamSummary & {
   subscription: {
+    id: string;
     status: string | null;
     seats: number;
     paidSeats: number;
@@ -57,33 +62,97 @@ export type TeamDetail = {
     amount: number | null;
     currency: string | null;
   } | null;
-  usage: TeamSeatUsage;
   members: TeamMemberRow[];
   pendingInvites: TeamInviteRow[];
 };
 
-export async function fetchTeams(params: { page?: number; limit?: number }) {
-  const res = await axiosInstance.get<{
-    success: boolean;
-    data: { teams: TeamSummary[]; total: number; page: number; limit: number };
-  }>('/teams', { params });
+export type TeamListParams = {
+  page?: number;
+  limit?: number;
+  q?: string;
+  status?: string;
+  processor?: string;
+  seatState?: string;
+};
+
+export type CreateTeamInput = {
+  name: string;
+  ownerEmail: string;
+  subscriptionId?: string;
+  seats?: number;
+};
+
+type Paged<T> = { teams: T[]; total: number; page: number; limit: number };
+
+/** Drops empty strings and the `ALL` sentinel so they never reach the API. */
+function clean(params: TeamListParams) {
+  const out: Record<string, string | number> = {};
+  for (const [k, v] of Object.entries(params)) {
+    if (v === undefined || v === null || v === '' || v === 'ALL') continue;
+    out[k] = v as string | number;
+  }
+  return out;
+}
+
+export async function fetchTeams(params: TeamListParams) {
+  const res = await axiosInstance.get<{ success: boolean; data: Paged<TeamSummary> }>(
+    '/admin/teams',
+    { params: clean(params) },
+  );
   return res.data.data;
 }
 
-export async function fetchTeamDetail(id: string) {
-  const res = await axiosInstance.get<{ success: boolean; data: TeamDetail }>(`/teams/${id}/admin`);
+export async function fetchTeam(id: string) {
+  const res = await axiosInstance.get<{ success: boolean; data: TeamDetail }>(`/admin/teams/${id}`);
+  return res.data.data;
+}
+
+export async function createTeam(input: CreateTeamInput) {
+  const res = await axiosInstance.post<{ success: boolean; data: TeamSummary }>(
+    '/admin/teams',
+    input,
+  );
+  return res.data.data;
+}
+
+export async function renameTeam(id: string, name: string) {
+  const res = await axiosInstance.patch<{ success: boolean; data: TeamSummary }>(
+    `/admin/teams/${id}`,
+    { name },
+  );
+  return res.data.data;
+}
+
+export async function transferTeam(id: string, toUserId: string) {
+  const res = await axiosInstance.post<{ success: boolean; data: TeamSummary }>(
+    `/admin/teams/${id}/transfer`,
+    { toUserId },
+  );
+  return res.data.data;
+}
+
+export async function archiveTeam(id: string) {
+  const res = await axiosInstance.post<{ success: boolean; data: TeamSummary }>(
+    `/admin/teams/${id}/archive`,
+  );
+  return res.data.data;
+}
+
+export async function restoreTeam(id: string) {
+  const res = await axiosInstance.post<{ success: boolean; data: TeamSummary }>(
+    `/admin/teams/${id}/restore`,
+  );
   return res.data.data;
 }
 
 /**
- * Staff seat adjustment — the sales-led path for AsyncPay teams (NG owners
- * cannot buy seats themselves). Refuses (409) when `seats` is below current
- * usage; callers must surface `error.response.data.message` rather than a
- * generic failure toast, since that message names the exact usage figure.
+ * Staff seat adjustment. Refuses (409) when `seats` is below current usage;
+ * callers must surface `error.response.data.message` rather than a generic
+ * failure toast, since that message names the exact usage figure.
  */
 export async function adminSetTeamSeats(id: string, seats: number) {
   const res = await axiosInstance.patch<{ success: boolean; data: TeamSeatUsage }>(
-    `/teams/${id}/seats`,
+    `/admin/teams/${id}/seats`,
     { seats },
   );
   return res.data.data;
