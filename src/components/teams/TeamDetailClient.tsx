@@ -3,31 +3,53 @@
 import { useState } from 'react';
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 
-import { adminSetTeamSeats, fetchTeamDetail, formatCurrency } from '@/lib/api/teams';
 import { PageHeader } from '@/components/shared/PageHeader';
-import { StatusBadge } from '@/components/shared/StatusBadge';
+import { Stat, StatRow } from '@/components/shared/Stat';
+import { TabBar } from '@/components/shared/TabBar';
 import { LoadingState, ErrorState } from '@/components/shared/LoadingState';
+import { Field, Section } from '@/components/shared/form/Section';
+import { StatusBadge } from '@/components/shared/StatusBadge';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
+import { Alert, AlertDescription } from '@/components/ui/alert';
+import ArchiveTeamDialog from '@/components/teams/ArchiveTeamDialog';
+import { useSeededForm } from '@/lib/forms/useSeededForm';
+import { archiveTeam, fetchTeam, formatCurrency, renameTeam, restoreTeam } from '@/lib/api/teams';
+
+const TABS = [
+  ['overview', 'Overview'],
+  ['members', 'Members'],
+] as const;
+
+type TabId = (typeof TABS)[number][0];
 
 type Tone = 'neutral' | 'info' | 'success' | 'danger' | 'warning';
 
 function subscriptionTone(status: string | null): Tone {
-  if (status === 'ACTIVE') return 'success';
-  if (status === 'CANCELED') return 'danger';
-  if (status === 'PAUSED') return 'warning';
+  const s = (status ?? '').toLowerCase();
+  if (s === 'active') return 'success';
+  if (s === 'canceled' || s === 'past_due') return 'danger';
+  if (s === 'paused') return 'warning';
   return 'neutral';
 }
 
 function memberStatusTone(status: string): Tone {
   if (status === 'ACTIVE') return 'success';
   if (status === 'REMOVED') return 'neutral';
-  return 'neutral';
+  return 'info';
+}
+
+function fmt(iso: string | null) {
+  if (!iso) return '—';
+  return new Date(iso).toLocaleDateString(undefined, {
+    day: 'numeric',
+    month: 'short',
+    year: 'numeric',
+  });
 }
 
 function extractErrorMessage(err: unknown, fallback: string): string {
@@ -35,48 +57,41 @@ function extractErrorMessage(err: unknown, fallback: string): string {
   return anyErr.response?.data?.message || fallback;
 }
 
-export function TeamDetailClient() {
-  const params = useParams();
+/**
+ * Follows `ProjectDetailClient`: breadcrumb, `PageHeader` with a badge,
+ * a `StatRow`, a `TabBar`. Only Overview and Members ship in this slice —
+ * Invites, Groups, Assignments, Paths, Billing and Reports arrive in later
+ * slices and are deliberately not rendered here, even disabled.
+ */
+function TeamDetailClient() {
+  const params = useParams<{ id: string }>();
   const id = String(params.id);
-  const qc = useQueryClient();
-  const [seatsInput, setSeatsInput] = useState('');
+  const queryClient = useQueryClient();
 
-  const {
-    data: team,
-    isLoading,
-    isError,
-    refetch,
-  } = useQuery({
-    queryKey: ['team', id],
-    queryFn: () => fetchTeamDetail(id),
+  const { data, isLoading, isError, refetch } = useQuery({
+    queryKey: ['admin-team', id],
+    queryFn: () => fetchTeam(id),
     enabled: Boolean(id),
   });
 
-  // Only AsyncPay teams need staff-adjusted seats — Paddle teams self-serve
-  // through the customer-facing purchase flow, and this endpoint exists
-  // specifically for the processor that has no self-serve path at all.
-  const setSeats = useMutation({
-    mutationFn: (seats: number) => adminSetTeamSeats(id, seats),
-    onSuccess: () => {
-      toast.success('Seats updated');
-      setSeatsInput('');
-      qc.invalidateQueries({ queryKey: ['team', id] });
-    },
-    onError: (err: unknown) => {
-      // The 409 body names the exact usage figure ("already has N seats in
-      // use") — surface it verbatim rather than a generic failure toast.
-      toast.error(extractErrorMessage(err, 'Failed to update seats'));
-    },
-  });
+  const [tab, setTab] = useState<TabId>('overview');
+  const [showRemoved, setShowRemoved] = useState(false);
+  const [archiveOpen, setArchiveOpen] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [restoring, setRestoring] = useState(false);
+
+  const [draft, setDraft] = useSeededForm(data?.id ?? 'none', () => ({
+    name: data?.name ?? '',
+  }));
 
   if (isLoading) {
     return <LoadingState label="Loading team…" />;
   }
 
-  if (isError || !team) {
+  if (isError || !data) {
     return (
       <div className="space-y-4">
-        <ErrorState message="Failed to load this team." onRetry={refetch} />
+        <ErrorState message="Failed to load this team." onRetry={() => refetch()} />
         <Button variant="outline" size="sm" asChild>
           <Link href="/teams">← Back to teams</Link>
         </Button>
@@ -84,157 +99,215 @@ export function TeamDetailClient() {
     );
   }
 
-  const isAsyncpay = team.processor === 'ASYNCPAY';
+  // Every write here touches a row the teams list also renders (name,
+  // archived state, seats), and that list's query has its own staleTime —
+  // without this it would keep serving a stale row until it expires.
+  const invalidate = () => {
+    queryClient.invalidateQueries({ queryKey: ['admin-teams'] });
+    refetch();
+  };
+
+  const save = async () => {
+    setSaving(true);
+    try {
+      const nextName = draft.name.trim();
+      if (nextName && nextName !== data.name) {
+        await renameTeam(id, nextName);
+      }
+      toast.success('Saved.');
+      invalidate();
+    } catch (error) {
+      toast.error('Could not save', { description: extractErrorMessage(error, 'Unknown error') });
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const doArchive = async () => {
+    try {
+      await archiveTeam(id);
+      toast.success('Team archived');
+      setArchiveOpen(false);
+      invalidate();
+    } catch (error) {
+      toast.error(extractErrorMessage(error, 'Could not archive the team'));
+    }
+  };
+
+  const doRestore = async () => {
+    setRestoring(true);
+    try {
+      await restoreTeam(id);
+      toast.success('Team restored');
+      invalidate();
+    } catch (error) {
+      toast.error(extractErrorMessage(error, 'Could not restore the team'));
+    } finally {
+      setRestoring(false);
+    }
+  };
+
+  const activeMembers = data.members.filter((m) => m.status !== 'REMOVED');
+  const visibleMembers = showRemoved ? data.members : activeMembers;
+  const isArchived = Boolean(data.archivedAt);
 
   return (
-    <div className="space-y-6">
+    <div>
+      <p className="mb-3 text-sm text-muted-foreground">
+        <Link href="/teams" className="hover:text-foreground hover:underline">
+          Teams
+        </Link>{' '}
+        / {data.name}
+      </p>
+
       <PageHeader
-        title={team.name}
-        description={team.owner ? `Owned by ${team.owner.name} (${team.owner.email})` : undefined}
-        actions={
-          team.subscription?.status ? (
+        title={data.name}
+        description={data.owner ? `Owned by ${data.owner.name} (${data.owner.email})` : undefined}
+        badge={
+          isArchived ? (
+            <StatusBadge label="archived" tone="neutral" />
+          ) : data.subscriptionStatus ? (
             <StatusBadge
-              label={team.subscription.status}
-              tone={subscriptionTone(team.subscription.status)}
+              label={data.subscriptionStatus}
+              tone={subscriptionTone(data.subscriptionStatus)}
             />
           ) : undefined
         }
+        actions={
+          isArchived ? (
+            <Button onClick={doRestore} disabled={restoring}>
+              {restoring ? 'Restoring…' : 'Restore'}
+            </Button>
+          ) : (
+            <>
+              <Button variant="destructive" onClick={() => setArchiveOpen(true)}>
+                Archive team
+              </Button>
+              <Button onClick={save} disabled={saving}>
+                {saving ? 'Saving…' : 'Save changes'}
+              </Button>
+            </>
+          )
+        }
       />
 
-      {/* Summary stats */}
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-        {[
-          { label: 'Processor', value: team.processor ?? '—' },
-          { label: 'Seats used', value: `${team.usage.used} / ${team.usage.paidSeats}` },
-          { label: 'Pending invites', value: team.usage.pendingInvites },
-          {
-            label: 'Per-seat price',
-            value: formatCurrency(
-              team.subscription?.amount ?? null,
-              team.subscription?.currency ?? null,
-            ),
-          },
-        ].map(({ label, value }) => (
-          <Card key={label} className="flex flex-col items-center p-4 text-center">
-            <span className="text-xl font-bold">{value}</span>
-            <span className="mt-1 text-xs text-muted-foreground">{label}</span>
-          </Card>
-        ))}
-      </div>
+      <StatRow>
+        <Stat label="processor" value={data.processor ?? '—'} />
+        <Stat
+          label="paid seats"
+          value={data.seats.subscribed ? String(data.seats.paidSeats) : '—'}
+        />
+        <Stat label="used" value={String(data.seats.used)} />
+        <Stat label="pending invites" value={String(data.seats.pendingInvites)} />
+        <Stat label="created" value={fmt(data.createdAt)} />
+      </StatRow>
 
-      {/* Seat adjustment — AsyncPay only. This is the sales-led path: NG
-          owners have no self-serve purchase flow, so staff set the number
-          directly here. */}
-      {isAsyncpay ? (
-        <Card className="p-4 sm:p-6">
-          <h3 className="mb-1 text-sm font-semibold text-foreground">Adjust seats</h3>
-          <p className="mb-3 text-xs text-muted-foreground">
-            AsyncPay has no self-serve purchase flow — set the funded seat count directly. This
-            refuses if it is below the {team.usage.used} seat{team.usage.used === 1 ? '' : 's'}{' '}
-            currently in use.
-          </p>
-          <div className="flex flex-wrap items-end gap-2">
-            <div className="space-y-1">
-              <Label htmlFor="seats-input">New seat count</Label>
-              <Input
-                id="seats-input"
-                type="number"
-                min={1}
-                className="w-32"
-                value={seatsInput}
-                onChange={(e) => setSeatsInput(e.target.value)}
-                placeholder={String(team.usage.paidSeats)}
-              />
-            </div>
-            <Button
-              size="sm"
-              disabled={setSeats.isPending || !seatsInput}
-              onClick={() => {
-                const seats = Number(seatsInput);
-                if (!Number.isInteger(seats) || seats < 1) {
-                  toast.error('Enter a whole number of at least 1');
-                  return;
-                }
-                setSeats.mutate(seats);
-              }}
-            >
-              {setSeats.isPending ? 'Saving…' : 'Save'}
-            </Button>
-          </div>
-        </Card>
+      {data.seatGap !== null ? (
+        <Alert variant="destructive" className="mb-5">
+          <AlertDescription>
+            Seat mismatch: the last reconcile reported a gap of {data.seatGap}. This flags a
+            discrepancy for staff to investigate — it is not a seat count.
+          </AlertDescription>
+        </Alert>
       ) : null}
 
-      {/* Members */}
-      <Card className="overflow-x-auto p-0">
-        <div className="border-b px-4 py-3 text-sm font-semibold text-foreground">Members</div>
-        <table className="w-full text-sm">
-          <thead>
-            <tr className="border-b bg-muted/50 text-left text-xs font-medium text-muted-foreground">
-              <th className="px-4 py-3">Name</th>
-              <th className="px-4 py-3">Email</th>
-              <th className="px-4 py-3">Role</th>
-              <th className="px-4 py-3">Status</th>
-              <th className="px-4 py-3">Joined</th>
-            </tr>
-          </thead>
-          <tbody>
-            {team.members.map((m) => (
-              <tr key={m.id} className="border-t hover:bg-muted/30">
-                <td className="px-4 py-3">{m.user?.name ?? '—'}</td>
-                <td className="px-4 py-3 text-muted-foreground">{m.user?.email ?? '—'}</td>
-                <td className="px-4 py-3">{m.role}</td>
-                <td className="px-4 py-3">
-                  <StatusBadge label={m.status} tone={memberStatusTone(m.status)} />
-                </td>
-                <td className="px-4 py-3 text-muted-foreground">
-                  {m.joinedAt ? new Date(m.joinedAt).toLocaleDateString() : '—'}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-        {team.members.length === 0 && (
-          <div className="py-12 text-center text-sm text-muted-foreground">No members found.</div>
-        )}
-      </Card>
+      <TabBar tabs={TABS} value={tab} onChange={setTab} />
 
-      {/* Pending invites */}
-      <Card className="overflow-x-auto p-0">
-        <div className="border-b px-4 py-3 text-sm font-semibold text-foreground">
-          Pending invites
+      {tab === 'overview' ? (
+        <div className="grid gap-4 lg:grid-cols-[1fr_280px]">
+          <Section title="Identity" id="section-identity">
+            <Field label="Team name" htmlFor="team-name" required>
+              <Input
+                id="team-name"
+                value={draft.name}
+                onChange={(event) => setDraft((d) => ({ ...d, name: event.target.value }))}
+                disabled={isArchived}
+              />
+            </Field>
+          </Section>
+
+          <Section title="Subscription" id="section-subscription">
+            <dl className="space-y-2 text-sm">
+              <div className="flex justify-between gap-3">
+                <dt className="text-muted-foreground">Status</dt>
+                <dd>{data.subscription?.status ?? '—'}</dd>
+              </div>
+              <div className="flex justify-between gap-3">
+                <dt className="text-muted-foreground">Paid seats</dt>
+                <dd>{data.subscription ? data.subscription.paidSeats : '—'}</dd>
+              </div>
+              <div className="flex justify-between gap-3">
+                <dt className="text-muted-foreground">Per-seat price</dt>
+                <dd>
+                  {formatCurrency(
+                    data.subscription?.amount ?? null,
+                    data.subscription?.currency ?? null,
+                  )}
+                </dd>
+              </div>
+            </dl>
+          </Section>
         </div>
-        <table className="w-full text-sm">
-          <thead>
-            <tr className="border-b bg-muted/50 text-left text-xs font-medium text-muted-foreground">
-              <th className="px-4 py-3">Email</th>
-              <th className="px-4 py-3">Invited</th>
-              <th className="px-4 py-3">Expires</th>
-            </tr>
-          </thead>
-          <tbody>
-            {team.pendingInvites.map((invite) => (
-              <tr key={invite.id} className="border-t hover:bg-muted/30">
-                <td className="px-4 py-3">{invite.email}</td>
-                <td className="px-4 py-3 text-muted-foreground">
-                  {invite.createdAt ? new Date(invite.createdAt).toLocaleDateString() : '—'}
-                </td>
-                <td className="px-4 py-3 text-muted-foreground">
-                  {invite.expiresAt ? new Date(invite.expiresAt).toLocaleDateString() : '—'}
-                </td>
+      ) : (
+        <Card className="overflow-x-auto p-0">
+          <div className="flex items-center justify-between border-b px-4 py-3">
+            <span className="text-sm font-semibold text-foreground">Members</span>
+            <label
+              htmlFor="show-removed"
+              className="flex items-center gap-2 text-xs text-muted-foreground"
+            >
+              <input
+                id="show-removed"
+                type="checkbox"
+                checked={showRemoved}
+                onChange={(event) => setShowRemoved(event.target.checked)}
+              />
+              Show removed
+            </label>
+          </div>
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b bg-muted/50 text-left text-xs font-medium text-muted-foreground">
+                <th className="px-4 py-3">Name</th>
+                <th className="px-4 py-3">Email</th>
+                <th className="px-4 py-3">Role</th>
+                <th className="px-4 py-3">Status</th>
+                <th className="px-4 py-3">Joined</th>
               </tr>
-            ))}
-          </tbody>
-        </table>
-        {team.pendingInvites.length === 0 && (
-          <div className="py-12 text-center text-sm text-muted-foreground">No pending invites.</div>
-        )}
-      </Card>
+            </thead>
+            <tbody>
+              {visibleMembers.map((m) => (
+                <tr key={m.id} className="border-t hover:bg-muted/30">
+                  <td className="px-4 py-3">{m.user?.name ?? '—'}</td>
+                  <td className="px-4 py-3 text-muted-foreground">{m.user?.email ?? '—'}</td>
+                  <td className="px-4 py-3">{m.role}</td>
+                  <td className="px-4 py-3">
+                    <StatusBadge label={m.status} tone={memberStatusTone(m.status)} />
+                  </td>
+                  <td className="px-4 py-3 text-muted-foreground">{fmt(m.joinedAt)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          {visibleMembers.length === 0 ? (
+            <div className="py-12 text-center text-sm text-muted-foreground">No members found.</div>
+          ) : null}
+        </Card>
+      )}
 
-      <div className="flex">
-        <Button variant="outline" size="sm" asChild>
-          <Link href="/teams">← Back to teams</Link>
-        </Button>
-      </div>
+      <ArchiveTeamDialog
+        open={archiveOpen}
+        teamName={data.name}
+        memberCount={activeMembers.length}
+        onClose={() => setArchiveOpen(false)}
+        onConfirm={doArchive}
+      />
     </div>
   );
 }
+
+// Named export kept alongside the default so the existing
+// `import { TeamDetailClient } from '@/components/teams/TeamDetailClient'`
+// in src/app/(app)/teams/[id]/page.tsx keeps working.
+export { TeamDetailClient };
+export default TeamDetailClient;
