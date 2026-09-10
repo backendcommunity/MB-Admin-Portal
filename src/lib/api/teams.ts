@@ -9,6 +9,12 @@ export type TeamOwner = {
 } | null;
 
 export type TeamSeatUsage = {
+  /**
+   * Whether the team has an active paid subscription at all. When false,
+   * `paidSeats` is meaningless (no plan to count seats against) — render
+   * the denominator as an em dash rather than 0.
+   */
+  subscribed: boolean;
   paidSeats: number;
   activeMembers: number;
   pendingInvites: number;

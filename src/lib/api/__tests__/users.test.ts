@@ -17,6 +17,7 @@ beforeEach(() => {
 describe('fetchUserTeams', () => {
   it('passes through the seat-usage object and seatGap, not a bare seat count', async () => {
     const seats: UserTeam['seats'] = {
+      subscribed: true,
       paidSeats: 5,
       activeMembers: 3,
       pendingInvites: 1,
