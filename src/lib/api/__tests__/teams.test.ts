@@ -24,6 +24,7 @@ import {
   archiveTeam,
   restoreTeam,
   formatCurrency,
+  adminSetTeamSeats,
   setTeamMemberRole,
   removeTeamMember,
   fetchTeamMemberProgress,
@@ -116,6 +117,35 @@ describe('teams api client', () => {
   });
 });
 
+describe('seats', () => {
+  it('adjusts seats via PATCH /admin/teams/:id/seats and unwraps the full team row PATCH /:id/seats actually returns — not a bare seat-usage object', async () => {
+    const teamRow = {
+      id: 'tm1',
+      name: 'Kuda',
+      owner: null,
+      processor: 'PADDLE',
+      subscriptionStatus: 'active',
+      seats: {
+        subscribed: true,
+        paidSeats: 20,
+        activeMembers: 12,
+        pendingInvites: 1,
+        used: 13,
+        available: 7,
+      },
+      seatGap: null,
+      archivedAt: null,
+      createdAt: '2026-01-01T00:00:00.000Z',
+    };
+    patch.mockResolvedValueOnce({ data: { success: true, data: teamRow } });
+    const result = await adminSetTeamSeats('tm1', 20);
+    expect(patch).toHaveBeenCalledWith('/admin/teams/tm1/seats', { seats: 20 });
+    expect(result).toEqual(teamRow);
+    expect(result).toHaveProperty('name');
+    expect(result).toHaveProperty('owner');
+  });
+});
+
 describe('members', () => {
   it('sets a member role via PATCH /admin/teams/:id/members/:memberId', async () => {
     patch.mockResolvedValueOnce({ data: { success: true, data: { id: 'mem1', role: 'ADMIN' } } });
@@ -134,6 +164,24 @@ describe('members', () => {
   it('fetches member progress via GET /admin/teams/:id/members/:memberId/progress', async () => {
     await fetchTeamMemberProgress('tm1', 'mem1');
     expect(get).toHaveBeenCalledWith('/admin/teams/tm1/members/mem1/progress');
+  });
+
+  it('unwraps the real nested { user, stats, courses, paths } shape from resolveMemberProgress, not a flat record', async () => {
+    const progress = {
+      user: { id: 'u1', name: 'Ada', email: 'ada@x.com', avatar: null },
+      stats: { points: 120, level: 3, currentStreak: 4, longestStreak: 9, lastActivityAt: null },
+      courses: [
+        { id: 'c1', title: 'Node basics', slug: 'node-basics', isCompleted: false, percent: 40 },
+      ],
+      paths: [{ id: 'p1', title: 'Backend path', completedItems: 2, totalItems: 5 }],
+      projects: [],
+      quizzes: { taken: 2, passed: 1 },
+      mockInterviews: { taken: 1, completed: 1, lastTakenAt: null },
+      activity: [],
+    };
+    get.mockResolvedValueOnce({ data: { success: true, data: progress } });
+    const result = await fetchTeamMemberProgress('tm1', 'mem1');
+    expect(result).toEqual(progress);
   });
 });
 
@@ -200,9 +248,49 @@ describe('assignments', () => {
     expect(get).toHaveBeenCalledWith('/admin/teams/tm1/assignments');
   });
 
-  it('fetches one via GET /admin/teams/:id/assignments/:assignmentId', async () => {
-    await fetchTeamAssignment('tm1', 'as1');
+  it('fetches one via GET /admin/teams/:id/assignments/:assignmentId and unwraps the real detail shape (items+people), not a bare index-signature bag', async () => {
+    const detail = {
+      id: 'as1',
+      name: 'Week 1',
+      dueAt: null,
+      targetType: 'TEAM' as const,
+      items: [
+        {
+          id: 'i1',
+          type: 'COURSE',
+          refId: 'c1',
+          text: null,
+          position: 0,
+          title: 'Node basics',
+          parentLabel: '',
+          courseSlug: 'node-basics',
+          chapterSlug: null,
+          slug: 'node-basics',
+        },
+      ],
+      people: [
+        {
+          teamMemberId: 'mem1',
+          userId: 'u1',
+          name: 'Ada',
+          email: 'ada@x.com',
+          avatar: null,
+          done: 1,
+          total: 3,
+          isOverdue: false,
+          states: { i1: 'DONE' },
+        },
+      ],
+    };
+    get.mockResolvedValueOnce({ data: { success: true, data: detail } });
+    const result = await fetchTeamAssignment('tm1', 'as1');
     expect(get).toHaveBeenCalledWith('/admin/teams/tm1/assignments/as1');
+    expect(result).toEqual(detail);
+    // The real route never returns these — a prior type declared them anyway.
+    expect(result).not.toHaveProperty('teamId');
+    expect(result).not.toHaveProperty('createdAt');
+    expect(result).not.toHaveProperty('targetGroupId');
+    expect(result).not.toHaveProperty('targetTeamMemberId');
   });
 
   it('creates via POST /admin/teams/:id/assignments with the full input', async () => {
@@ -223,17 +311,23 @@ describe('assignments', () => {
     expect(result).toEqual({ success: true });
   });
 
-  it('replaces items via PUT /admin/teams/:id/assignments/:assignmentId/items with {items}', async () => {
+  it('replaces items via PUT /admin/teams/:id/assignments/:assignmentId/items with {items} and unwraps the real {id, itemCount} result — setAssignmentItems never returns the full assignment row', async () => {
+    put.mockResolvedValueOnce({ data: { success: true, data: { id: 'as1', itemCount: 2 } } });
     const items = [{ type: 'COURSE', refId: 'c1' }];
-    await setTeamAssignmentItems('tm1', 'as1', items);
+    const result = await setTeamAssignmentItems('tm1', 'as1', items);
     expect(put).toHaveBeenCalledWith('/admin/teams/tm1/assignments/as1/items', { items });
+    expect(result).toEqual({ id: 'as1', itemCount: 2 });
   });
 
-  it('searches assignable content via GET /admin/teams/:id/assignable with type and q', async () => {
-    await fetchAssignableContent('tm1', { type: 'COURSE', q: 'node' });
+  it('searches assignable content via GET /admin/teams/:id/assignable and unwraps rows with a parentLabel breadcrumb — searchAssignable never returns a type field', async () => {
+    get.mockResolvedValueOnce({
+      data: { success: true, data: [{ id: 'c1', title: 'Node basics', parentLabel: 'Backend' }] },
+    });
+    const result = await fetchAssignableContent('tm1', { type: 'COURSE', q: 'node' });
     expect(get).toHaveBeenCalledWith('/admin/teams/tm1/assignable', {
       params: { type: 'COURSE', q: 'node' },
     });
+    expect(result).toEqual([{ id: 'c1', title: 'Node basics', parentLabel: 'Backend' }]);
   });
 });
 
@@ -334,9 +428,20 @@ describe('reports', () => {
     expect(result).toEqual([row]);
   });
 
-  it('fetches the leaderboard via GET /admin/teams/:id/leaderboard with groupId', async () => {
-    await fetchTeamLeaderboard('tm1', 'g1');
+  it('fetches the leaderboard via GET /admin/teams/:id/leaderboard with groupId and unwraps the nested { entries } envelope resolveTeamLeaderboard actually returns', async () => {
+    const row = {
+      id: 'u1',
+      name: 'Ada',
+      username: 'ada',
+      avatar: null,
+      totalPoints: 120,
+      rank: 1,
+      totalCompletedCourses: 3,
+    };
+    get.mockResolvedValueOnce({ data: { success: true, data: { entries: [row] } } });
+    const result = await fetchTeamLeaderboard('tm1', 'g1');
     expect(get).toHaveBeenCalledWith('/admin/teams/tm1/leaderboard', { params: { groupId: 'g1' } });
+    expect(result).toEqual([row]);
   });
 
   it('exports the CSV via GET .../reports/export.csv as text, not JSON, and parses the filename off the header', async () => {

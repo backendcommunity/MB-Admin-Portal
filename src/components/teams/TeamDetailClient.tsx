@@ -16,6 +16,21 @@ import { SuperAdminOnly } from '@/components/shared/SuperAdminOnly';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Alert, AlertDescription } from '@/components/ui/alert';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import ArchiveTeamDialog from '@/components/teams/ArchiveTeamDialog';
 import { MembersTab } from '@/components/teams/tabs/MembersTab';
 import { InvitesTab } from '@/components/teams/tabs/InvitesTab';
@@ -25,7 +40,14 @@ import { PathsTab } from '@/components/teams/tabs/PathsTab';
 import { BillingTab } from '@/components/teams/tabs/BillingTab';
 import { ReportsTab } from '@/components/teams/tabs/ReportsTab';
 import { useSeededForm } from '@/lib/forms/useSeededForm';
-import { archiveTeam, fetchTeam, formatCurrency, renameTeam, restoreTeam } from '@/lib/api/teams';
+import {
+  archiveTeam,
+  fetchTeam,
+  formatCurrency,
+  renameTeam,
+  restoreTeam,
+  transferTeam,
+} from '@/lib/api/teams';
 
 const TABS = [
   ['overview', 'Overview'],
@@ -88,6 +110,9 @@ function TeamDetailClient() {
   const [archiveOpen, setArchiveOpen] = useState(false);
   const [saving, setSaving] = useState(false);
   const [restoring, setRestoring] = useState(false);
+  const [transferOpen, setTransferOpen] = useState(false);
+  const [transferTarget, setTransferTarget] = useState('');
+  const [transferring, setTransferring] = useState(false);
 
   const [draft, setDraft] = useSeededForm(data?.id ?? 'none', () => ({
     name: data?.name ?? '',
@@ -158,7 +183,29 @@ function TeamDetailClient() {
     }
   };
 
+  const doTransfer = async () => {
+    if (!transferTarget) return;
+    setTransferring(true);
+    try {
+      await transferTeam(id, transferTarget);
+      toast.success('Ownership transferred. The outgoing owner is now ADMIN.');
+      setTransferOpen(false);
+      setTransferTarget('');
+      invalidate();
+    } catch (error) {
+      toast.error('Could not transfer ownership', {
+        description: extractErrorMessage(error, 'Unknown error'),
+      });
+    } finally {
+      setTransferring(false);
+    }
+  };
+
   const activeMembers = data.members.filter((m) => m.status !== 'REMOVED');
+  // Anyone active except whoever already owns the team — `transferTeam`
+  // itself 409s a no-op transfer to the current owner, so there is no
+  // reason to offer that choice in the picker.
+  const transferCandidates = activeMembers.filter((m) => m.user?.id !== data.owner?.id);
   const isArchived = Boolean(data.archivedAt);
   // A plain function declaration doesn't inherit the `data`-is-defined
   // narrowing from the guards above (TypeScript doesn't carry control-flow
@@ -182,27 +229,52 @@ function TeamDetailClient() {
               </Field>
             </Section>
 
-            <Section title="Subscription" id="section-subscription">
-              <dl className="space-y-2 text-sm">
-                <div className="flex justify-between gap-3">
-                  <dt className="text-muted-foreground">Status</dt>
-                  <dd>{team.subscription?.status ?? '—'}</dd>
+            <div className="space-y-4">
+              <Section title="Subscription" id="section-subscription">
+                <dl className="space-y-2 text-sm">
+                  <div className="flex justify-between gap-3">
+                    <dt className="text-muted-foreground">Status</dt>
+                    <dd>{team.subscription?.status ?? '—'}</dd>
+                  </div>
+                  <div className="flex justify-between gap-3">
+                    <dt className="text-muted-foreground">Paid seats</dt>
+                    <dd>{team.subscription ? team.subscription.paidSeats : '—'}</dd>
+                  </div>
+                  <div className="flex justify-between gap-3">
+                    <dt className="text-muted-foreground">Per-seat price</dt>
+                    <dd>
+                      {formatCurrency(
+                        team.subscription?.amount ?? null,
+                        team.subscription?.currency ?? null,
+                      )}
+                    </dd>
+                  </div>
+                </dl>
+              </Section>
+
+              <Section title="Ownership" id="section-ownership">
+                <div className="flex items-center justify-between gap-3 text-sm">
+                  <div>
+                    <p className="text-muted-foreground">Owner</p>
+                    <p className="font-medium">{team.owner?.name ?? '—'}</p>
+                    {team.owner ? (
+                      <p className="text-xs text-muted-foreground">{team.owner.email}</p>
+                    ) : null}
+                  </div>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    disabled={isArchived || transferCandidates.length === 0}
+                    onClick={() => {
+                      setTransferTarget('');
+                      setTransferOpen(true);
+                    }}
+                  >
+                    Transfer
+                  </Button>
                 </div>
-                <div className="flex justify-between gap-3">
-                  <dt className="text-muted-foreground">Paid seats</dt>
-                  <dd>{team.subscription ? team.subscription.paidSeats : '—'}</dd>
-                </div>
-                <div className="flex justify-between gap-3">
-                  <dt className="text-muted-foreground">Per-seat price</dt>
-                  <dd>
-                    {formatCurrency(
-                      team.subscription?.amount ?? null,
-                      team.subscription?.currency ?? null,
-                    )}
-                  </dd>
-                </div>
-              </dl>
-            </Section>
+              </Section>
+            </div>
           </div>
         );
       case 'members':
@@ -224,7 +296,14 @@ function TeamDetailClient() {
           />
         );
       case 'groups':
-        return <GroupsTab teamId={id} isArchived={isArchived} onChanged={invalidate} />;
+        return (
+          <GroupsTab
+            teamId={id}
+            members={team.members}
+            isArchived={isArchived}
+            onChanged={invalidate}
+          />
+        );
       case 'assignments':
         return (
           <AssignmentsTab
@@ -312,10 +391,10 @@ function TeamDetailClient() {
       </StatRow>
 
       {data.seatGap !== null ? (
-        <Alert variant="destructive" className="mb-5">
+        <Alert className="mb-5">
           <AlertDescription>
-            Seat mismatch: the last reconcile reported a gap of {data.seatGap}. This flags a
-            discrepancy for staff to investigate — it is not a seat count.
+            This team has {data.seatGap} spare seat{data.seatGap === 1 ? '' : 's'}. See the Billing
+            tab for details.
           </AlertDescription>
         </Alert>
       ) : null}
@@ -331,6 +410,44 @@ function TeamDetailClient() {
         onClose={() => setArchiveOpen(false)}
         onConfirm={doArchive}
       />
+
+      <Dialog open={transferOpen} onOpenChange={(next) => !next && setTransferOpen(false)}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Transfer ownership</DialogTitle>
+            <DialogDescription>
+              The new owner takes over immediately. {data.owner?.name ?? 'The current owner'}{' '}
+              becomes ADMIN.
+            </DialogDescription>
+          </DialogHeader>
+          <Field label="New owner" htmlFor="transfer-target" required>
+            <Select value={transferTarget} onValueChange={setTransferTarget}>
+              <SelectTrigger id="transfer-target">
+                <SelectValue placeholder="Choose an active member" />
+              </SelectTrigger>
+              <SelectContent>
+                {transferCandidates.map((m) => (
+                  <SelectItem key={m.id} value={m.user!.id}>
+                    {m.user?.name ?? m.user?.email ?? m.id}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </Field>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setTransferOpen(false)}
+              disabled={transferring}
+            >
+              Cancel
+            </Button>
+            <Button onClick={doTransfer} disabled={transferring || !transferTarget}>
+              {transferring ? 'Transferring…' : 'Transfer'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

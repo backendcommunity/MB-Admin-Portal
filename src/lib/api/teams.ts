@@ -167,9 +167,16 @@ export async function restoreTeam(id: string) {
  * Staff seat adjustment. Refuses (409) when `seats` is below current usage;
  * callers must surface `error.response.data.message` rather than a generic
  * failure toast, since that message names the exact usage figure.
+ *
+ * `PATCH /:id/seats` (`AdminSetTeamSeats`, academy `modules/admin/teams.ts`)
+ * responds `teamRow(fresh, await seatUsage(teamId))` — the FULL team summary
+ * row, same shape every other write on this file returns — never a bare
+ * `TeamSeatUsage` object. Typed as `TeamSeatUsage` (as shipped) would claim
+ * `paidSeats`/`used`/etc directly on the result, when they actually live one
+ * level down at `result.seats.paidSeats`.
  */
 export async function adminSetTeamSeats(id: string, seats: number) {
-  const res = await axiosInstance.patch<{ success: boolean; data: TeamSeatUsage }>(
+  const res = await axiosInstance.patch<{ success: boolean; data: TeamSummary }>(
     `/admin/teams/${id}/seats`,
     { seats },
   );
@@ -195,7 +202,54 @@ export async function removeTeamMember(teamId: string, memberId: string) {
   return res.data.data;
 }
 
-export type TeamMemberProgress = Record<string, unknown>;
+/**
+ * The real shape of `resolveMemberProgress` (academy
+ * `modules/teams/helpers/member-progress.ts`) — FOUR nested values (`user`,
+ * `stats`, `courses`, `paths`, plus `projects`/`quizzes`/`mockInterviews`/
+ * `activity`), never a flat `Record<string, unknown>`. Typing this as a flat
+ * record (as shipped) let `MembersTab` iterate `Object.entries(progress)`
+ * and stringify each nested object with `String(value)` — every row of the
+ * dialog rendered the literal text `[object Object]`.
+ */
+export type TeamMemberProgress = {
+  user: { id: string; name: string; email: string; avatar: string | null };
+  stats: {
+    points: number;
+    level: number;
+    currentStreak: number;
+    longestStreak: number;
+    lastActivityAt: string | null;
+  };
+  courses: {
+    id: string;
+    title: string;
+    slug: string;
+    isCompleted: boolean;
+    percent: number;
+  }[];
+  paths: {
+    id: string;
+    title: string;
+    completedItems: number;
+    totalItems: number;
+  }[];
+  projects: {
+    id: string;
+    title: string;
+    isCompleted: boolean;
+    startedAt: string;
+    completedAt: string | null;
+  }[];
+  quizzes: { taken: number; passed: number };
+  mockInterviews: { taken: number; completed: number; lastTakenAt: string | null };
+  activity: {
+    id: string;
+    title: string;
+    description: string | null;
+    type: string;
+    createdAt: string;
+  }[];
+};
 
 export async function fetchTeamMemberProgress(teamId: string, memberId: string) {
   const res = await axiosInstance.get<{ success: boolean; data: TeamMemberProgress }>(
@@ -343,17 +397,57 @@ export type TeamAssignmentListRow = {
   isOverdue: boolean;
 };
 
+/**
+ * One item as it comes back on the assignment DETAIL route (`GET
+ * /:id/assignments/:assignmentId`, `AdminGetAssignmentDetail`, academy
+ * `modules/admin/teams.ts:1220-1286`) — the raw `AssignmentItem` columns
+ * plus `title`/`parentLabel` resolved from the catalogue at read time, plus
+ * the item's own link fields when it points at a course/chapter/path.
+ */
+export type TeamAssignmentDetailItem = {
+  id: string;
+  type: string;
+  refId: string | null;
+  text: string | null;
+  position: number;
+  title: string | null;
+  parentLabel: string | null;
+  courseSlug: string | null;
+  chapterSlug: string | null;
+  slug: string | null;
+};
+
+/** One audience member's completion row, as the detail route returns it. */
+export type TeamAssignmentDetailPerson = {
+  teamMemberId: string;
+  userId: string;
+  name: string;
+  email: string;
+  avatar: string | null;
+  done: number;
+  total: number;
+  isOverdue: boolean;
+  states: Record<string, string>;
+};
+
+/**
+ * `GET /:id/assignments/:assignmentId`'s real response shape. As shipped,
+ * `TeamAssignmentRow` claimed `teamId`, `createdAt`, `targetGroupId` and
+ * `targetTeamMemberId` — none of which the route actually returns — and
+ * papered over the gap with a `[key: string]: unknown` index signature that
+ * made every one of those a silent `unknown` rather than a compile error.
+ * Narrowed to exactly what `AdminGetAssignmentDetail` sends: `id`, `name`,
+ * `dueAt`, `targetType`, the resolved `items`, and `people` (the audience
+ * with each person's per-item completion state) — a field the old type
+ * dropped entirely.
+ */
 export type TeamAssignmentRow = {
   id: string;
-  teamId: string;
   name: string;
   dueAt: string | null;
-  createdAt: string;
   targetType: AssignmentTargetType;
-  targetGroupId: string | null;
-  targetTeamMemberId: string | null;
-  items: TeamAssignmentItem[];
-  [key: string]: unknown;
+  items: TeamAssignmentDetailItem[];
+  people: TeamAssignmentDetailPerson[];
 };
 
 export type CreateTeamAssignmentInput = {
@@ -422,16 +516,23 @@ export async function deleteTeamAssignment(teamId: string, assignmentId: string)
  * even though the route exists and is wired up server-side. Named to match
  * this file's `setX` convention for whole-collection replacement (see
  * `setTeamGroupMembers`).
+ *
+ * `setAssignmentItems` (`modules/teams/helpers/assignments.ts`) returns
+ * `{id, itemCount}` — NOT the full assignment detail row. Typed as
+ * `TeamAssignmentRow` (as shipped), a caller reading `.items`/`.people` off
+ * this result would get `undefined` at runtime; a caller wanting the fresh
+ * detail must call `fetchTeamAssignment` again, the same refetch-for-the-
+ * full-row pattern this file already uses for `createTeamGroup` etc.
  */
 export async function setTeamAssignmentItems(
   teamId: string,
   assignmentId: string,
   items: TeamAssignmentItem[],
 ) {
-  const res = await axiosInstance.put<{ success: boolean; data: TeamAssignmentRow }>(
-    `/admin/teams/${teamId}/assignments/${assignmentId}/items`,
-    { items },
-  );
+  const res = await axiosInstance.put<{
+    success: boolean;
+    data: { id: string; itemCount: number };
+  }>(`/admin/teams/${teamId}/assignments/${assignmentId}/items`, { items });
   return res.data.data;
 }
 
@@ -451,7 +552,14 @@ export type AssignableContentType =
   | 'BOOTCAMP'
   | 'RESOURCE';
 
-export type AssignableContentRow = { id: string; title: string; type: AssignableContentType };
+/**
+ * `searchAssignable` (`modules/teams/helpers/assignable-search.ts`) returns
+ * `{id, title, parentLabel}` per row — a breadcrumb for disambiguating two
+ * items with the same title (e.g. two "Introduction" videos in different
+ * courses), never an echoed `type` (the caller already knows the type — it's
+ * the query param that selected which catalogue table was searched).
+ */
+export type AssignableContentRow = { id: string; title: string; parentLabel: string };
 
 export async function fetchAssignableContent(
   teamId: string,
@@ -684,7 +792,20 @@ export type TeamProgressRow = {
   isStalled: boolean;
 };
 
-export type TeamLeaderboardRow = Record<string, unknown>;
+/**
+ * One row from `resolveTeamLeaderboard`'s raw SQL (academy
+ * `modules/teams/helpers/team-leaderboard.ts`) — the columns that query's
+ * `SELECT` actually names, re-ranked within the team via `ROW_NUMBER()`.
+ */
+export type TeamLeaderboardRow = {
+  id: string;
+  name: string;
+  username: string | null;
+  avatar: string | null;
+  totalPoints: number;
+  rank: number;
+  totalCompletedCourses: number;
+};
 
 export async function fetchTeamOverview(teamId: string, groupId?: string) {
   const res = await axiosInstance.get<{ success: boolean; data: TeamOverview }>(
@@ -756,13 +877,21 @@ export async function fetchTeamProgress(teamId: string, groupId?: string) {
  * /:id/leaderboard` even though the route exists and is wired up
  * server-side. Named to match this file's `fetchX` convention for the
  * sibling reports endpoints.
+ *
+ * `resolveTeamLeaderboard` returns `{ entries: [...] }`, not a bare array —
+ * as shipped this unwrapped only `res.data.data` and typed the whole envelope
+ * object as `TeamLeaderboardRow[]`, so any real call would hand callers
+ * `{entries: [...]}` mistyped as an array: `.map`/`.length` would throw.
+ * Unwrapped one level further here so this function's own contract —
+ * resolves to an array of rows — actually holds, mirroring the identical fix
+ * already applied to `fetchTeamProgress`'s `{ members }` envelope above.
  */
 export async function fetchTeamLeaderboard(teamId: string, groupId?: string) {
-  const res = await axiosInstance.get<{ success: boolean; data: TeamLeaderboardRow[] }>(
-    `/admin/teams/${teamId}/leaderboard`,
-    { params: clean({ groupId }) },
-  );
-  return res.data.data;
+  const res = await axiosInstance.get<{
+    success: boolean;
+    data: { entries: TeamLeaderboardRow[] };
+  }>(`/admin/teams/${teamId}/leaderboard`, { params: clean({ groupId }) });
+  return res.data.data.entries;
 }
 
 /* ─────────────────────────── audit ─────────────────────────── */

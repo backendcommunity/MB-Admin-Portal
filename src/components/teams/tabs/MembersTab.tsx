@@ -22,6 +22,7 @@ import {
   fetchTeamProgress,
   removeTeamMember,
   setTeamMemberRole,
+  type TeamMemberProgress,
   type TeamMemberRole,
   type TeamMemberRow,
   type TeamProgressRow,
@@ -82,7 +83,7 @@ export function MembersTab({
   const [savingRole, setSavingRole] = useState(false);
   const [removeFor, setRemoveFor] = useState<TeamMemberRow | null>(null);
   const [progressFor, setProgressFor] = useState<TeamMemberRow | null>(null);
-  const [progress, setProgress] = useState<Record<string, unknown> | null>(null);
+  const [progress, setProgress] = useState<TeamMemberProgress | null>(null);
   const [loadingProgress, setLoadingProgress] = useState(false);
 
   const visible = useMemo(
@@ -348,15 +349,63 @@ export function MembersTab({
           </DialogHeader>
           {loadingProgress ? (
             <p className="text-sm text-muted-foreground">Loading…</p>
-          ) : progress && Object.keys(progress).length > 0 ? (
-            <dl className="space-y-1 text-sm">
-              {Object.entries(progress).map(([key, value]) => (
-                <div key={key} className="flex justify-between gap-3">
-                  <dt className="text-muted-foreground">{key}</dt>
-                  <dd className="text-right font-medium">{String(value)}</dd>
+          ) : progress ? (
+            <div className="space-y-4 text-sm">
+              <dl className="grid grid-cols-2 gap-x-4 gap-y-2">
+                <div>
+                  <dt className="text-xs text-muted-foreground">Points</dt>
+                  <dd className="font-medium">{progress.stats.points}</dd>
                 </div>
-              ))}
-            </dl>
+                <div>
+                  <dt className="text-xs text-muted-foreground">Level</dt>
+                  <dd className="font-medium">{progress.stats.level}</dd>
+                </div>
+                <div>
+                  <dt className="text-xs text-muted-foreground">Current streak</dt>
+                  <dd className="font-medium">{progress.stats.currentStreak}</dd>
+                </div>
+                <div>
+                  <dt className="text-xs text-muted-foreground">Longest streak</dt>
+                  <dd className="font-medium">{progress.stats.longestStreak}</dd>
+                </div>
+              </dl>
+
+              <div>
+                <p className="mb-1 font-semibold text-foreground">Courses</p>
+                {progress.courses.length === 0 ? (
+                  <p className="text-muted-foreground">No courses started.</p>
+                ) : (
+                  <ul className="space-y-1">
+                    {progress.courses.map((course) => (
+                      <li key={course.id} className="flex justify-between gap-3">
+                        <span>{course.title}</span>
+                        <span className="text-muted-foreground">
+                          {course.isCompleted ? 'Completed' : `${course.percent}%`}
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+
+              <div>
+                <p className="mb-1 font-semibold text-foreground">Paths</p>
+                {progress.paths.length === 0 ? (
+                  <p className="text-muted-foreground">Not enrolled in any paths.</p>
+                ) : (
+                  <ul className="space-y-1">
+                    {progress.paths.map((path) => (
+                      <li key={path.id} className="flex justify-between gap-3">
+                        <span>{path.title}</span>
+                        <span className="text-muted-foreground">
+                          {path.completedItems} of {path.totalItems} items
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+            </div>
           ) : (
             <p className="text-sm text-muted-foreground">Nothing to show yet.</p>
           )}

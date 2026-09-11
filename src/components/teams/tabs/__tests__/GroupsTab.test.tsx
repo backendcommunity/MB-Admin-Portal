@@ -11,15 +11,44 @@ import {
   createTeamGroup,
   renameTeamGroup,
   deleteTeamGroup,
+  setTeamGroupMembers,
   fetchTeamAssignments,
   type TeamGroupRow,
   type TeamAssignmentListRow,
+  type TeamMemberRow,
 } from '@/lib/api/teams';
 import { GroupsTab } from '@/components/teams/tabs/GroupsTab';
 
 const groups: TeamGroupRow[] = [
   { id: 'g1', name: 'Platform', memberCount: 6, createdAt: '2026-03-01T00:00:00.000Z' },
   { id: 'g2', name: 'Data', memberCount: 3, createdAt: '2026-04-05T00:00:00.000Z' },
+];
+
+const members: TeamMemberRow[] = [
+  {
+    id: 'mem1',
+    role: 'OWNER',
+    status: 'ACTIVE',
+    joinedAt: '2026-03-14T00:00:00.000Z',
+    removedAt: null,
+    user: { id: 'u1', name: 'Aisha Bello', email: 'aisha@kuda.com', avatar: null },
+  },
+  {
+    id: 'mem2',
+    role: 'MEMBER',
+    status: 'ACTIVE',
+    joinedAt: '2026-04-01T00:00:00.000Z',
+    removedAt: null,
+    user: { id: 'u2', name: 'Chidi Okonkwo', email: 'chidi@kuda.com', avatar: null },
+  },
+  {
+    id: 'mem3',
+    role: 'MEMBER',
+    status: 'REMOVED',
+    joinedAt: '2026-03-14T00:00:00.000Z',
+    removedAt: '2026-08-01T00:00:00.000Z',
+    user: { id: 'u3', name: 'Femi Adigun', email: 'femi@kuda.com', avatar: null },
+  },
 ];
 
 function assignment(over: Partial<TeamAssignmentListRow> = {}): TeamAssignmentListRow {
@@ -46,7 +75,9 @@ function wrap(ui: React.ReactNode) {
 }
 
 function setup(isArchived = false, onChanged = vi.fn()) {
-  return wrap(<GroupsTab teamId="tm1" isArchived={isArchived} onChanged={onChanged} />);
+  return wrap(
+    <GroupsTab teamId="tm1" members={members} isArchived={isArchived} onChanged={onChanged} />,
+  );
 }
 
 beforeEach(() => {
@@ -59,6 +90,7 @@ beforeEach(() => {
   vi.mocked(createTeamGroup).mockReset();
   vi.mocked(renameTeamGroup).mockReset();
   vi.mocked(deleteTeamGroup).mockReset();
+  vi.mocked(setTeamGroupMembers).mockReset();
 });
 
 describe('GroupsTab', () => {
@@ -158,5 +190,44 @@ describe('GroupsTab', () => {
     expect(screen.getByRole('button', { name: /new group/i })).toBeDisabled();
     expect(screen.getAllByRole('button', { name: 'Rename' })[0]).toBeDisabled();
     expect(screen.getAllByRole('button', { name: 'Delete' })[0]).toBeDisabled();
+    expect(screen.getAllByRole('button', { name: 'Edit' })[0]).toBeDisabled();
+  });
+
+  describe('group membership (Edit)', () => {
+    it("offers an Edit action per group, listing the team's ACTIVE members as checkboxes — not the removed one", async () => {
+      setup();
+      await screen.findAllByText('Platform');
+
+      const editButtons = screen.getAllByRole('button', { name: 'Edit' });
+      await userEvent.click(editButtons[0]!);
+
+      const dialog = await screen.findByRole('dialog');
+      expect(within(dialog).getByRole('checkbox', { name: 'Aisha Bello' })).toBeInTheDocument();
+      expect(within(dialog).getByRole('checkbox', { name: 'Chidi Okonkwo' })).toBeInTheDocument();
+      expect(within(dialog).queryByText('Femi Adigun')).not.toBeInTheDocument();
+    });
+
+    it('says plainly that saving replaces the whole membership set', async () => {
+      setup();
+      await screen.findAllByText('Platform');
+      await userEvent.click(screen.getAllByRole('button', { name: 'Edit' })[0]!);
+      const dialog = await screen.findByRole('dialog');
+      expect(within(dialog).getByText(/replaces/i)).toBeInTheDocument();
+    });
+
+    it('saves the checked members via setTeamGroupMembers(teamId, groupId, teamMemberIds) and refreshes', async () => {
+      const onChanged = vi.fn();
+      vi.mocked(setTeamGroupMembers).mockResolvedValue({ id: 'g1', memberCount: 1 });
+      setup(false, onChanged);
+      await screen.findAllByText('Platform');
+
+      await userEvent.click(screen.getAllByRole('button', { name: 'Edit' })[0]!);
+      const dialog = await screen.findByRole('dialog');
+      await userEvent.click(within(dialog).getByRole('checkbox', { name: 'Chidi Okonkwo' }));
+      await userEvent.click(within(dialog).getByRole('button', { name: /save/i }));
+
+      expect(setTeamGroupMembers).toHaveBeenCalledWith('tm1', 'g1', ['mem2']);
+      expect(onChanged).toHaveBeenCalled();
+    });
   });
 });

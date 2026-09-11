@@ -6,7 +6,12 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 vi.mock('@/lib/api/teams');
 vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
 
-import { setTeamMemberRole, removeTeamMember, fetchTeamProgress } from '@/lib/api/teams';
+import {
+  setTeamMemberRole,
+  removeTeamMember,
+  fetchTeamProgress,
+  fetchTeamMemberProgress,
+} from '@/lib/api/teams';
 import { MembersTab } from '@/components/teams/tabs/MembersTab';
 import type { TeamMemberRow, TeamProgressRow } from '@/lib/api/teams';
 
@@ -77,6 +82,7 @@ beforeEach(() => {
   // renders identically to the loading state, so it cannot serve as a
   // settle marker for userEvent interactions that follow).
   vi.mocked(fetchTeamProgress).mockResolvedValue(progressRows);
+  vi.mocked(fetchTeamMemberProgress).mockReset();
 });
 
 describe('MembersTab', () => {
@@ -196,6 +202,40 @@ describe('MembersTab', () => {
       expect(screen.getAllByText('Aisha Bello').length).toBeGreaterThan(0);
       const memberRow = screen.getAllByText('Chidi Okonkwo')[0]!.closest('tr')!;
       expect(within(memberRow).getAllByText('—').length).toBeGreaterThan(0);
+    });
+  });
+
+  describe('per-member progress dialog', () => {
+    const memberProgress = {
+      user: { id: 'u2', name: 'Chidi Okonkwo', email: 'chidi@kuda.com', avatar: null },
+      stats: { points: 340, level: 5, currentStreak: 6, longestStreak: 12, lastActivityAt: null },
+      courses: [
+        { id: 'c1', title: 'Node basics', slug: 'node-basics', isCompleted: false, percent: 40 },
+      ],
+      paths: [{ id: 'p1', title: 'Backend path', completedItems: 2, totalItems: 5 }],
+      projects: [],
+      quizzes: { taken: 2, passed: 1 },
+      mockInterviews: { taken: 1, completed: 1, lastTakenAt: null },
+      activity: [],
+    };
+
+    it('renders the real nested shape — points, courses and paths — never [object Object]', async () => {
+      vi.mocked(fetchTeamMemberProgress).mockResolvedValue(memberProgress);
+      setup();
+
+      // See the role-change test above: wait for the roster-progress query
+      // to settle before clicking — otherwise a still-pending query
+      // re-rendering mid-click can detach the very button being clicked.
+      await screen.findAllByText('3 of 7 courses');
+      const progressButtons = screen.getAllByRole('button', { name: 'Progress' });
+      await userEvent.click(progressButtons[0]!);
+
+      expect(await screen.findByText('340')).toBeInTheDocument();
+      expect(screen.getByText('Node basics')).toBeInTheDocument();
+      expect(screen.getByText('40%')).toBeInTheDocument();
+      expect(screen.getByText('Backend path')).toBeInTheDocument();
+      expect(screen.getByText('2 of 5 items')).toBeInTheDocument();
+      expect(screen.queryByText('[object Object]')).not.toBeInTheDocument();
     });
   });
 });

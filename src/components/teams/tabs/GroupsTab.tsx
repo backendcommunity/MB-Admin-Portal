@@ -8,9 +8,11 @@ import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
+import { Checkbox } from '@/components/ui/checkbox';
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogFooter,
   DialogHeader,
   DialogTitle,
@@ -25,8 +27,10 @@ import {
   createTeamGroup,
   renameTeamGroup,
   deleteTeamGroup,
+  setTeamGroupMembers,
   fetchTeamAssignments,
   type TeamGroupRow,
+  type TeamMemberRow,
 } from '@/lib/api/teams';
 
 function fmt(iso: string) {
@@ -43,10 +47,18 @@ function extractErrorMessage(err: unknown, fallback: string): string {
 }
 
 /**
- * Create, rename and delete a team's groups. No member-management UI here —
- * `setTeamGroupMembers` belongs to a deeper surface out of scope for this
- * slice, same reasoning as the assignment item editor and path section
- * editor (see AssignmentsTab/PathsTab).
+ * Create, rename, delete and — per the spec ("Groups: Full CRUD plus
+ * membership") — edit a team's groups.
+ *
+ * `setTeamGroupMembers` REPLACES a group's entire membership with exactly
+ * the ids submitted. No endpoint anywhere returns which specific members
+ * already belong to a group (`listGroups` carries only a bare
+ * `memberCount`, and there is no `GET /:id/groups/:groupId` on either the
+ * admin or customer routers) — so the Edit dialog cannot pre-check anyone's
+ * current membership. Rather than fabricate a pre-checked state this can't
+ * actually know, it opens with nothing checked and says plainly, right in
+ * the dialog, that saving replaces the whole set — the honest framing for a
+ * replace-only primitive with no read side.
  *
  * `listGroups` (`modules/teams/helpers/groups.ts`) carries no assignment
  * count of its own — the "Assignments" column the artifact calls for is
@@ -58,10 +70,12 @@ function extractErrorMessage(err: unknown, fallback: string): string {
  */
 export function GroupsTab({
   teamId,
+  members,
   isArchived,
   onChanged,
 }: {
   teamId: string;
+  members: TeamMemberRow[];
   isArchived: boolean;
   onChanged: () => void;
 }) {
@@ -104,6 +118,21 @@ export function GroupsTab({
 
   const [deleteFor, setDeleteFor] = useState<TeamGroupRow | null>(null);
 
+  const activeMembers = members.filter((m) => m.status === 'ACTIVE');
+
+  const [membersFor, setMembersFor] = useState<TeamGroupRow | null>(null);
+  const [selectedMemberIds, setSelectedMemberIds] = useSeededForm(
+    membersFor?.id ?? 'closed',
+    () => [] as string[],
+  );
+  const [savingMembers, setSavingMembers] = useState(false);
+
+  const toggleMember = (memberId: string) => {
+    setSelectedMemberIds((prev) =>
+      prev.includes(memberId) ? prev.filter((id) => id !== memberId) : [...prev, memberId],
+    );
+  };
+
   const doCreate = async () => {
     const name = createName.trim();
     if (!name) return;
@@ -140,6 +169,24 @@ export function GroupsTab({
       });
     } finally {
       setRenaming(false);
+    }
+  };
+
+  const doSaveMembers = async () => {
+    if (!membersFor) return;
+    setSavingMembers(true);
+    try {
+      await setTeamGroupMembers(teamId, membersFor.id, selectedMemberIds);
+      toast.success(`Updated ${membersFor.name}'s membership.`);
+      setMembersFor(null);
+      await refetch();
+      onChanged();
+    } catch (error) {
+      toast.error('Could not update membership', {
+        description: extractErrorMessage(error, 'Unknown error'),
+      });
+    } finally {
+      setSavingMembers(false);
     }
   };
 
@@ -191,6 +238,14 @@ export function GroupsTab({
         header: '',
         cell: ({ row }) => (
           <div className="flex justify-end gap-1">
+            <Button
+              size="sm"
+              variant="ghost"
+              disabled={isArchived}
+              onClick={() => setMembersFor(row.original)}
+            >
+              Edit
+            </Button>
             <Button
               size="sm"
               variant="ghost"
@@ -279,6 +334,42 @@ export function GroupsTab({
             </Button>
             <Button onClick={doRename} disabled={renaming || !renameName.trim()}>
               {renaming ? 'Saving…' : 'Save'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={Boolean(membersFor)} onOpenChange={(next) => !next && setMembersFor(null)}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Edit {membersFor?.name} membership</DialogTitle>
+            <DialogDescription>
+              Saving replaces this group&apos;s entire membership with exactly who you check below —
+              anyone left unchecked is removed from the group.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="max-h-64 space-y-2 overflow-y-auto">
+            {activeMembers.length === 0 ? (
+              <p className="text-sm text-muted-foreground">No active members on this team.</p>
+            ) : (
+              activeMembers.map((m) => (
+                <label key={m.id} className="flex items-center gap-2 text-sm">
+                  <Checkbox
+                    checked={selectedMemberIds.includes(m.id)}
+                    onCheckedChange={() => toggleMember(m.id)}
+                    aria-label={m.user?.name ?? m.user?.email ?? m.id}
+                  />
+                  <span>{m.user?.name ?? m.user?.email ?? m.id}</span>
+                </label>
+              ))
+            )}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setMembersFor(null)} disabled={savingMembers}>
+              Cancel
+            </Button>
+            <Button onClick={doSaveMembers} disabled={savingMembers}>
+              {savingMembers ? 'Saving…' : 'Save membership'}
             </Button>
           </DialogFooter>
         </DialogContent>

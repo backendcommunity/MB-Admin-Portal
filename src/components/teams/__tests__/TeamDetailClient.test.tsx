@@ -1,5 +1,6 @@
+import React from 'react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
@@ -10,7 +11,84 @@ vi.mock('next/navigation', () => ({
 }));
 vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
 
-import { fetchTeam, archiveTeam } from '@/lib/api/teams';
+/**
+ * A Radix `Select` popup hangs jsdom in this repo (see
+ * `AssignmentsTab.test.tsx`). Mocked here with a native `<select>` instead —
+ * it drives the exact same `onValueChange` prop the real component wires
+ * through, without touching Radix's popup/portal machinery.
+ */
+vi.mock('@/components/ui/select', () => {
+  const SelectItem = ({ children }: { value: string; children: React.ReactNode }) =>
+    React.createElement(React.Fragment, null, children);
+  const SelectTrigger = ({ children }: { id?: string; children?: React.ReactNode }) =>
+    React.createElement(React.Fragment, null, children);
+
+  function collect(
+    node: React.ReactNode,
+    itemsOut: Array<{ value: string; label: React.ReactNode }>,
+    idRef: { current: string | undefined },
+  ) {
+    React.Children.forEach(node, (child) => {
+      if (!child || typeof child !== 'object') return;
+      const element = child as React.ReactElement;
+      if (element.type === SelectItem) {
+        const p = element.props as { value: string; children?: React.ReactNode };
+        itemsOut.push({ value: p.value, label: p.children });
+        return;
+      }
+      if (element.type === SelectTrigger) {
+        const p = element.props as { id?: string };
+        if (p.id) idRef.current = p.id;
+      }
+      const nested = (element.props as { children?: React.ReactNode } | undefined)?.children;
+      if (nested) collect(nested, itemsOut, idRef);
+    });
+  }
+
+  function Select({
+    value,
+    onValueChange,
+    children,
+  }: {
+    value: string;
+    onValueChange: (next: string) => void;
+    children: React.ReactNode;
+  }) {
+    const items: Array<{ value: string; label: React.ReactNode }> = [];
+    const idRef = { current: undefined as string | undefined };
+    collect(children, items, idRef);
+    return React.createElement(
+      'select',
+      {
+        role: 'combobox',
+        id: idRef.current,
+        value,
+        onChange: (event: React.ChangeEvent<HTMLSelectElement>) =>
+          onValueChange(event.target.value),
+      },
+      items.map((item) =>
+        React.createElement('option', { key: item.value, value: item.value }, item.label),
+      ),
+    );
+  }
+
+  const Passthrough = ({ children }: { children?: React.ReactNode }) => children ?? null;
+
+  return {
+    Select,
+    SelectItem,
+    SelectTrigger,
+    SelectContent: Passthrough,
+    SelectValue: () => null,
+    SelectGroup: Passthrough,
+    SelectLabel: Passthrough,
+    SelectSeparator: () => null,
+    SelectScrollUpButton: () => null,
+    SelectScrollDownButton: () => null,
+  };
+});
+
+import { fetchTeam, archiveTeam, transferTeam } from '@/lib/api/teams';
 import TeamDetailClient from '@/components/teams/TeamDetailClient';
 import { useAuthStore } from '@/store/authStore';
 
@@ -55,6 +133,14 @@ const detail = (over = {}) => ({
       joinedAt: '2026-03-14T00:00:00.000Z',
       removedAt: '2026-08-01T00:00:00.000Z',
       user: { id: 'u2', name: 'Femi Adigun', email: 'femi@kuda.com', avatar: null },
+    },
+    {
+      id: 'mem3',
+      role: 'ADMIN',
+      status: 'ACTIVE',
+      joinedAt: '2026-04-01T00:00:00.000Z',
+      removedAt: null,
+      user: { id: 'u3', name: 'Chidi Okonkwo', email: 'chidi@kuda.com', avatar: null },
     },
   ],
   pendingInvites: [],
@@ -111,5 +197,78 @@ describe('TeamDetailClient', () => {
     wrap(<TeamDetailClient />);
     expect(await screen.findByRole('button', { name: /restore/i })).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /archive team/i })).not.toBeInTheDocument();
+  });
+
+  describe('seat-gap banner', () => {
+    it('never shows the destructive "mismatch"/"discrepancy"/"reconcile" banner on any tab — Billing owns that surface', async () => {
+      vi.mocked(fetchTeam).mockResolvedValue(detail({ seatGap: 2 }) as never);
+      wrap(<TeamDetailClient />);
+      await screen.findAllByText('Kuda Engineering');
+
+      for (const [tabId] of [
+        ['overview'],
+        ['members'],
+        ['invites'],
+        ['groups'],
+        ['assignments'],
+        ['paths'],
+        ['billing'],
+        ['reports'],
+      ] as const) {
+        await userEvent.click(screen.getByRole('tab', { name: new RegExp(tabId, 'i') }));
+        expect(screen.queryByText(/mismatch/i)).not.toBeInTheDocument();
+        expect(screen.queryByText(/discrepancy/i)).not.toBeInTheDocument();
+        expect(screen.queryByText(/reconcile/i)).not.toBeInTheDocument();
+        expect(screen.queryByRole('button', { name: /reconcile/i })).not.toBeInTheDocument();
+      }
+    });
+
+    it('never renders a destructive (role=alert) banner from the shell itself when there is a seat gap', async () => {
+      vi.mocked(fetchTeam).mockResolvedValue(detail({ seatGap: 2 }) as never);
+      wrap(<TeamDetailClient />);
+      await screen.findAllByText('Kuda Engineering');
+      // Billing's own alert only mounts on the Billing tab, so on Overview
+      // (the default tab) any `role="alert"` must not carry destructive
+      // seat-gap wording.
+      const alerts = screen.queryAllByRole('alert');
+      for (const alert of alerts) {
+        expect(alert.textContent ?? '').not.toMatch(/mismatch|discrepancy|reconcile/i);
+      }
+    });
+  });
+
+  describe('ownership transfer (Overview tab)', () => {
+    it('offers a Transfer control on Overview, next to the owner', async () => {
+      wrap(<TeamDetailClient />);
+      await screen.findAllByText('Kuda Engineering');
+      expect(screen.getByRole('button', { name: /transfer/i })).toBeInTheDocument();
+    });
+
+    it('transfers ownership to a chosen active member and confirms the outgoing owner becomes ADMIN', async () => {
+      const onSuccessDetail = detail({
+        owner: { id: 'u3', name: 'Chidi Okonkwo', email: 'chidi@kuda.com' },
+      });
+      vi.mocked(transferTeam).mockResolvedValue(onSuccessDetail as never);
+      wrap(<TeamDetailClient />);
+      await screen.findAllByText('Kuda Engineering');
+
+      await userEvent.click(screen.getByRole('button', { name: /transfer/i }));
+      const dialog = await screen.findByRole('dialog');
+      expect(within(dialog).getByText(/becomes admin/i)).toBeInTheDocument();
+
+      const picker = within(dialog).getByRole('combobox');
+      await userEvent.selectOptions(picker, 'u3');
+      await userEvent.click(within(dialog).getByRole('button', { name: /^transfer$/i }));
+
+      expect(transferTeam).toHaveBeenCalledWith('tm1', 'u3');
+    });
+
+    it('never offers the removed member as a transfer target', async () => {
+      wrap(<TeamDetailClient />);
+      await screen.findAllByText('Kuda Engineering');
+      await userEvent.click(screen.getByRole('button', { name: /transfer/i }));
+      const dialog = await screen.findByRole('dialog');
+      expect(within(dialog).queryByText('Femi Adigun')).not.toBeInTheDocument();
+    });
   });
 });
