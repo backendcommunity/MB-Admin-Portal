@@ -607,7 +607,54 @@ export async function dismissTeamSeatGap(teamId: string) {
 export type ReportRange = '12w' | '12m';
 
 export type TeamOverview = Record<string, unknown>;
-export type TeamReport = Record<string, unknown>;
+
+/**
+ * `GET /:id/reports` (`AdminGetTeamReport`, `modules/admin/teams.ts`) resolves
+ * through `resolveTeamReport` (`modules/teams/helpers/team-reports.ts`) and
+ * returns that function's object verbatim under `data` — not the
+ * `Record<string, unknown>` this shipped as in Task 8. Narrowed to the real
+ * shape so `totals`/`previous`/`change`/`series` are typed, not `unknown`.
+ *
+ * `change[key]` is a FRACTION (0.5 = up 50%), never percentage-scaled, and is
+ * `null` — not `Infinity` or `NaN` — whenever `previous[key]` was zero
+ * (`percentChange`, same file). Callers must render that `null` as an em dash.
+ */
+export type TeamReportTotals = {
+  activeMembers: number;
+  coursesFinished: number;
+  pathsFinished: number;
+  membersWhoFinished: number;
+};
+
+export type TeamReportBucket = {
+  /** `YYYY-MM-DD`, UTC bucket start (Monday for a week, the 1st for a month). */
+  bucket: string;
+  activeMembers: number;
+  coursesFinished: number;
+  pathsFinished: number;
+};
+
+export type TeamReport = {
+  range: {
+    period: 'week' | 'month';
+    buckets: number;
+    from: string;
+    to: string;
+    dataBegins: string;
+    /**
+     * Courses/paths finished before this date are an UNDERCOUNT, not a true
+     * zero — see `resolveTeamReport`'s doc comment. Render "at least" language
+     * on the completions series, never assert nothing happened earlier.
+     */
+    completionsBegin: string;
+  };
+  /** `total` is `null` for a team with no subscription — render "— of N used", never "0 of N". */
+  seats: { total: number | null; used: number };
+  series: TeamReportBucket[];
+  totals: TeamReportTotals;
+  previous: TeamReportTotals;
+  change: Record<keyof TeamReportTotals, number | null>;
+};
 
 /**
  * One roster row from `resolveRosterProgress` (academy

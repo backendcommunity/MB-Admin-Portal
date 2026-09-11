@@ -10,7 +10,6 @@ import { PageHeader } from '@/components/shared/PageHeader';
 import { Stat, StatRow } from '@/components/shared/Stat';
 import { TabBar } from '@/components/shared/TabBar';
 import { LoadingState, ErrorState } from '@/components/shared/LoadingState';
-import { EmptyState } from '@/components/shared/EmptyState';
 import { Field, Section } from '@/components/shared/form/Section';
 import { StatusBadge } from '@/components/shared/StatusBadge';
 import { SuperAdminOnly } from '@/components/shared/SuperAdminOnly';
@@ -23,6 +22,8 @@ import { InvitesTab } from '@/components/teams/tabs/InvitesTab';
 import { GroupsTab } from '@/components/teams/tabs/GroupsTab';
 import { AssignmentsTab } from '@/components/teams/tabs/AssignmentsTab';
 import { PathsTab } from '@/components/teams/tabs/PathsTab';
+import { BillingTab } from '@/components/teams/tabs/BillingTab';
+import { ReportsTab } from '@/components/teams/tabs/ReportsTab';
 import { useSeededForm } from '@/lib/forms/useSeededForm';
 import { archiveTeam, fetchTeam, formatCurrency, renameTeam, restoreTeam } from '@/lib/api/teams';
 
@@ -38,14 +39,6 @@ const TABS = [
 ] as const;
 
 type TabId = (typeof TABS)[number][0];
-
-// Task 11 replaces the remaining two with real tab components — every tab
-// is clickable and renders something today, none disabled, so a
-// placeholder beats a dead button.
-const COMING_SOON_LABEL: Record<Extract<TabId, 'billing' | 'reports'>, string> = {
-  billing: 'Billing',
-  reports: 'Reports',
-};
 
 type Tone = 'neutral' | 'info' | 'success' | 'danger' | 'warning';
 
@@ -75,10 +68,10 @@ function extractErrorMessage(err: unknown, fallback: string): string {
  * A SHELL: header, `StatRow`, `TabBar`, and a switch that renders one tab
  * component. Follows `ProjectDetailClient`'s pattern.
  *
- * Every tab a team can have ships in `TABS` now — Members and Invites are
- * real, Groups/Assignments/Paths/Billing/Reports render a placeholder that
- * Tasks 10-11 replace. None are disabled: a control a staff member cannot
- * click for no visible reason reads as broken.
+ * Every tab a team can have ships in `TABS`, and every one renders a real
+ * component now — Task 11 was the last of them (Billing, Reports). None are
+ * disabled: a control a staff member cannot click for no visible reason
+ * reads as broken.
  */
 function TeamDetailClient() {
   const params = useParams<{ id: string }>();
@@ -243,8 +236,23 @@ function TeamDetailClient() {
         );
       case 'paths':
         return <PathsTab teamId={id} isArchived={isArchived} onChanged={invalidate} />;
+      case 'billing':
+        return (
+          <BillingTab
+            teamId={id}
+            processor={team.processor}
+            subscription={team.subscription}
+            seatGap={team.seatGap}
+            isArchived={isArchived}
+            onChanged={invalidate}
+          />
+        );
+      case 'reports':
+        return <ReportsTab teamId={id} />;
       default:
-        return <EmptyState title={COMING_SOON_LABEL[tab]} description="Coming in this slice." />;
+        // Every `TabId` is handled above — `TABS` and this switch are kept
+        // in lockstep, so this is unreachable in practice.
+        return null;
     }
   }
 
