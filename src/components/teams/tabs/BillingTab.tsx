@@ -97,14 +97,12 @@ function summariseChange(entry: TeamAuditLogEntry): string {
  * comment in `lib/api/teams.ts`.
  *
  * `subscription` on the wire (`teamDetailRow`, academy
- * `modules/admin/helpers/team-shape.ts`) is narrowed to exactly `{id, status,
- * seats, paidSeats, amount, currency}` — the `Subscription` model also has
- * `name`, `interval` and `expiry` (plan, billing cycle, renewal date), but
- * `teamDetailRow` does not select them, so they are not on the wire today.
- * Rather than fabricate a plan name or a renewal date the API never sent,
- * those three fields render an honest em dash — the same non-gating
- * convention `PathsTab`'s "Items"/"Started" columns use for data no backend
- * route yet exposes.
+ * `modules/admin/helpers/team-shape.ts`) carries `plan`, `interval` and
+ * `expiry` alongside `{id, status, seats, paidSeats, amount, currency}`.
+ * Any of the three can genuinely be `null` (e.g. a subscription attached
+ * without a linked `Plan` row, or one with no billing interval recorded) —
+ * those render an honest em dash rather than a fabricated default. In
+ * particular a null `interval` must never be guessed as "Monthly".
  */
 export function BillingTab({
   teamId,
@@ -264,8 +262,7 @@ export function BillingTab({
         <dl className="grid gap-2 text-sm sm:grid-cols-2">
           <div className="flex justify-between gap-3">
             <dt className="text-muted-foreground">Plan</dt>
-            {/* Not on the wire — see this file's module doc. */}
-            <dd>—</dd>
+            <dd>{subscription?.plan ?? '—'}</dd>
           </div>
           <div className="flex justify-between gap-3">
             <dt className="text-muted-foreground">Status</dt>
@@ -286,8 +283,7 @@ export function BillingTab({
           </div>
           <div className="flex justify-between gap-3">
             <dt className="text-muted-foreground">Cycle</dt>
-            {/* Not on the wire — see this file's module doc. */}
-            <dd>—</dd>
+            <dd>{subscription?.interval ?? '—'}</dd>
           </div>
           <div className="flex justify-between gap-3">
             <dt className="text-muted-foreground">Per-seat price</dt>
@@ -303,8 +299,7 @@ export function BillingTab({
           </div>
           <div className="flex justify-between gap-3">
             <dt className="text-muted-foreground">Renews</dt>
-            {/* Not on the wire — see this file's module doc. */}
-            <dd>—</dd>
+            <dd>{subscription?.expiry ? fmt(subscription.expiry) : '—'}</dd>
           </div>
           <div className="flex justify-between gap-3">
             <dt className="text-muted-foreground">Subscription ID</dt>

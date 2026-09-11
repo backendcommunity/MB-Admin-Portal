@@ -76,6 +76,9 @@ export type TeamDetail = TeamSummary & {
     // currencies for different customers.
     amount: number | null;
     currency: string | null;
+    plan: string | null;
+    interval: string | null;
+    expiry: string | null;
   } | null;
   members: TeamMemberRow[];
   pendingInvites: TeamInviteRow[];

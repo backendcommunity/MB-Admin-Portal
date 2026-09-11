@@ -41,6 +41,9 @@ const subscription = (over: Partial<NonNullable<TeamDetail['subscription']>> = {
   paidSeats: 14,
   amount: 180,
   currency: 'USD',
+  plan: 'Enterprise',
+  interval: 'yearly',
+  expiry: '2027-03-14T00:00:00.000Z',
   ...over,
 });
 
@@ -210,5 +213,32 @@ describe('BillingTab — subscription card', () => {
 
     expect(detachTeamSubscription).toHaveBeenCalledWith('tm1');
     expect(onChanged).toHaveBeenCalled();
+  });
+
+  it('renders the real plan name, billing cycle and renewal date when the API sends them', async () => {
+    setup({
+      subscription: subscription({
+        plan: 'Enterprise',
+        interval: 'yearly',
+        expiry: '2027-03-14T00:00:00.000Z',
+      }),
+    });
+
+    expect(await screen.findByText('Enterprise')).toBeInTheDocument();
+    expect(screen.getByText('yearly')).toBeInTheDocument();
+    expect(screen.getByText('Mar 14, 2027')).toBeInTheDocument();
+  });
+
+  it('shows an em dash for plan/cycle/renewal that are genuinely null, never a fabricated default', async () => {
+    setup({
+      subscription: subscription({ plan: null, interval: null, expiry: null }),
+    });
+
+    await screen.findByText(/active/i);
+    // One row per field: Plan, Cycle, Renews. All three must be dashes, and
+    // a null interval must never render as "Monthly" or any other guess.
+    const dashRows = screen.getAllByText('—');
+    expect(dashRows.length).toBeGreaterThanOrEqual(3);
+    expect(screen.queryByText(/monthly/i)).not.toBeInTheDocument();
   });
 });
