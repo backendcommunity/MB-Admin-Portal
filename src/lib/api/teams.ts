@@ -250,16 +250,26 @@ export async function fetchTeamGroups(teamId: string) {
   return res.data.data;
 }
 
+/**
+ * `createGroup` (`modules/teams/helpers/groups.ts`) selects only `{id,
+ * name}` — never the full row. Typing this as `TeamGroupRow` (as shipped in
+ * Task 8) would claim `memberCount`/`createdAt` on a value that never
+ * carries them; a caller reading either off the mutation's own return would
+ * get `undefined` at runtime. Narrowed to what the route actually returns —
+ * callers refetch the list (`onChanged`/local `refetch`) for the full row,
+ * the same pattern `setTeamMemberRole` already uses for the same reason.
+ */
 export async function createTeamGroup(teamId: string, name: string) {
-  const res = await axiosInstance.post<{ success: boolean; data: TeamGroupRow }>(
+  const res = await axiosInstance.post<{ success: boolean; data: { id: string; name: string } }>(
     `/admin/teams/${teamId}/groups`,
     { name },
   );
   return res.data.data;
 }
 
+/** See `createTeamGroup` — `renameGroup` also selects only `{id, name}`. */
 export async function renameTeamGroup(teamId: string, groupId: string, name: string) {
-  const res = await axiosInstance.patch<{ success: boolean; data: TeamGroupRow }>(
+  const res = await axiosInstance.patch<{ success: boolean; data: { id: string; name: string } }>(
     `/admin/teams/${teamId}/groups/${groupId}`,
     { name },
   );
@@ -274,15 +284,19 @@ export async function deleteTeamGroup(teamId: string, groupId: string) {
   return res.data;
 }
 
+/**
+ * `setGroupMembers` returns `{id, memberCount}` — not the full row (no
+ * `name`/`createdAt`). Same correction as `createTeamGroup` above.
+ */
 export async function setTeamGroupMembers(
   teamId: string,
   groupId: string,
   teamMemberIds: string[],
 ) {
-  const res = await axiosInstance.put<{ success: boolean; data: TeamGroupRow }>(
-    `/admin/teams/${teamId}/groups/${groupId}/members`,
-    { teamMemberIds },
-  );
+  const res = await axiosInstance.put<{
+    success: boolean;
+    data: { id: string; memberCount: number };
+  }>(`/admin/teams/${teamId}/groups/${groupId}/members`, { teamMemberIds });
   return res.data.data;
 }
 
@@ -296,6 +310,34 @@ export type TeamAssignmentItem = {
   refId?: string | null;
   text?: string | null;
   position?: number;
+};
+
+/**
+ * The shape of one row from `GET /:id/assignments` (`AdminListAssignments`,
+ * `modules/admin/teams.ts:1123-1172`). That handler builds a bespoke object
+ * per assignment — it does NOT return the raw `items` array (only its
+ * length, as `itemCount`), and it adds four fields no earlier task's type
+ * carried: `targetLabel` (the resolved audience name — "Everyone", the
+ * group's name, or the one person's name), `itemCount`, `audienceSize`,
+ * `doneCount` and `isOverdue`. `TeamAssignmentRow` below (Task 8) modelled
+ * the *detail* shape instead and got reused for the list; a caller trusting
+ * `.items` on a list row would find it always `undefined`. Split into its
+ * own type so the list and the detail — genuinely different response
+ * shapes — cannot be confused for one another.
+ */
+export type TeamAssignmentListRow = {
+  id: string;
+  name: string;
+  dueAt: string | null;
+  createdAt: string;
+  targetType: AssignmentTargetType;
+  targetGroupId: string | null;
+  targetTeamMemberId: string | null;
+  targetLabel: string;
+  itemCount: number;
+  audienceSize: number;
+  doneCount: number;
+  isOverdue: boolean;
 };
 
 export type TeamAssignmentRow = {
@@ -322,7 +364,7 @@ export type CreateTeamAssignmentInput = {
 export type UpdateTeamAssignmentInput = Partial<CreateTeamAssignmentInput>;
 
 export async function fetchTeamAssignments(teamId: string) {
-  const res = await axiosInstance.get<{ success: boolean; data: TeamAssignmentRow[] }>(
+  const res = await axiosInstance.get<{ success: boolean; data: TeamAssignmentListRow[] }>(
     `/admin/teams/${teamId}/assignments`,
   );
   return res.data.data;
@@ -335,20 +377,28 @@ export async function fetchTeamAssignment(teamId: string, assignmentId: string) 
   return res.data.data;
 }
 
+/**
+ * `createAssignment` (`modules/teams/helpers/assignments.ts`) selects only
+ * `{id, name}` on create — never the full row. Typing this as
+ * `TeamAssignmentRow` (as shipped in Task 8) claims `targetType`/`items`/etc
+ * on a value that never carries them. Narrowed to what the route actually
+ * returns; callers refetch the list for the full row.
+ */
 export async function createTeamAssignment(teamId: string, input: CreateTeamAssignmentInput) {
-  const res = await axiosInstance.post<{ success: boolean; data: TeamAssignmentRow }>(
+  const res = await axiosInstance.post<{ success: boolean; data: { id: string; name: string } }>(
     `/admin/teams/${teamId}/assignments`,
     input,
   );
   return res.data.data;
 }
 
+/** See `createTeamAssignment` — `updateAssignment` also selects only `{id, name}`. */
 export async function updateTeamAssignment(
   teamId: string,
   assignmentId: string,
   input: UpdateTeamAssignmentInput,
 ) {
-  const res = await axiosInstance.patch<{ success: boolean; data: TeamAssignmentRow }>(
+  const res = await axiosInstance.patch<{ success: boolean; data: { id: string; name: string } }>(
     `/admin/teams/${teamId}/assignments/${assignmentId}`,
     input,
   );
@@ -420,6 +470,20 @@ export type TeamPathRow = {
   summary: string;
   sectionCount: number;
   createdAt: string;
+  /**
+   * NOT actually selected by `listTeamPaths` (`modules/teams/helpers/
+   * team-paths.ts`) — that query hardcodes `where: { archivedAt: null }` and
+   * never puts the column on the wire, so on live data this key is simply
+   * absent (reads as `undefined`, which the Paths tab treats the same as
+   * "not archived"). Declared here anyway because the admin surface needs a
+   * per-row archived signal to render Restore vs. Archive and there is
+   * nowhere else to hang it — this is a real gap: today's `GET
+   * /:id/paths` can never return an archived path, so there is no live way
+   * for staff to reach the Restore action this tab renders. Needs a
+   * backend fix (an `includeArchived` option on that endpoint) — out of
+   * scope for this admin-portal task, flagged here so it isn't lost.
+   */
+  archivedAt?: string | null;
 };
 
 export type TeamPathDetail = { id: string; title: string; summary: string; [key: string]: unknown };
@@ -434,11 +498,18 @@ export async function fetchTeamPaths(teamId: string) {
   return res.data.data;
 }
 
+/**
+ * `createTeamPath` (`modules/teams/helpers/team-paths.ts`) selects only
+ * `{id, title, slug}` — never the full row (no `summary`/`sectionCount`/
+ * `createdAt`). Typing this as `TeamPathRow` (as shipped in Task 8) claims
+ * fields the create response never carries. Narrowed here; callers refetch
+ * the list for the full row.
+ */
 export async function createTeamPath(teamId: string, input: CreateTeamPathInput) {
-  const res = await axiosInstance.post<{ success: boolean; data: TeamPathRow }>(
-    `/admin/teams/${teamId}/paths`,
-    input,
-  );
+  const res = await axiosInstance.post<{
+    success: boolean;
+    data: { id: string; title: string; slug: string };
+  }>(`/admin/teams/${teamId}/paths`, input);
   return res.data.data;
 }
 
@@ -455,11 +526,15 @@ export async function fetchTeamPath(teamId: string, pathId: string) {
   return res.data.data;
 }
 
+/**
+ * `updateTeamPath` (helper) selects only `{id, title}` — never the full
+ * row. Same correction as `createTeamPath` above.
+ */
 export async function updateTeamPath(teamId: string, pathId: string, input: UpdateTeamPathInput) {
-  const res = await axiosInstance.patch<{ success: boolean; data: TeamPathRow }>(
-    `/admin/teams/${teamId}/paths/${pathId}`,
-    input,
-  );
+  const res = await axiosInstance.patch<{
+    success: boolean;
+    data: { id: string; title: string };
+  }>(`/admin/teams/${teamId}/paths/${pathId}`, input);
   return res.data.data;
 }
 

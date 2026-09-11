@@ -20,6 +20,9 @@ import { Alert, AlertDescription } from '@/components/ui/alert';
 import ArchiveTeamDialog from '@/components/teams/ArchiveTeamDialog';
 import { MembersTab } from '@/components/teams/tabs/MembersTab';
 import { InvitesTab } from '@/components/teams/tabs/InvitesTab';
+import { GroupsTab } from '@/components/teams/tabs/GroupsTab';
+import { AssignmentsTab } from '@/components/teams/tabs/AssignmentsTab';
+import { PathsTab } from '@/components/teams/tabs/PathsTab';
 import { useSeededForm } from '@/lib/forms/useSeededForm';
 import { archiveTeam, fetchTeam, formatCurrency, renameTeam, restoreTeam } from '@/lib/api/teams';
 
@@ -36,13 +39,10 @@ const TABS = [
 
 type TabId = (typeof TABS)[number][0];
 
-// Tasks 10 and 11 replace these with real tab components — every tab is
-// clickable and renders something today, none disabled, so a placeholder
-// beats a dead button.
-const COMING_SOON_LABEL: Record<Exclude<TabId, 'overview' | 'members' | 'invites'>, string> = {
-  groups: 'Groups',
-  assignments: 'Assignments',
-  paths: 'Paths',
+// Task 11 replaces the remaining two with real tab components — every tab
+// is clickable and renders something today, none disabled, so a
+// placeholder beats a dead button.
+const COMING_SOON_LABEL: Record<Extract<TabId, 'billing' | 'reports'>, string> = {
   billing: 'Billing',
   reports: 'Reports',
 };
@@ -230,6 +230,19 @@ function TeamDetailClient() {
             onChanged={invalidate}
           />
         );
+      case 'groups':
+        return <GroupsTab teamId={id} isArchived={isArchived} onChanged={invalidate} />;
+      case 'assignments':
+        return (
+          <AssignmentsTab
+            teamId={id}
+            members={team.members}
+            isArchived={isArchived}
+            onChanged={invalidate}
+          />
+        );
+      case 'paths':
+        return <PathsTab teamId={id} isArchived={isArchived} onChanged={invalidate} />;
       default:
         return <EmptyState title={COMING_SOON_LABEL[tab]} description="Coming in this slice." />;
     }
