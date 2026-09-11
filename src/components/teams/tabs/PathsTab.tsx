@@ -30,14 +30,6 @@ import {
   type TeamPathRow,
 } from '@/lib/api/teams';
 
-function fmt(iso: string) {
-  return new Date(iso).toLocaleDateString(undefined, {
-    day: 'numeric',
-    month: 'short',
-    year: 'numeric',
-  });
-}
-
 function extractErrorMessage(err: unknown, fallback: string): string {
   const anyErr = err as { response?: { data?: { message?: string } } };
   return anyErr.response?.data?.message || fallback;
@@ -215,11 +207,6 @@ export function PathsTab({
             />
           );
         },
-      },
-      {
-        id: 'created',
-        header: 'Created',
-        cell: ({ row }) => fmt(row.original.createdAt),
       },
       {
         id: 'actions',

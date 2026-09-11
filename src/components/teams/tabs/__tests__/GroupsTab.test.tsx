@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, within } from '@testing-library/react';
+import { render, screen, within, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
@@ -69,6 +69,28 @@ describe('GroupsTab', () => {
     // Platform (g1) is targeted by 2 assignments, Data (g2) by none.
     expect((await screen.findAllByText('2')).length).toBeGreaterThan(0);
     expect((await screen.findAllByText('0')).length).toBeGreaterThan(0);
+  });
+
+  it('renders a dash, not 0, in the Assignments column when fetchTeamAssignments fails — the groups list still renders', async () => {
+    vi.mocked(fetchTeamAssignments).mockRejectedValue(new Error('boom'));
+    setup();
+
+    // Groups come from their own query, independent of assignments — the
+    // list must never disappear while that query is loading or after it
+    // has failed. Mirrors MembersTab's equivalent resilience test for the
+    // roster-progress join.
+    expect((await screen.findAllByText('Platform')).length).toBeGreaterThan(0);
+    expect(screen.getAllByText('Data').length).toBeGreaterThan(0);
+
+    await waitFor(() => expect(fetchTeamAssignments).toHaveBeenCalled());
+
+    const platformRow = screen.getAllByText('Platform')[0]!.closest('tr')!;
+    const dataRow = screen.getAllByText('Data')[0]!.closest('tr')!;
+    expect(within(platformRow).getAllByText('—').length).toBeGreaterThan(0);
+    expect(within(platformRow).queryByText('0')).not.toBeInTheDocument();
+    expect(within(platformRow).queryByText('2')).not.toBeInTheDocument();
+    expect(within(dataRow).getAllByText('—').length).toBeGreaterThan(0);
+    expect(within(dataRow).queryByText('0')).not.toBeInTheDocument();
   });
 
   it('creates a group and refreshes', async () => {
