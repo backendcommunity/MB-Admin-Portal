@@ -303,16 +303,17 @@ describe('AssignmentsTab', () => {
     expect(onChanged).toHaveBeenCalled();
   });
 
-  it('links "Edit items" out instead of reimplementing the item editor', async () => {
+  it('states plainly that item editing happens in the team app, not here — no link that could be broken', async () => {
     setup();
     await screen.findAllByText('Week 1');
-    const editLinks = screen.getAllByRole('link', { name: /edit items/i });
-    expect(editLinks.length).toBeGreaterThan(0);
-    expect(editLinks[0]).toHaveAttribute('target', '_blank');
-    expect(editLinks[0]).toHaveAttribute('href', expect.stringContaining('as1'));
+    expect(screen.getByText(/team's own manager, in the team app/i)).toBeInTheDocument();
+    // No hyperlink is offered for item editing: a guessed URL (there is no
+    // established team-app origin anywhere in this repo's env config) would
+    // look like it works and go nowhere — worse than no link at all.
+    expect(screen.queryByRole('link', { name: /edit items/i })).not.toBeInTheDocument();
   });
 
-  it('disables writes when the team is archived, but the edit-items link stays live', async () => {
+  it('disables writes when the team is archived', async () => {
     setup(true);
     await screen.findAllByText('Week 1');
     expect(screen.getByRole('button', { name: /new assignment/i })).toBeDisabled();

@@ -69,23 +69,6 @@ function audienceLabel(type: AssignmentTargetType) {
   return 'Member';
 }
 
-/**
- * Where an "Edit" action would need the assignment ITEM editor — explicitly
- * out of scope for this slice, the heaviest surface in the feature — this
- * links out to the team's own manager instead of reimplementing it.
- *
- * There is no established base URL for that customer-facing app anywhere in
- * this repo's env config today (`NEXT_PUBLIC_API_URL` names the API host,
- * not necessarily the origin the team manager is served from).
- * `NEXT_PUBLIC_TEAM_APP_URL` is read with a best-effort fallback — confirm
- * the real origin with product/eng before this ships; flagged in the task
- * report rather than silently guessed past.
- */
-function teamManagerHref(assignmentId: string): string {
-  const base = process.env.NEXT_PUBLIC_TEAM_APP_URL || 'https://masteringbackend.com';
-  return `${base.replace(/\/$/, '')}/team?assignmentId=${assignmentId}`;
-}
-
 type TargetDraft = {
   targetType: AssignmentTargetType;
   targetGroupId: string | null;
@@ -189,9 +172,17 @@ function audienceSizeFor(
 
 /**
  * Create, rename, retarget and delete a team's assignments. The item editor
- * lives at `/team` on the team's own manager (see `teamManagerHref`) —
- * explicitly out of scope here, so "Edit items" links out instead of
- * reimplementing it.
+ * is explicitly out of scope for this slice — it lives on the team's own
+ * manager in the team app. This tab does NOT link to it: no base URL for
+ * that customer-facing app exists anywhere in this repo's env config
+ * (`.env`/`.env.example` define only `NEXT_PUBLIC_API_URL`, the API host,
+ * not necessarily the team app's origin), so a fabricated URL would be a
+ * link that looks like it works and goes nowhere — worse than no link.
+ * Fix round 1 removed the guessed `NEXT_PUBLIC_TEAM_APP_URL` for exactly
+ * that reason. Instead, a plain, always-true sentence says where item
+ * editing happens. Wiring a real link is a product decision (the actual
+ * team-app origin), not a mid-task guess — call it out if a real link is
+ * wanted.
  *
  * `POST /:id/assignments` fires `notifyAssigned` — every person the target
  * resolves to gets emailed the moment the assignment is created. The create
@@ -410,11 +401,6 @@ export function AssignmentsTab({
               >
                 Retarget
               </Button>
-              <Button size="sm" variant="ghost" asChild>
-                <a href={teamManagerHref(a.id)} target="_blank" rel="noreferrer">
-                  Edit items
-                </a>
-              </Button>
               <Button
                 size="sm"
                 variant="ghost"
@@ -449,6 +435,11 @@ export function AssignmentsTab({
           New assignment
         </Button>
       </div>
+
+      <p className="text-xs text-muted-foreground">
+        Item editing happens in the team&apos;s own manager, in the team app — not here. This list
+        only creates, renames, retargets and deletes assignments.
+      </p>
 
       <Card className="overflow-hidden p-0">
         <DataTable table={table} mobileTitle={(row) => row.original.name} />

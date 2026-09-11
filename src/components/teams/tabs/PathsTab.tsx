@@ -51,21 +51,22 @@ function extractErrorMessage(err: unknown, fallback: string): string {
  *
  * "Items" and "Started" (the artifact's own column names) have no backing
  * data: `listTeamPaths` (`modules/teams/helpers/team-paths.ts`) selects only
- * `id/title/slug/summary/sectionCount/createdAt` — no total item count
- * across sections, and no per-path "members started" figure exists
- * anywhere in this stack. Rather than fabricate either, both render an em
- * dash, the same honest-gap convention `MembersTab` uses for progress data
- * it cannot back.
+ * `id/title/slug/summary/sectionCount/createdAt[/archivedAt]` — no total
+ * item count across sections, and no per-path "members started" figure
+ * exists anywhere in this stack. Rather than fabricate either, both render
+ * an em dash, the same honest-gap convention `MembersTab` uses for progress
+ * data it cannot back. This is a known gap a future backend rollup can fill
+ * without touching this UI — the columns are already wired to real fields
+ * the moment they exist.
  *
- * "Status"/archived-row support is forward-compatible rather than fully
- * live: `listTeamPaths` hardcodes `where: { archivedAt: null }` and never
- * selects the column, so `TeamPathRow.archivedAt` is always `undefined` on
- * real data today — meaning `GET /:id/paths` can never actually hand this
- * tab an archived row to restore. That is a real backend gap (flagged on
- * `TeamPathRow` in `lib/api/teams.ts`): staff need to see archived paths to
- * restore them, and today's endpoint filters them out entirely. This tab
- * still renders Restore vs. Archive correctly off `archivedAt` so it works
- * the moment that endpoint gains an `includeArchived` option.
+ * Status/archived-row support is fully live, not merely forward-compatible:
+ * `listTeamPaths` used to hardcode `where: { archivedAt: null }` and never
+ * select the column at all, which meant `GET /:id/paths` could never hand
+ * this tab an archived row to restore — a real backend gap, since it made
+ * the Restore action below unreachable. Fixed on the API side (academy
+ * commit `f0fd7db`): the admin route now passes `{ includeArchived: true }`
+ * and `archivedAt` is always selected/returned (`null` for a live path).
+ * The Archive/Restore branch below keys directly off `path.archivedAt`.
  */
 export function PathsTab({
   teamId,

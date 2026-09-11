@@ -471,19 +471,18 @@ export type TeamPathRow = {
   sectionCount: number;
   createdAt: string;
   /**
-   * NOT actually selected by `listTeamPaths` (`modules/teams/helpers/
-   * team-paths.ts`) — that query hardcodes `where: { archivedAt: null }` and
-   * never puts the column on the wire, so on live data this key is simply
-   * absent (reads as `undefined`, which the Paths tab treats the same as
-   * "not archived"). Declared here anyway because the admin surface needs a
-   * per-row archived signal to render Restore vs. Archive and there is
-   * nowhere else to hang it — this is a real gap: today's `GET
-   * /:id/paths` can never return an archived path, so there is no live way
-   * for staff to reach the Restore action this tab renders. Needs a
-   * backend fix (an `includeArchived` option on that endpoint) — out of
-   * scope for this admin-portal task, flagged here so it isn't lost.
+   * Genuinely on the wire now. `listTeamPaths` (`modules/teams/helpers/
+   * team-paths.ts`) used to hardcode `where: { archivedAt: null }` and never
+   * select the column at all — a real gap, since it made the admin Restore
+   * endpoint unreachable (no archived row could ever appear in this list to
+   * restore). Fixed on the API side (academy commit `f0fd7db`): the helper
+   * takes an opt-in `{ includeArchived }` option, the admin route
+   * (`GET /:id/paths`) passes `{ includeArchived: true }`, and `archivedAt`
+   * is always selected/returned. The customer route never passes the
+   * option, so its behaviour — and every existing archivedAt-less row it
+   * returns — is unchanged.
    */
-  archivedAt?: string | null;
+  archivedAt: string | null;
 };
 
 export type TeamPathDetail = { id: string; title: string; summary: string; [key: string]: unknown };
