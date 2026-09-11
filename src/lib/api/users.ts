@@ -1,4 +1,5 @@
 import { axiosInstance } from '@/lib/api/axios';
+import type { TeamSeatUsage } from '@/lib/api/teams';
 
 /**
  * The admin user surface.
@@ -422,7 +423,12 @@ export type UserTeam = {
   memberId: string | null;
   joinedAt: string | null;
   owner: { id: string; name: string; email: string } | null;
-  seats: number | null;
+  seats: TeamSeatUsage;
+  /**
+   * The seat-gap the nightly reconcile last reported — alert bookkeeping,
+   * never a seat figure. See `TeamSummary.seatGap` in `@/lib/api/teams`.
+   */
+  seatGap: number | null;
   subscription: { id: string; plan: string | null; status: string } | null;
   counts: { members: number; invites: number; groups: number; assignments: number };
 };

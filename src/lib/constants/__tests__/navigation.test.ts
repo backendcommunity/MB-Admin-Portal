@@ -4,7 +4,7 @@
  * but cannot use is a support ticket.
  */
 import { describe, it, expect } from 'vitest';
-import { NAV_ITEMS } from '../navigation';
+import { NAV_GROUPS, NAV_ITEMS } from '../navigation';
 
 const hrefs = NAV_ITEMS.map((i) => i.href);
 const forRole = (role: string) =>
@@ -69,5 +69,29 @@ describe('NAV_ITEMS', () => {
 
   it('labels the Offers section Ship', () => {
     expect(NAV_ITEMS.find((i) => i.href === '/offers')?.label).toBe('Ship');
+  });
+});
+
+describe('NAV_ITEMS grouping', () => {
+  it('gives every entry a group drawn from NAV_GROUPS', () => {
+    const ungrouped = NAV_ITEMS.filter((i) => !NAV_GROUPS.includes(i.group));
+    expect(ungrouped.map((i) => i.href)).toEqual([]);
+  });
+
+  it('orders the groups Overview, Content, People, Money, System', () => {
+    expect(NAV_GROUPS).toEqual(['Overview', 'Content', 'People', 'Money', 'System']);
+  });
+
+  it('puts Teams and Users under People, and Earnings under Money', () => {
+    const groupOf = (href: string) => NAV_ITEMS.find((i) => i.href === href)?.group;
+    expect(groupOf('/teams')).toBe('People');
+    expect(groupOf('/users')).toBe('People');
+    expect(groupOf('/earnings')).toBe('Money');
+  });
+
+  it('leaves an instructor with no entry in People or System', () => {
+    const forInstructor = NAV_ITEMS.filter((i) => (i.roles as string[]).includes('INSTRUCTOR'));
+    expect(forInstructor.filter((i) => i.group === 'People')).toEqual([]);
+    expect(forInstructor.filter((i) => i.group === 'System')).toEqual([]);
   });
 });

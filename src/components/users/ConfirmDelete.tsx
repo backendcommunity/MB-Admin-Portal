@@ -14,6 +14,8 @@ type Props = {
   open: boolean;
   title?: string;
   description?: string;
+  /** Defaults to 'Delete' — override for a non-delete destructive confirm (e.g. 'Archive'). */
+  confirmLabel?: string;
   onCancel: () => void;
   onConfirm: () => void;
 };
@@ -22,6 +24,7 @@ export default function ConfirmDelete({
   open,
   title = 'Confirm',
   description = 'Are you sure?',
+  confirmLabel = 'Delete',
   onCancel,
   onConfirm,
 }: Props) {
@@ -42,7 +45,7 @@ export default function ConfirmDelete({
             Cancel
           </Button>
           <Button variant="destructive" onClick={onConfirm}>
-            Delete
+            {confirmLabel}
           </Button>
         </DialogFooter>
       </DialogContent>

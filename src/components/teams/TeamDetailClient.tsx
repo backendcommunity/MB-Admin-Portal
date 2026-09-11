@@ -1,33 +1,84 @@
 'use client';
 
-import { useState } from 'react';
+import { type ReactNode, useState } from 'react';
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 
-import { adminSetTeamSeats, fetchTeamDetail, formatCurrency } from '@/lib/api/teams';
 import { PageHeader } from '@/components/shared/PageHeader';
-import { StatusBadge } from '@/components/shared/StatusBadge';
+import { Stat, StatRow } from '@/components/shared/Stat';
+import { TabBar } from '@/components/shared/TabBar';
 import { LoadingState, ErrorState } from '@/components/shared/LoadingState';
-import { Card } from '@/components/ui/card';
+import { Field, Section } from '@/components/shared/form/Section';
+import { StatusBadge } from '@/components/shared/StatusBadge';
+import { SuperAdminOnly } from '@/components/shared/SuperAdminOnly';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
+import { Alert, AlertDescription } from '@/components/ui/alert';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
+import ArchiveTeamDialog from '@/components/teams/ArchiveTeamDialog';
+import { MembersTab } from '@/components/teams/tabs/MembersTab';
+import { InvitesTab } from '@/components/teams/tabs/InvitesTab';
+import { GroupsTab } from '@/components/teams/tabs/GroupsTab';
+import { AssignmentsTab } from '@/components/teams/tabs/AssignmentsTab';
+import { PathsTab } from '@/components/teams/tabs/PathsTab';
+import { BillingTab } from '@/components/teams/tabs/BillingTab';
+import { ReportsTab } from '@/components/teams/tabs/ReportsTab';
+import { useSeededForm } from '@/lib/forms/useSeededForm';
+import {
+  archiveTeam,
+  fetchTeam,
+  formatCurrency,
+  renameTeam,
+  restoreTeam,
+  transferTeam,
+} from '@/lib/api/teams';
+
+const TABS = [
+  ['overview', 'Overview'],
+  ['members', 'Members'],
+  ['invites', 'Invites'],
+  ['groups', 'Groups'],
+  ['assignments', 'Assignments'],
+  ['paths', 'Paths'],
+  ['billing', 'Billing'],
+  ['reports', 'Reports'],
+] as const;
+
+type TabId = (typeof TABS)[number][0];
 
 type Tone = 'neutral' | 'info' | 'success' | 'danger' | 'warning';
 
 function subscriptionTone(status: string | null): Tone {
-  if (status === 'ACTIVE') return 'success';
-  if (status === 'CANCELED') return 'danger';
-  if (status === 'PAUSED') return 'warning';
+  const s = (status ?? '').toLowerCase();
+  if (s === 'active') return 'success';
+  if (s === 'canceled' || s === 'past_due') return 'danger';
+  if (s === 'paused') return 'warning';
   return 'neutral';
 }
 
-function memberStatusTone(status: string): Tone {
-  if (status === 'ACTIVE') return 'success';
-  if (status === 'REMOVED') return 'neutral';
-  return 'neutral';
+function fmt(iso: string | null) {
+  if (!iso) return '—';
+  return new Date(iso).toLocaleDateString(undefined, {
+    day: 'numeric',
+    month: 'short',
+    year: 'numeric',
+  });
 }
 
 function extractErrorMessage(err: unknown, fallback: string): string {
@@ -35,48 +86,46 @@ function extractErrorMessage(err: unknown, fallback: string): string {
   return anyErr.response?.data?.message || fallback;
 }
 
-export function TeamDetailClient() {
-  const params = useParams();
+/**
+ * A SHELL: header, `StatRow`, `TabBar`, and a switch that renders one tab
+ * component. Follows `ProjectDetailClient`'s pattern.
+ *
+ * Every tab a team can have ships in `TABS`, and every one renders a real
+ * component now — Task 11 was the last of them (Billing, Reports). None are
+ * disabled: a control a staff member cannot click for no visible reason
+ * reads as broken.
+ */
+function TeamDetailClient() {
+  const params = useParams<{ id: string }>();
   const id = String(params.id);
-  const qc = useQueryClient();
-  const [seatsInput, setSeatsInput] = useState('');
+  const queryClient = useQueryClient();
 
-  const {
-    data: team,
-    isLoading,
-    isError,
-    refetch,
-  } = useQuery({
-    queryKey: ['team', id],
-    queryFn: () => fetchTeamDetail(id),
+  const { data, isLoading, isError, refetch } = useQuery({
+    queryKey: ['admin-team', id],
+    queryFn: () => fetchTeam(id),
     enabled: Boolean(id),
   });
 
-  // Only AsyncPay teams need staff-adjusted seats — Paddle teams self-serve
-  // through the customer-facing purchase flow, and this endpoint exists
-  // specifically for the processor that has no self-serve path at all.
-  const setSeats = useMutation({
-    mutationFn: (seats: number) => adminSetTeamSeats(id, seats),
-    onSuccess: () => {
-      toast.success('Seats updated');
-      setSeatsInput('');
-      qc.invalidateQueries({ queryKey: ['team', id] });
-    },
-    onError: (err: unknown) => {
-      // The 409 body names the exact usage figure ("already has N seats in
-      // use") — surface it verbatim rather than a generic failure toast.
-      toast.error(extractErrorMessage(err, 'Failed to update seats'));
-    },
-  });
+  const [tab, setTab] = useState<TabId>('overview');
+  const [archiveOpen, setArchiveOpen] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [restoring, setRestoring] = useState(false);
+  const [transferOpen, setTransferOpen] = useState(false);
+  const [transferTarget, setTransferTarget] = useState('');
+  const [transferring, setTransferring] = useState(false);
+
+  const [draft, setDraft] = useSeededForm(data?.id ?? 'none', () => ({
+    name: data?.name ?? '',
+  }));
 
   if (isLoading) {
     return <LoadingState label="Loading team…" />;
   }
 
-  if (isError || !team) {
+  if (isError || !data) {
     return (
       <div className="space-y-4">
-        <ErrorState message="Failed to load this team." onRetry={refetch} />
+        <ErrorState message="Failed to load this team." onRetry={() => refetch()} />
         <Button variant="outline" size="sm" asChild>
           <Link href="/teams">← Back to teams</Link>
         </Button>
@@ -84,157 +133,327 @@ export function TeamDetailClient() {
     );
   }
 
-  const isAsyncpay = team.processor === 'ASYNCPAY';
+  // Every write here touches a row the teams list also renders (name,
+  // archived state, seats), and that list's query has its own staleTime —
+  // without this it would keep serving a stale row until it expires. Every
+  // tab's own writes reuse this exact function as their `onChanged`, so a
+  // role change or a revoked invite refreshes both places too.
+  const invalidate = () => {
+    queryClient.invalidateQueries({ queryKey: ['admin-teams'] });
+    refetch();
+  };
+
+  const save = async () => {
+    setSaving(true);
+    try {
+      const nextName = draft.name.trim();
+      if (nextName && nextName !== data.name) {
+        await renameTeam(id, nextName);
+      }
+      toast.success('Saved.');
+      invalidate();
+    } catch (error) {
+      toast.error('Could not save', { description: extractErrorMessage(error, 'Unknown error') });
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const doArchive = async () => {
+    try {
+      await archiveTeam(id);
+      toast.success('Team archived');
+      setArchiveOpen(false);
+      invalidate();
+    } catch (error) {
+      toast.error(extractErrorMessage(error, 'Could not archive the team'));
+    }
+  };
+
+  const doRestore = async () => {
+    setRestoring(true);
+    try {
+      await restoreTeam(id);
+      toast.success('Team restored');
+      invalidate();
+    } catch (error) {
+      toast.error(extractErrorMessage(error, 'Could not restore the team'));
+    } finally {
+      setRestoring(false);
+    }
+  };
+
+  const doTransfer = async () => {
+    if (!transferTarget) return;
+    setTransferring(true);
+    try {
+      await transferTeam(id, transferTarget);
+      toast.success('Ownership transferred. The outgoing owner is now ADMIN.');
+      setTransferOpen(false);
+      setTransferTarget('');
+      invalidate();
+    } catch (error) {
+      toast.error('Could not transfer ownership', {
+        description: extractErrorMessage(error, 'Unknown error'),
+      });
+    } finally {
+      setTransferring(false);
+    }
+  };
+
+  const activeMembers = data.members.filter((m) => m.status !== 'REMOVED');
+  // Anyone active except whoever already owns the team — `transferTeam`
+  // itself 409s a no-op transfer to the current owner, so there is no
+  // reason to offer that choice in the picker.
+  const transferCandidates = activeMembers.filter((m) => m.user?.id !== data.owner?.id);
+  const isArchived = Boolean(data.archivedAt);
+  // A plain function declaration doesn't inherit the `data`-is-defined
+  // narrowing from the guards above (TypeScript doesn't carry control-flow
+  // narrowing across a nested function boundary) — `team`'s own declared
+  // type is `TeamDetail`, non-optional, regardless.
+  const team = data;
+
+  function renderTab(): ReactNode {
+    switch (tab) {
+      case 'overview':
+        return (
+          <div className="grid gap-4 lg:grid-cols-[1fr_280px]">
+            <Section title="Identity" id="section-identity">
+              <Field label="Team name" htmlFor="team-name" required>
+                <Input
+                  id="team-name"
+                  value={draft.name}
+                  onChange={(event) => setDraft((d) => ({ ...d, name: event.target.value }))}
+                  disabled={isArchived}
+                />
+              </Field>
+            </Section>
+
+            <div className="space-y-4">
+              <Section title="Subscription" id="section-subscription">
+                <dl className="space-y-2 text-sm">
+                  <div className="flex justify-between gap-3">
+                    <dt className="text-muted-foreground">Status</dt>
+                    <dd>{team.subscription?.status ?? '—'}</dd>
+                  </div>
+                  <div className="flex justify-between gap-3">
+                    <dt className="text-muted-foreground">Paid seats</dt>
+                    <dd>{team.subscription ? team.subscription.paidSeats : '—'}</dd>
+                  </div>
+                  <div className="flex justify-between gap-3">
+                    <dt className="text-muted-foreground">Per-seat price</dt>
+                    <dd>
+                      {formatCurrency(
+                        team.subscription?.amount ?? null,
+                        team.subscription?.currency ?? null,
+                      )}
+                    </dd>
+                  </div>
+                </dl>
+              </Section>
+
+              <Section title="Ownership" id="section-ownership">
+                <div className="flex items-center justify-between gap-3 text-sm">
+                  <div>
+                    <p className="text-muted-foreground">Owner</p>
+                    <p className="font-medium">{team.owner?.name ?? '—'}</p>
+                    {team.owner ? (
+                      <p className="text-xs text-muted-foreground">{team.owner.email}</p>
+                    ) : null}
+                  </div>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    disabled={isArchived || transferCandidates.length === 0}
+                    onClick={() => {
+                      setTransferTarget('');
+                      setTransferOpen(true);
+                    }}
+                  >
+                    Transfer
+                  </Button>
+                </div>
+              </Section>
+            </div>
+          </div>
+        );
+      case 'members':
+        return (
+          <MembersTab
+            teamId={id}
+            members={team.members}
+            isArchived={isArchived}
+            onChanged={invalidate}
+          />
+        );
+      case 'invites':
+        return (
+          <InvitesTab
+            teamId={id}
+            seats={team.seats}
+            isArchived={isArchived}
+            onChanged={invalidate}
+          />
+        );
+      case 'groups':
+        return (
+          <GroupsTab
+            teamId={id}
+            members={team.members}
+            isArchived={isArchived}
+            onChanged={invalidate}
+          />
+        );
+      case 'assignments':
+        return (
+          <AssignmentsTab
+            teamId={id}
+            members={team.members}
+            isArchived={isArchived}
+            onChanged={invalidate}
+          />
+        );
+      case 'paths':
+        return <PathsTab teamId={id} isArchived={isArchived} onChanged={invalidate} />;
+      case 'billing':
+        return (
+          <BillingTab
+            teamId={id}
+            processor={team.processor}
+            subscription={team.subscription}
+            seatGap={team.seatGap}
+            isArchived={isArchived}
+            onChanged={invalidate}
+          />
+        );
+      case 'reports':
+        return <ReportsTab teamId={id} />;
+      default:
+        // Every `TabId` is handled above — `TABS` and this switch are kept
+        // in lockstep, so this is unreachable in practice.
+        return null;
+    }
+  }
 
   return (
-    <div className="space-y-6">
+    <div>
+      <p className="mb-3 text-sm text-muted-foreground">
+        <Link href="/teams" className="hover:text-foreground hover:underline">
+          Teams
+        </Link>{' '}
+        / {data.name}
+      </p>
+
       <PageHeader
-        title={team.name}
-        description={team.owner ? `Owned by ${team.owner.name} (${team.owner.email})` : undefined}
-        actions={
-          team.subscription?.status ? (
+        title={data.name}
+        description={data.owner ? `Owned by ${data.owner.name} (${data.owner.email})` : undefined}
+        badge={
+          isArchived ? (
+            <StatusBadge label="archived" tone="neutral" />
+          ) : data.subscriptionStatus ? (
             <StatusBadge
-              label={team.subscription.status}
-              tone={subscriptionTone(team.subscription.status)}
+              label={data.subscriptionStatus}
+              tone={subscriptionTone(data.subscriptionStatus)}
             />
           ) : undefined
         }
+        actions={
+          isArchived ? (
+            <SuperAdminOnly reason="Forbidden: super admin access required">
+              <Button onClick={doRestore} disabled={restoring}>
+                {restoring ? 'Restoring…' : 'Restore'}
+              </Button>
+            </SuperAdminOnly>
+          ) : (
+            <>
+              <SuperAdminOnly reason="Forbidden: super admin access required">
+                <Button variant="destructive" onClick={() => setArchiveOpen(true)}>
+                  Archive team
+                </Button>
+              </SuperAdminOnly>
+              <Button onClick={save} disabled={saving}>
+                {saving ? 'Saving…' : 'Save changes'}
+              </Button>
+            </>
+          )
+        }
       />
 
-      {/* Summary stats */}
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-        {[
-          { label: 'Processor', value: team.processor ?? '—' },
-          { label: 'Seats used', value: `${team.usage.used} / ${team.usage.paidSeats}` },
-          { label: 'Pending invites', value: team.usage.pendingInvites },
-          {
-            label: 'Per-seat price',
-            value: formatCurrency(
-              team.subscription?.amount ?? null,
-              team.subscription?.currency ?? null,
-            ),
-          },
-        ].map(({ label, value }) => (
-          <Card key={label} className="flex flex-col items-center p-4 text-center">
-            <span className="text-xl font-bold">{value}</span>
-            <span className="mt-1 text-xs text-muted-foreground">{label}</span>
-          </Card>
-        ))}
-      </div>
+      <StatRow>
+        <Stat label="processor" value={data.processor ?? '—'} />
+        <Stat
+          label="paid seats"
+          value={data.seats.subscribed ? String(data.seats.paidSeats) : '—'}
+        />
+        <Stat label="used" value={String(data.seats.used)} />
+        <Stat label="pending invites" value={String(data.seats.pendingInvites)} />
+        <Stat label="created" value={fmt(data.createdAt)} />
+      </StatRow>
 
-      {/* Seat adjustment — AsyncPay only. This is the sales-led path: NG
-          owners have no self-serve purchase flow, so staff set the number
-          directly here. */}
-      {isAsyncpay ? (
-        <Card className="p-4 sm:p-6">
-          <h3 className="mb-1 text-sm font-semibold text-foreground">Adjust seats</h3>
-          <p className="mb-3 text-xs text-muted-foreground">
-            AsyncPay has no self-serve purchase flow — set the funded seat count directly. This
-            refuses if it is below the {team.usage.used} seat{team.usage.used === 1 ? '' : 's'}{' '}
-            currently in use.
-          </p>
-          <div className="flex flex-wrap items-end gap-2">
-            <div className="space-y-1">
-              <Label htmlFor="seats-input">New seat count</Label>
-              <Input
-                id="seats-input"
-                type="number"
-                min={1}
-                className="w-32"
-                value={seatsInput}
-                onChange={(e) => setSeatsInput(e.target.value)}
-                placeholder={String(team.usage.paidSeats)}
-              />
-            </div>
-            <Button
-              size="sm"
-              disabled={setSeats.isPending || !seatsInput}
-              onClick={() => {
-                const seats = Number(seatsInput);
-                if (!Number.isInteger(seats) || seats < 1) {
-                  toast.error('Enter a whole number of at least 1');
-                  return;
-                }
-                setSeats.mutate(seats);
-              }}
-            >
-              {setSeats.isPending ? 'Saving…' : 'Save'}
-            </Button>
-          </div>
-        </Card>
+      {data.seatGap !== null ? (
+        <Alert className="mb-5">
+          <AlertDescription>
+            This team has {data.seatGap} spare seat{data.seatGap === 1 ? '' : 's'}. See the Billing
+            tab for details.
+          </AlertDescription>
+        </Alert>
       ) : null}
 
-      {/* Members */}
-      <Card className="overflow-x-auto p-0">
-        <div className="border-b px-4 py-3 text-sm font-semibold text-foreground">Members</div>
-        <table className="w-full text-sm">
-          <thead>
-            <tr className="border-b bg-muted/50 text-left text-xs font-medium text-muted-foreground">
-              <th className="px-4 py-3">Name</th>
-              <th className="px-4 py-3">Email</th>
-              <th className="px-4 py-3">Role</th>
-              <th className="px-4 py-3">Status</th>
-              <th className="px-4 py-3">Joined</th>
-            </tr>
-          </thead>
-          <tbody>
-            {team.members.map((m) => (
-              <tr key={m.id} className="border-t hover:bg-muted/30">
-                <td className="px-4 py-3">{m.user?.name ?? '—'}</td>
-                <td className="px-4 py-3 text-muted-foreground">{m.user?.email ?? '—'}</td>
-                <td className="px-4 py-3">{m.role}</td>
-                <td className="px-4 py-3">
-                  <StatusBadge label={m.status} tone={memberStatusTone(m.status)} />
-                </td>
-                <td className="px-4 py-3 text-muted-foreground">
-                  {m.joinedAt ? new Date(m.joinedAt).toLocaleDateString() : '—'}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-        {team.members.length === 0 && (
-          <div className="py-12 text-center text-sm text-muted-foreground">No members found.</div>
-        )}
-      </Card>
+      <TabBar tabs={TABS} value={tab} onChange={setTab} />
 
-      {/* Pending invites */}
-      <Card className="overflow-x-auto p-0">
-        <div className="border-b px-4 py-3 text-sm font-semibold text-foreground">
-          Pending invites
-        </div>
-        <table className="w-full text-sm">
-          <thead>
-            <tr className="border-b bg-muted/50 text-left text-xs font-medium text-muted-foreground">
-              <th className="px-4 py-3">Email</th>
-              <th className="px-4 py-3">Invited</th>
-              <th className="px-4 py-3">Expires</th>
-            </tr>
-          </thead>
-          <tbody>
-            {team.pendingInvites.map((invite) => (
-              <tr key={invite.id} className="border-t hover:bg-muted/30">
-                <td className="px-4 py-3">{invite.email}</td>
-                <td className="px-4 py-3 text-muted-foreground">
-                  {invite.createdAt ? new Date(invite.createdAt).toLocaleDateString() : '—'}
-                </td>
-                <td className="px-4 py-3 text-muted-foreground">
-                  {invite.expiresAt ? new Date(invite.expiresAt).toLocaleDateString() : '—'}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-        {team.pendingInvites.length === 0 && (
-          <div className="py-12 text-center text-sm text-muted-foreground">No pending invites.</div>
-        )}
-      </Card>
+      {renderTab()}
 
-      <div className="flex">
-        <Button variant="outline" size="sm" asChild>
-          <Link href="/teams">← Back to teams</Link>
-        </Button>
-      </div>
+      <ArchiveTeamDialog
+        open={archiveOpen}
+        teamName={data.name}
+        memberCount={activeMembers.length}
+        onClose={() => setArchiveOpen(false)}
+        onConfirm={doArchive}
+      />
+
+      <Dialog open={transferOpen} onOpenChange={(next) => !next && setTransferOpen(false)}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Transfer ownership</DialogTitle>
+            <DialogDescription>
+              The new owner takes over immediately. {data.owner?.name ?? 'The current owner'}{' '}
+              becomes ADMIN.
+            </DialogDescription>
+          </DialogHeader>
+          <Field label="New owner" htmlFor="transfer-target" required>
+            <Select value={transferTarget} onValueChange={setTransferTarget}>
+              <SelectTrigger id="transfer-target">
+                <SelectValue placeholder="Choose an active member" />
+              </SelectTrigger>
+              <SelectContent>
+                {transferCandidates.map((m) => (
+                  <SelectItem key={m.id} value={m.user!.id}>
+                    {m.user?.name ?? m.user?.email ?? m.id}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </Field>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setTransferOpen(false)}
+              disabled={transferring}
+            >
+              Cancel
+            </Button>
+            <Button onClick={doTransfer} disabled={transferring || !transferTarget}>
+              {transferring ? 'Transferring…' : 'Transfer'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
+
+// Named export kept alongside the default so the existing
+// `import { TeamDetailClient } from '@/components/teams/TeamDetailClient'`
+// in src/app/(app)/teams/[id]/page.tsx keeps working.
+export { TeamDetailClient };
+export default TeamDetailClient;
