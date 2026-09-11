@@ -327,6 +327,13 @@ describe('reports', () => {
     expect(get).toHaveBeenCalledWith('/admin/teams/tm1/progress', { params: { groupId: 'g1' } });
   });
 
+  it('unwraps the nested { members } envelope from GET .../progress into a bare array', async () => {
+    const row = { memberId: 'mem1', user: { id: 'u1' }, coursesStarted: 3, coursesCompleted: 1 };
+    get.mockResolvedValueOnce({ data: { success: true, data: { members: [row] } } });
+    const result = await fetchTeamProgress('tm1');
+    expect(result).toEqual([row]);
+  });
+
   it('fetches the leaderboard via GET /admin/teams/:id/leaderboard with groupId', async () => {
     await fetchTeamLeaderboard('tm1', 'g1');
     expect(get).toHaveBeenCalledWith('/admin/teams/tm1/leaderboard', { params: { groupId: 'g1' } });

@@ -534,7 +534,32 @@ export type ReportRange = '12w' | '12m';
 
 export type TeamOverview = Record<string, unknown>;
 export type TeamReport = Record<string, unknown>;
-export type TeamProgressRow = Record<string, unknown>;
+
+/**
+ * One roster row from `resolveRosterProgress` (academy
+ * `modules/teams/helpers/roster-progress.ts`) — keyed by `user.id`, which
+ * is `TeamMemberRow.user.id` on the Members tab's own roster, not this
+ * row's own `memberId`. Deliberately no per-course percentage: computing
+ * one needs a video-and-article join per member per course, which the
+ * helper's own comment says is unaffordable for a whole team at once. The
+ * honest label is "N of M courses", not a percentage.
+ */
+export type TeamProgressRow = {
+  memberId: string;
+  role: string;
+  joinedAt: string;
+  status: string;
+  removedAt: string | null;
+  user: { id: string; name: string; email: string; avatar: string | null };
+  coursesStarted: number;
+  coursesCompleted: number;
+  projectsBuilt: number;
+  points: number;
+  currentStreak: number;
+  lastActivityAt: string | null;
+  isStalled: boolean;
+};
+
 export type TeamLeaderboardRow = Record<string, unknown>;
 
 export async function fetchTeamOverview(teamId: string, groupId?: string) {
@@ -585,12 +610,21 @@ export async function exportTeamReportCsv(
   return { filename, csv: res.data };
 }
 
+/**
+ * `GET /:id/progress` responds `{ success, data: { members: [...] } }` —
+ * `resolveRosterProgress` returns its rows nested under a `members` key, not
+ * a bare array. This function's response type as shipped in Task 8
+ * (`data: TeamProgressRow[]`) assumed the latter; at runtime that would have
+ * handed callers the `{ members }` object mistyped as an array, so
+ * `.map`/`.find` on the result would have thrown. Unwrapped here so this
+ * function's own contract — resolves to an array of rows — actually holds.
+ */
 export async function fetchTeamProgress(teamId: string, groupId?: string) {
-  const res = await axiosInstance.get<{ success: boolean; data: TeamProgressRow[] }>(
-    `/admin/teams/${teamId}/progress`,
-    { params: clean({ groupId }) },
-  );
-  return res.data.data;
+  const res = await axiosInstance.get<{
+    success: boolean;
+    data: { members: TeamProgressRow[] };
+  }>(`/admin/teams/${teamId}/progress`, { params: clean({ groupId }) });
+  return res.data.data.members;
 }
 
 /**

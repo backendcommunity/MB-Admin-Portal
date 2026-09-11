@@ -1,6 +1,7 @@
 'use client';
 
 import { useMemo, useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { getCoreRowModel, useReactTable, type ColumnDef } from '@tanstack/react-table';
 import { toast } from 'sonner';
 
@@ -18,10 +19,12 @@ import { StatusBadge } from '@/components/shared/StatusBadge';
 import ConfirmDelete from '@/components/users/ConfirmDelete';
 import {
   fetchTeamMemberProgress,
+  fetchTeamProgress,
   removeTeamMember,
   setTeamMemberRole,
   type TeamMemberRole,
   type TeamMemberRow,
+  type TeamProgressRow,
 } from '@/lib/api/teams';
 
 type Tone = 'neutral' | 'info' | 'success' | 'danger' | 'warning';
@@ -86,6 +89,33 @@ export function MembersTab({
     () => (showRemoved ? members : members.filter((m) => m.status !== 'REMOVED')),
     [members, showRemoved],
   );
+
+  // "Courses done" and "Progress" are not on `TeamMemberRow` — they come
+  // from `GET /:id/progress` (`resolveRosterProgress`), a second, INDEPENDENT
+  // query keyed by the same team. It must never gate the roster itself: a
+  // slow or failed roster-progress call still leaves every member visible,
+  // with those two columns falling back to an em dash rather than blanking
+  // the list or throwing.
+  const {
+    data: progressRows,
+    isLoading: progressLoading,
+    isError: progressError,
+  } = useQuery({
+    queryKey: ['admin-team-progress', teamId],
+    queryFn: () => fetchTeamProgress(teamId),
+    enabled: Boolean(teamId),
+  });
+
+  // Keyed by `user.id` — the join key `resolveRosterProgress` actually uses
+  // (`userId` on the underlying `TeamMember` row), not either side's own
+  // `id`/`memberId`.
+  const progressByUserId = useMemo(() => {
+    const map = new Map<string, TeamProgressRow>();
+    for (const row of progressRows ?? []) {
+      if (row.user?.id) map.set(row.user.id, row);
+    }
+    return map;
+  }, [progressRows]);
 
   const openRole = (member: TeamMemberRow) => {
     setNextRole(member.role === 'ADMIN' ? 'ADMIN' : 'MEMBER');
@@ -181,17 +211,26 @@ export function MembersTab({
         id: 'coursesDone',
         header: 'Courses done',
         meta: { align: 'right' as const },
-        // `TeamMemberRow` carries no per-member course or progress figures —
-        // those only exist per member, on demand, behind
-        // `fetchTeamMemberProgress` ("Progress" action below). Rendering a
-        // number here would be fabricated; an em dash is the honest state
-        // until the API grows a batched figure for the roster.
-        cell: () => '—',
+        cell: ({ row }) => {
+          if (progressLoading || progressError) return '—';
+          const p = row.original.user?.id ? progressByUserId.get(row.original.user.id) : undefined;
+          // No roster-progress row (e.g. joined today, never started
+          // anything) renders as an em dash — a fabricated 0 would claim
+          // something the join never actually confirmed.
+          return p ? String(p.coursesCompleted) : '—';
+        },
       },
       {
         id: 'progress',
         header: 'Progress',
-        cell: () => '—',
+        cell: ({ row }) => {
+          if (progressLoading || progressError) return '—';
+          const p = row.original.user?.id ? progressByUserId.get(row.original.user.id) : undefined;
+          // No per-course percentage is computed anywhere in this stack
+          // (see `resolveRosterProgress`) — "N of M courses" is the honest
+          // label, not an implied percentage.
+          return p ? `${p.coursesCompleted} of ${p.coursesStarted} courses` : '—';
+        },
       },
       {
         id: 'actions',
@@ -241,7 +280,7 @@ export function MembersTab({
       },
     ],
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [isArchived],
+    [isArchived, progressByUserId, progressLoading, progressError],
   );
 
   const table = useReactTable({ data: visible, columns, getCoreRowModel: getCoreRowModel() });

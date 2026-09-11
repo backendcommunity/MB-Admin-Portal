@@ -1,13 +1,14 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { render, screen, within, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
 vi.mock('@/lib/api/teams');
 vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
 
-import { setTeamMemberRole, removeTeamMember } from '@/lib/api/teams';
+import { setTeamMemberRole, removeTeamMember, fetchTeamProgress } from '@/lib/api/teams';
 import { MembersTab } from '@/components/teams/tabs/MembersTab';
-import type { TeamMemberRow } from '@/lib/api/teams';
+import type { TeamMemberRow, TeamProgressRow } from '@/lib/api/teams';
 
 const members: TeamMemberRow[] = [
   {
@@ -36,8 +37,33 @@ const members: TeamMemberRow[] = [
   },
 ];
 
+// Deliberately no row for u1 (Aisha) — the "joined today, never started
+// anything" case the join must render as an em dash, not a fabricated 0.
+const progressRows: TeamProgressRow[] = [
+  {
+    memberId: 'mem2',
+    role: 'MEMBER',
+    joinedAt: '2026-04-01T00:00:00.000Z',
+    status: 'ACTIVE',
+    removedAt: null,
+    user: { id: 'u2', name: 'Chidi Okonkwo', email: 'chidi@kuda.com', avatar: null },
+    coursesStarted: 7,
+    coursesCompleted: 3,
+    projectsBuilt: 1,
+    points: 120,
+    currentStreak: 4,
+    lastActivityAt: '2026-09-01T00:00:00.000Z',
+    isStalled: false,
+  },
+];
+
+function wrap(ui: React.ReactNode) {
+  const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  return render(<QueryClientProvider client={qc}>{ui}</QueryClientProvider>);
+}
+
 function setup(onChanged = vi.fn()) {
-  return render(
+  return wrap(
     <MembersTab teamId="tm1" members={members} isArchived={false} onChanged={onChanged} />,
   );
 }
@@ -45,6 +71,12 @@ function setup(onChanged = vi.fn()) {
 beforeEach(() => {
   vi.mocked(setTeamMemberRole).mockReset();
   vi.mocked(removeTeamMember).mockReset();
+  // A concrete, non-empty resolution by default — tests that need to
+  // interact with the roster wait on "3 of 7 courses" as proof the
+  // roster-progress query has actually settled (an empty-array resolution
+  // renders identically to the loading state, so it cannot serve as a
+  // settle marker for userEvent interactions that follow).
+  vi.mocked(fetchTeamProgress).mockResolvedValue(progressRows);
 });
 
 describe('MembersTab', () => {
@@ -66,10 +98,16 @@ describe('MembersTab', () => {
     vi.mocked(setTeamMemberRole).mockResolvedValue({ id: 'mem2', role: 'ADMIN' });
     setup(onChanged);
 
+    // Wait for the roster-progress query to actually settle before
+    // interacting — a still-pending query re-rendering mid-click can
+    // detach the very button `userEvent` is about to click. "3 of 7
+    // courses" only ever renders once the join has resolved, unlike an
+    // empty-array resolution (which is indistinguishable from loading).
+    await screen.findAllByText('3 of 7 courses');
     const roleButtons = screen.getAllByRole('button', { name: 'Role' });
     await userEvent.click(roleButtons[0]!);
 
-    const adminOption = screen.getByRole('button', { name: 'ADMIN' });
+    const adminOption = await screen.findByRole('button', { name: 'ADMIN' });
     await userEvent.click(adminOption);
     await userEvent.click(screen.getByRole('button', { name: /^save$/i }));
 
@@ -87,18 +125,77 @@ describe('MembersTab', () => {
     expect(screen.getAllByRole('button', { name: 'Remove' })).toHaveLength(2);
   });
 
+  it('shows Role and Remove on an ordinary member row but not on the OWNER row', () => {
+    setup();
+    // Scoped to the desktop `<tr>` (the first of each duplicated pair) so
+    // this asserts the per-row wiring directly, not just aggregate counts.
+    const ownerRow = screen.getAllByText('Aisha Bello')[0]!.closest('tr')!;
+    const memberRow = screen.getAllByText('Chidi Okonkwo')[0]!.closest('tr')!;
+
+    expect(within(ownerRow).queryByRole('button', { name: 'Role' })).not.toBeInTheDocument();
+    expect(within(ownerRow).queryByRole('button', { name: 'Remove' })).not.toBeInTheDocument();
+    expect(within(memberRow).getByRole('button', { name: 'Role' })).toBeInTheDocument();
+    expect(within(memberRow).getByRole('button', { name: 'Remove' })).toBeInTheDocument();
+  });
+
   it('removing a member calls the API after confirming, naming the person', async () => {
     const onChanged = vi.fn();
     vi.mocked(removeTeamMember).mockResolvedValue({ id: 'mem2' });
     setup(onChanged);
 
+    // See the role-change test above for why this waits on a concrete,
+    // non-empty settle marker rather than just the roster's own name text.
+    await screen.findAllByText('3 of 7 courses');
     const removeButtons = screen.getAllByRole('button', { name: 'Remove' });
     await userEvent.click(removeButtons[0]!);
 
-    expect(screen.getByText(/remove chidi okonkwo from the team/i)).toBeInTheDocument();
+    expect(await screen.findByText(/remove chidi okonkwo from the team/i)).toBeInTheDocument();
     await userEvent.click(screen.getByRole('button', { name: /^delete$/i }));
 
     expect(removeTeamMember).toHaveBeenCalledWith('tm1', 'mem2');
     expect(onChanged).toHaveBeenCalled();
+  });
+
+  describe('roster-progress join (Courses done / Progress)', () => {
+    it('fills Courses done and Progress by joining fetchTeamProgress on userId', async () => {
+      vi.mocked(fetchTeamProgress).mockResolvedValue(progressRows);
+      setup();
+
+      expect((await screen.findAllByText('3 of 7 courses')).length).toBeGreaterThan(0);
+      const memberRow = screen.getAllByText('Chidi Okonkwo')[0]!.closest('tr')!;
+      // "Courses done" (a bare count) and "Progress" ("N of M courses") both
+      // draw from the same joined row.
+      expect(within(memberRow).getByText('3')).toBeInTheDocument();
+      expect(within(memberRow).getByText('3 of 7 courses')).toBeInTheDocument();
+    });
+
+    it('renders an em dash, not 0, for a member with no roster-progress row', async () => {
+      vi.mocked(fetchTeamProgress).mockResolvedValue(progressRows); // no row for u1 (Aisha)
+      setup();
+      await screen.findAllByText('3 of 7 courses'); // wait for the join to settle
+
+      const ownerRow = screen.getAllByText('Aisha Bello')[0]!.closest('tr')!;
+      expect(within(ownerRow).getAllByText('—').length).toBeGreaterThan(0);
+      expect(within(ownerRow).queryByText('0')).not.toBeInTheDocument();
+      expect(within(ownerRow).queryByText(/of 0 courses/)).not.toBeInTheDocument();
+    });
+
+    it('keeps the roster rendered — not blanked — when fetchTeamProgress fails', async () => {
+      vi.mocked(fetchTeamProgress).mockRejectedValue(new Error('boom'));
+      setup();
+
+      // The roster itself comes from the `members` prop, independent of the
+      // progress query, so it must never disappear while that query is
+      // loading or after it has failed.
+      expect(screen.getAllByText('Aisha Bello').length).toBeGreaterThan(0);
+      expect(screen.getAllByText('Chidi Okonkwo').length).toBeGreaterThan(0);
+
+      // Let the rejected query settle, then confirm the roster survived and
+      // the progress columns simply fell back to an em dash.
+      await waitFor(() => expect(fetchTeamProgress).toHaveBeenCalled());
+      expect(screen.getAllByText('Aisha Bello').length).toBeGreaterThan(0);
+      const memberRow = screen.getAllByText('Chidi Okonkwo')[0]!.closest('tr')!;
+      expect(within(memberRow).getAllByText('—').length).toBeGreaterThan(0);
+    });
   });
 });
