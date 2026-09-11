@@ -100,7 +100,13 @@ import {
 import { AssignmentsTab } from '@/components/teams/tabs/AssignmentsTab';
 
 const groups: TeamGroupRow[] = [
-  { id: 'g1', name: 'Platform', memberCount: 6, createdAt: '2026-03-01T00:00:00.000Z' },
+  {
+    id: 'g1',
+    name: 'Platform',
+    memberCount: 6,
+    memberIds: [],
+    createdAt: '2026-03-01T00:00:00.000Z',
+  },
 ];
 
 const members: TeamMemberRow[] = [

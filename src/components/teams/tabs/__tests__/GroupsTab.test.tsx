@@ -20,8 +20,14 @@ import {
 import { GroupsTab } from '@/components/teams/tabs/GroupsTab';
 
 const groups: TeamGroupRow[] = [
-  { id: 'g1', name: 'Platform', memberCount: 6, createdAt: '2026-03-01T00:00:00.000Z' },
-  { id: 'g2', name: 'Data', memberCount: 3, createdAt: '2026-04-05T00:00:00.000Z' },
+  {
+    id: 'g1',
+    name: 'Platform',
+    memberCount: 6,
+    memberIds: ['mem1', 'mem2'],
+    createdAt: '2026-03-01T00:00:00.000Z',
+  },
+  { id: 'g2', name: 'Data', memberCount: 3, memberIds: [], createdAt: '2026-04-05T00:00:00.000Z' },
 ];
 
 const members: TeamMemberRow[] = [
@@ -207,12 +213,92 @@ describe('GroupsTab', () => {
       expect(within(dialog).queryByText('Femi Adigun')).not.toBeInTheDocument();
     });
 
+    it('opens with the checkboxes for actual current members pre-checked (g1 = mem1, mem2)', async () => {
+      setup();
+      await screen.findAllByText('Platform');
+      await userEvent.click(screen.getAllByRole('button', { name: 'Edit' })[0]!);
+
+      const dialog = await screen.findByRole('dialog');
+      expect(within(dialog).getByRole('checkbox', { name: 'Aisha Bello' })).toBeChecked();
+      expect(within(dialog).getByRole('checkbox', { name: 'Chidi Okonkwo' })).toBeChecked();
+    });
+
+    it('opens with nothing checked for a group with no current members (g2)', async () => {
+      setup();
+      await screen.findAllByText('Data');
+      await userEvent.click(screen.getAllByRole('button', { name: 'Edit' })[1]!);
+
+      const dialog = await screen.findByRole('dialog');
+      expect(within(dialog).getByRole('checkbox', { name: 'Aisha Bello' })).not.toBeChecked();
+      expect(within(dialog).getByRole('checkbox', { name: 'Chidi Okonkwo' })).not.toBeChecked();
+    });
+
     it('says plainly that saving replaces the whole membership set', async () => {
       setup();
       await screen.findAllByText('Platform');
       await userEvent.click(screen.getAllByRole('button', { name: 'Edit' })[0]!);
       const dialog = await screen.findByRole('dialog');
       expect(within(dialog).getByText(/replaces/i)).toBeInTheDocument();
+    });
+
+    it('adding a member without removing anyone saves immediately — no confirmation needed', async () => {
+      const onChanged = vi.fn();
+      vi.mocked(setTeamGroupMembers).mockResolvedValue({ id: 'g2', memberCount: 1 });
+      setup(false, onChanged);
+      await screen.findAllByText('Data');
+
+      // g2 starts with no members; checking one is a pure addition.
+      await userEvent.click(screen.getAllByRole('button', { name: 'Edit' })[1]!);
+      const dialog = await screen.findByRole('dialog');
+      await userEvent.click(within(dialog).getByRole('checkbox', { name: 'Aisha Bello' }));
+      await userEvent.click(within(dialog).getByRole('button', { name: /save/i }));
+
+      expect(setTeamGroupMembers).toHaveBeenCalledWith('tm1', 'g2', ['mem1']);
+      expect(onChanged).toHaveBeenCalled();
+      // No extra confirm dialog should have appeared, and the edit dialog itself closes.
+      expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    });
+
+    it('unchecking a current member surfaces the removal count and blocks the save until confirmed', async () => {
+      const onChanged = vi.fn();
+      vi.mocked(setTeamGroupMembers).mockResolvedValue({ id: 'g1', memberCount: 1 });
+      setup(false, onChanged);
+      await screen.findAllByText('Platform');
+
+      await userEvent.click(screen.getAllByRole('button', { name: 'Edit' })[0]!);
+      const dialog = await screen.findByRole('dialog');
+      // g1 has mem1 + mem2 pre-checked; unchecking Chidi removes 1 of 2.
+      await userEvent.click(within(dialog).getByRole('checkbox', { name: 'Chidi Okonkwo' }));
+      await userEvent.click(within(dialog).getByRole('button', { name: /save/i }));
+
+      // The API must not be called yet — a confirm step sits in the way.
+      expect(setTeamGroupMembers).not.toHaveBeenCalled();
+      expect(onChanged).not.toHaveBeenCalled();
+
+      const confirmDialog = await screen.findByRole('dialog', {
+        name: /remove/i,
+      });
+      expect(within(confirmDialog).getByText(/1 of 2/)).toBeInTheDocument();
+
+      await userEvent.click(within(confirmDialog).getByRole('button', { name: /remove/i }));
+
+      expect(setTeamGroupMembers).toHaveBeenCalledWith('tm1', 'g1', ['mem1']);
+      expect(onChanged).toHaveBeenCalled();
+    });
+
+    it('cancelling the removal confirmation does not save anything', async () => {
+      setup();
+      await screen.findAllByText('Platform');
+
+      await userEvent.click(screen.getAllByRole('button', { name: 'Edit' })[0]!);
+      const dialog = await screen.findByRole('dialog');
+      await userEvent.click(within(dialog).getByRole('checkbox', { name: 'Chidi Okonkwo' }));
+      await userEvent.click(within(dialog).getByRole('button', { name: /save/i }));
+
+      const confirmDialog = await screen.findByRole('dialog', { name: /remove/i });
+      await userEvent.click(within(confirmDialog).getByRole('button', { name: /cancel/i }));
+
+      expect(setTeamGroupMembers).not.toHaveBeenCalled();
     });
 
     it('saves the checked members via setTeamGroupMembers(teamId, groupId, teamMemberIds) and refreshes', async () => {
@@ -223,8 +309,14 @@ describe('GroupsTab', () => {
 
       await userEvent.click(screen.getAllByRole('button', { name: 'Edit' })[0]!);
       const dialog = await screen.findByRole('dialog');
-      await userEvent.click(within(dialog).getByRole('checkbox', { name: 'Chidi Okonkwo' }));
+      // Unchecking both current members and re-checking only Chidi is a net
+      // removal (mem1 goes) — confirm the removal, then verify the final
+      // payload sent is exactly the intended set.
+      await userEvent.click(within(dialog).getByRole('checkbox', { name: 'Aisha Bello' }));
       await userEvent.click(within(dialog).getByRole('button', { name: /save/i }));
+
+      const confirmDialog = await screen.findByRole('dialog', { name: /remove/i });
+      await userEvent.click(within(confirmDialog).getByRole('button', { name: /remove/i }));
 
       expect(setTeamGroupMembers).toHaveBeenCalledWith('tm1', 'g1', ['mem2']);
       expect(onChanged).toHaveBeenCalled();

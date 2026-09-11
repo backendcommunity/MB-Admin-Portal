@@ -51,14 +51,13 @@ function extractErrorMessage(err: unknown, fallback: string): string {
  * membership") — edit a team's groups.
  *
  * `setTeamGroupMembers` REPLACES a group's entire membership with exactly
- * the ids submitted. No endpoint anywhere returns which specific members
- * already belong to a group (`listGroups` carries only a bare
- * `memberCount`, and there is no `GET /:id/groups/:groupId` on either the
- * admin or customer routers) — so the Edit dialog cannot pre-check anyone's
- * current membership. Rather than fabricate a pre-checked state this can't
- * actually know, it opens with nothing checked and says plainly, right in
- * the dialog, that saving replaces the whole set — the honest framing for a
- * replace-only primitive with no read side.
+ * the ids submitted. `listGroups` carries each group's real `memberIds`, so
+ * the Edit dialog opens with the checkboxes for actual current members
+ * already checked — no more blank form that silently drops everyone else on
+ * save. The dialog still says plainly that saving replaces the whole set
+ * (true, and still useful), and if the pending selection would remove any
+ * current member, saving requires an explicit confirm naming how many would
+ * go. A save that only adds members needs no confirmation.
  *
  * `listGroups` (`modules/teams/helpers/groups.ts`) carries no assignment
  * count of its own — the "Assignments" column the artifact calls for is
@@ -123,9 +122,12 @@ export function GroupsTab({
   const [membersFor, setMembersFor] = useState<TeamGroupRow | null>(null);
   const [selectedMemberIds, setSelectedMemberIds] = useSeededForm(
     membersFor?.id ?? 'closed',
-    () => [] as string[],
+    () => membersFor?.memberIds ?? [],
   );
   const [savingMembers, setSavingMembers] = useState(false);
+  const [pendingRemoval, setPendingRemoval] = useState<{ removed: number; total: number } | null>(
+    null,
+  );
 
   const toggleMember = (memberId: string) => {
     setSelectedMemberIds((prev) =>
@@ -179,6 +181,7 @@ export function GroupsTab({
       await setTeamGroupMembers(teamId, membersFor.id, selectedMemberIds);
       toast.success(`Updated ${membersFor.name}'s membership.`);
       setMembersFor(null);
+      setPendingRemoval(null);
       await refetch();
       onChanged();
     } catch (error) {
@@ -188,6 +191,24 @@ export function GroupsTab({
     } finally {
       setSavingMembers(false);
     }
+  };
+
+  /**
+   * `setTeamGroupMembers` replaces the whole set, so unchecking anyone who is
+   * currently a member is a real, silent removal. Saving a selection that
+   * drops nobody goes straight through — the common case (creating a group,
+   * adding people) stays a single click. Saving one that drops someone stops
+   * here and shows exactly how many, via `pendingRemoval`.
+   */
+  const requestSaveMembers = () => {
+    if (!membersFor) return;
+    const currentIds = membersFor.memberIds;
+    const removed = currentIds.filter((id) => !selectedMemberIds.includes(id));
+    if (removed.length === 0) {
+      void doSaveMembers();
+      return;
+    }
+    setPendingRemoval({ removed: removed.length, total: currentIds.length });
   };
 
   const doDelete = async () => {
@@ -339,7 +360,15 @@ export function GroupsTab({
         </DialogContent>
       </Dialog>
 
-      <Dialog open={Boolean(membersFor)} onOpenChange={(next) => !next && setMembersFor(null)}>
+      <Dialog
+        open={Boolean(membersFor)}
+        onOpenChange={(next) => {
+          if (!next) {
+            setMembersFor(null);
+            setPendingRemoval(null);
+          }
+        }}
+      >
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle>Edit {membersFor?.name} membership</DialogTitle>
@@ -368,12 +397,25 @@ export function GroupsTab({
             <Button variant="outline" onClick={() => setMembersFor(null)} disabled={savingMembers}>
               Cancel
             </Button>
-            <Button onClick={doSaveMembers} disabled={savingMembers}>
+            <Button onClick={requestSaveMembers} disabled={savingMembers}>
               {savingMembers ? 'Saving…' : 'Save membership'}
             </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <ConfirmDelete
+        open={Boolean(pendingRemoval)}
+        title="Remove members?"
+        description={
+          pendingRemoval
+            ? `This removes ${pendingRemoval.removed} of ${pendingRemoval.total} current members from ${membersFor?.name ?? 'this group'}.`
+            : undefined
+        }
+        confirmLabel="Remove"
+        onCancel={() => setPendingRemoval(null)}
+        onConfirm={doSaveMembers}
+      />
 
       <ConfirmDelete
         open={Boolean(deleteFor)}

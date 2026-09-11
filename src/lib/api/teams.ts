@@ -297,6 +297,10 @@ export type TeamGroupRow = {
   id: string;
   name: string;
   memberCount: number;
+  /** The team-member ids currently in the group. Backs the Edit-membership
+   * dialog's pre-checked state — without it the dialog can't tell who is
+   * actually in the group, and `setTeamGroupMembers` replaces the whole set. */
+  memberIds: string[];
   createdAt: string;
 };
 
