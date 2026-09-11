@@ -23,6 +23,12 @@ import { TagInput } from '@/components/shared/form/TagInput';
 import { LanguageMultiSelect } from '@/components/shared/form/LanguageMultiSelect';
 import { RichTextField } from '@/components/shared/form/RichTextField';
 import { CodeArea } from '@/components/shared/form/CodeArea';
+import {
+  GraderConfigEditor,
+  pruneGraderConfig,
+  type GraderConfig,
+} from '@/components/courses/GraderConfigEditor';
+import { STATIC_LANGUAGES, toDisplayName, toExecutorCode } from '@/lib/courses/exercise-languages';
 import { axiosInstance } from '@/lib/api/axios';
 import {
   addCapstoneMedia,
@@ -66,7 +72,10 @@ export type DrawerTarget =
 
 const CHAPTER_TYPES: ChapterType[] = ['MIXED', 'VIDEO', 'QUIZ', 'PLAYGROUND', 'EXERCISE'];
 const DIFFICULTY = ['Easy', 'Medium', 'Hard'];
-const GRADERS = ['OUTPUT_MATCH', 'FUNCTION_CALL', 'TEST_CASES', 'CUSTOM'];
+// Exported so tests can pin the picker's options without opening the Radix
+// Select popup — doing so hangs jsdom in this repo (no ResizeObserver
+// polyfill; see BlockEditor.test.tsx).
+export const GRADERS = ['OUTPUT_MATCH', 'FUNCTION_CALL', 'TEST_CASES'];
 const ARTICLE_TYPES = ['ARTICLE', 'EXERCISE', 'ACTIVITY', 'PROJECT'];
 
 type State = Record<string, unknown>;
@@ -190,6 +199,7 @@ export default function ItemDrawer({
         hint: '',
         languages: [],
         graderType: 'OUTPUT_MATCH',
+        graderConfig: {},
         testCases: [{ input: '', expectedOutput: '' }],
         points: 10,
         passMark: 60,
@@ -240,8 +250,12 @@ export default function ItemDrawer({
             solution: String(row.solution ?? ''),
             starterCode: String(row.starterCode ?? ''),
             hint: String(row.hint ?? ''),
-            languages: (row.languages as string[]) ?? [],
+            // Stored as executor codes ("java"); the picker and its checkbox
+            // labels are display names ("Java") — mapped back here, the one
+            // place the exercise payload/load path crosses that boundary.
+            languages: ((row.languages as string[]) ?? []).map(toDisplayName),
             graderType: row.graderType ?? 'OUTPUT_MATCH',
+            graderConfig: (row.graderConfig as GraderConfig) ?? {},
             testCases: (row.testCases as never) ?? [{ input: '', expectedOutput: '' }],
             points: Number(row.points ?? 10),
             passMark: Number(row.passMark ?? 60),
@@ -293,14 +307,39 @@ export default function ItemDrawer({
       return gaps;
     }
     if (state.existingId) return [];
-    const cases = (state.testCases as Array<{ expectedOutput: string }>) ?? [];
+    const testCases = (state.testCases as TestCaseDraft[]) ?? [];
     const gaps: string[] = [];
     if (!str('title')) gaps.push('title');
     if (!str('description')) gaps.push('description');
     if (!str('instructions')) gaps.push('instructions');
-    if (!((state.languages as string[]) ?? []).length) gaps.push('a language');
-    if (!cases.some((testCase) => testCase.expectedOutput)) gaps.push('one test case with output');
+    const languages = ((state.languages as string[]) ?? []).map(toExecutorCode);
+    if (!languages.length) gaps.push('a language');
+    if (!testCases.some((testCase) => testCase.expectedOutput)) {
+      gaps.push('one test case with output');
+    }
     if (!str('solution')) gaps.push('reference solution');
+    const graderConfig = (state.graderConfig as GraderConfig) ?? {};
+    if (state.graderType === 'FUNCTION_CALL') {
+      if (!graderConfig.entry) gaps.push('a function name');
+      if (
+        languages.some((language) => STATIC_LANGUAGES.includes(language)) &&
+        !graderConfig.signature
+      ) {
+        gaps.push('a typed signature');
+      }
+      // A case left over from switching grader types without ever
+      // committing an edit would otherwise carry no `args` key at all —
+      // `undefined !== []`, so this is not the same gap as "empty args".
+      if (testCases.some((testCase) => !('args' in testCase) || testCase.args === undefined)) {
+        gaps.push('arguments on every test case');
+      }
+    }
+    if (state.graderType === 'TEST_CASES' && !graderConfig.testFile) gaps.push('a test file');
+    // Set by `CaseEditor`'s `onInvalidChange` while the author has unparseable
+    // JSON typed into an Arguments field — the draft is kept on-screen (and
+    // the prior committed `args` left untouched) rather than silently
+    // replaced, so this is the only way the drawer itself can see it.
+    if (Boolean(state.testCasesInvalid)) gaps.push('valid JSON arguments');
     return gaps;
   };
 
@@ -448,8 +487,11 @@ export default function ItemDrawer({
             solution: str('solution'),
             starterCode: str('starterCode'),
             hint: str('hint') || 'No hint provided.',
-            languages: state.languages,
+            // The API stores/grades against executor codes ("java"), not the
+            // picker's display names ("Java").
+            languages: ((state.languages as string[]) ?? []).map(toExecutorCode),
             graderType: state.graderType,
+            graderConfig: state.graderConfig,
             testCases: state.testCases,
             points: num('points'),
             passMark: num('passMark'),
@@ -465,8 +507,9 @@ export default function ItemDrawer({
               solution: str('solution'),
               starterCode: str('starterCode'),
               hint: str('hint') || 'No hint provided.',
-              languages: state.languages,
+              languages: ((state.languages as string[]) ?? []).map(toExecutorCode),
               graderType: state.graderType,
+              graderConfig: state.graderConfig,
               testCases: state.testCases,
               points: num('points'),
               passMark: num('passMark'),
@@ -763,7 +806,27 @@ export default function ItemDrawer({
                     <Field label="Grader">
                       <Select
                         value={str('graderType')}
-                        onValueChange={(value) => patch({ graderType: value })}
+                        onValueChange={(graderType) =>
+                          // A grader switch changes what shape a test case
+                          // needs (FUNCTION_CALL grades args/expectedOutput,
+                          // everything else grades input/expectedOutput) and
+                          // what graderConfig keys are even valid — migrate
+                          // both in the same patch so the drawer is never
+                          // showing a config for one grader while state holds
+                          // fields for another.
+                          patch({
+                            graderType,
+                            testCases: migrateTestCases(
+                              (state.testCases as TestCaseDraft[]) ?? [],
+                              graderType,
+                            ),
+                            graderConfig: pruneGraderConfig(
+                              (state.graderConfig as GraderConfig) ?? {},
+                              graderType,
+                            ),
+                            testCasesInvalid: false,
+                          })
+                        }
                       >
                         <SelectTrigger>
                           <SelectValue />
@@ -778,11 +841,17 @@ export default function ItemDrawer({
                       </Select>
                     </Field>
                   </div>
+                  <GraderConfigEditor
+                    graderType={str('graderType')}
+                    languages={((state.languages as string[]) ?? []).map(toExecutorCode)}
+                    value={(state.graderConfig as GraderConfig) ?? {}}
+                    onChange={(graderConfig) => patch({ graderConfig })}
+                  />
                   <CaseEditor
-                    cases={
-                      (state.testCases as Array<{ input: string; expectedOutput: string }>) ?? []
-                    }
+                    mode={str('graderType') === 'FUNCTION_CALL' ? 'args' : 'stdin'}
+                    cases={(state.testCases as TestCaseDraft[]) ?? []}
                     onChange={(testCases) => patch({ testCases })}
+                    onInvalidChange={(testCasesInvalid) => patch({ testCasesInvalid })}
                   />
                   <Field label="Reference solution" required>
                     <CodeArea
@@ -1133,62 +1202,225 @@ function QuestionBuilder({
   );
 }
 
+export type TestCaseDraft = {
+  input?: string;
+  args?: unknown[];
+  expectedOutput?: unknown;
+  description?: string;
+  hidden?: boolean;
+  weight?: number;
+};
+
+/**
+ * Switching grader type mid-edit must carry every test case along to the
+ * shape the new grader needs: FUNCTION_CALL grades `args`/`expectedOutput`,
+ * every other grader grades `input`/`expectedOutput`. Without this, a stdin
+ * case switched to FUNCTION_CALL still renders "[]" for Arguments (nothing
+ * looks wrong) while state holds no `args` key at all — the gap check would
+ * miss it and the API would reject the save.
+ */
+export function migrateTestCases(cases: TestCaseDraft[], nextGraderType: string): TestCaseDraft[] {
+  const toFunctionCall = nextGraderType === 'FUNCTION_CALL';
+  return cases.map((testCase) => {
+    const shared: Pick<TestCaseDraft, 'description' | 'hidden' | 'weight'> = {};
+    if (testCase.description !== undefined) shared.description = testCase.description;
+    if (testCase.hidden !== undefined) shared.hidden = testCase.hidden;
+    if (testCase.weight !== undefined) shared.weight = testCase.weight;
+
+    if (toFunctionCall) {
+      return {
+        ...shared,
+        args: Array.isArray(testCase.args) ? testCase.args : [],
+        expectedOutput: testCase.expectedOutput ?? '',
+      };
+    }
+    return {
+      ...shared,
+      input: typeof testCase.input === 'string' ? testCase.input : '',
+      expectedOutput: testCase.expectedOutput ?? '',
+    };
+  });
+}
+
+/** Parses JSON for the "Arguments (JSON array)" field — must be an array specifically. */
+function parseJsonArray(text: string): unknown[] | undefined {
+  try {
+    const value = JSON.parse(text);
+    return Array.isArray(value) ? value : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+/** Parses JSON for "Expected (JSON)" — any JSON value, or the raw text if it isn't valid JSON. */
+function parseJsonOrRaw(text: string): unknown {
+  try {
+    return JSON.parse(text);
+  } catch {
+    return text;
+  }
+}
+
 function CaseEditor({
   cases,
   onChange,
+  mode = 'stdin',
+  onInvalidChange,
 }: {
-  cases: Array<{ input: string; expectedOutput: string }>;
-  onChange: (next: Array<{ input: string; expectedOutput: string }>) => void;
+  cases: TestCaseDraft[];
+  onChange: (next: TestCaseDraft[]) => void;
+  mode?: 'stdin' | 'args';
+  /** Fires whenever any row's Arguments field currently holds unparseable JSON. */
+  onInvalidChange?: (invalid: boolean) => void;
 }) {
+  // Holds what the author is currently typing into the args/expected fields,
+  // keyed by row, field AND mode, so an in-progress (possibly invalid) JSON
+  // edit isn't clobbered by the committed value re-rendering underneath it.
+  // Cleared once a field's text parses and is committed via onChange. Keying
+  // by mode too means a round trip through another grader type (this
+  // component instance stays mounted across the switch) never resurfaces a
+  // stale draft — the freshly migrated `cases` render clean the moment
+  // `mode` flips back, because that mode's key never had a draft yet.
+  const [drafts, setDrafts] = useState<Record<string, string>>({});
+  const argsKey = (index: number) => `${mode}-args-${index}`;
+  const expectedKey = (index: number) => `${mode}-expected-${index}`;
+  const setDraft = (key: string, value: string) =>
+    setDrafts((current) => ({ ...current, [key]: value }));
+  const clearDraft = (key: string) =>
+    setDrafts((current) => {
+      if (!(key in current)) return current;
+      const next = { ...current };
+      delete next[key];
+      return next;
+    });
+
+  const hasInvalidArgs =
+    mode === 'args' &&
+    cases.some((testCase, index) => {
+      const argsText = drafts[argsKey(index)] ?? JSON.stringify(testCase.args ?? []);
+      return parseJsonArray(argsText) === undefined;
+    });
+
+  useEffect(() => {
+    onInvalidChange?.(hasInvalidArgs);
+    // Only `hasInvalidArgs` in the deps — `onInvalidChange` is a fresh
+    // closure every render (it patches parent state), so depending on it
+    // too would refire this on every render the parent re-renders for, not
+    // just when the invalid set actually changes.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [hasInvalidArgs]);
+
   return (
     <div className="space-y-2">
       <Label>
         Test cases <span className="text-destructive">*</span>
       </Label>
       <p className="text-xs text-muted-foreground">
-        stdin is fed to the entrypoint; stdout is compared to the expected output.
+        {mode === 'args'
+          ? 'Arguments are passed to the function; its return value is compared to Expected.'
+          : 'stdin is fed to the entrypoint; stdout is compared to the expected output.'}
       </p>
-      {cases.map((testCase, index) => (
-        <div key={index} className="space-y-2 rounded-md border border-border bg-muted/40 p-3">
-          <div className="flex items-center justify-between text-xs text-muted-foreground">
-            <strong>Case {index + 1}</strong>
-            <button
-              type="button"
-              className="hover:text-destructive"
-              onClick={() => onChange(cases.filter((_, i) => i !== index))}
-            >
-              Remove
-            </button>
+      {cases.map((testCase, index) => {
+        const argsText = drafts[argsKey(index)] ?? JSON.stringify(testCase.args ?? []);
+        const expectedText =
+          drafts[expectedKey(index)] ??
+          (typeof testCase.expectedOutput === 'string'
+            ? testCase.expectedOutput
+            : JSON.stringify(testCase.expectedOutput ?? ''));
+        const argsInvalid = mode === 'args' && parseJsonArray(argsText) === undefined;
+
+        return (
+          <div key={index} className="space-y-2 rounded-md border border-border bg-muted/40 p-3">
+            <div className="flex items-center justify-between text-xs text-muted-foreground">
+              <strong>Case {index + 1}</strong>
+              <button
+                type="button"
+                className="hover:text-destructive"
+                onClick={() => onChange(cases.filter((_, i) => i !== index))}
+              >
+                Remove
+              </button>
+            </div>
+            {mode === 'args' ? (
+              <>
+                <Input
+                  value={argsText}
+                  placeholder="Arguments (JSON array)"
+                  aria-label="Arguments (JSON array)"
+                  onChange={(event) => setDraft(argsKey(index), event.target.value)}
+                  onBlur={(event) => {
+                    const parsed = parseJsonArray(event.target.value);
+                    // Invalid JSON commits nothing — the draft (and its red
+                    // note) stays on screen, and whatever `args` was
+                    // previously committed is left exactly as it was, rather
+                    // than being silently overwritten with `[]`.
+                    if (parsed === undefined) return;
+                    onChange(
+                      cases.map((existing, i) =>
+                        i === index ? { ...existing, args: parsed } : existing,
+                      ),
+                    );
+                    clearDraft(argsKey(index));
+                  }}
+                />
+                {argsInvalid ? <p className="text-xs text-destructive">Invalid JSON</p> : null}
+                <Input
+                  value={expectedText}
+                  placeholder="Expected (JSON)"
+                  aria-label="Expected (JSON)"
+                  onChange={(event) => setDraft(expectedKey(index), event.target.value)}
+                  onBlur={(event) => {
+                    const parsed = parseJsonOrRaw(event.target.value);
+                    onChange(
+                      cases.map((existing, i) =>
+                        i === index ? { ...existing, expectedOutput: parsed } : existing,
+                      ),
+                    );
+                    clearDraft(expectedKey(index));
+                  }}
+                />
+              </>
+            ) : (
+              <>
+                <Input
+                  value={testCase.input ?? ''}
+                  placeholder="Input (stdin)"
+                  onChange={(event) =>
+                    onChange(
+                      cases.map((existing, i) =>
+                        i === index ? { ...existing, input: event.target.value } : existing,
+                      ),
+                    )
+                  }
+                />
+                <Input
+                  value={typeof testCase.expectedOutput === 'string' ? testCase.expectedOutput : ''}
+                  placeholder="Expected output"
+                  onChange={(event) =>
+                    onChange(
+                      cases.map((existing, i) =>
+                        i === index
+                          ? { ...existing, expectedOutput: event.target.value }
+                          : existing,
+                      ),
+                    )
+                  }
+                />
+              </>
+            )}
           </div>
-          <Input
-            value={testCase.input}
-            placeholder="Input (stdin)"
-            onChange={(event) =>
-              onChange(
-                cases.map((existing, i) =>
-                  i === index ? { ...existing, input: event.target.value } : existing,
-                ),
-              )
-            }
-          />
-          <Input
-            value={testCase.expectedOutput}
-            placeholder="Expected output"
-            onChange={(event) =>
-              onChange(
-                cases.map((existing, i) =>
-                  i === index ? { ...existing, expectedOutput: event.target.value } : existing,
-                ),
-              )
-            }
-          />
-        </div>
-      ))}
+        );
+      })}
       <Button
         type="button"
         size="sm"
         variant="outline"
-        onClick={() => onChange([...cases, { input: '', expectedOutput: '' }])}
+        onClick={() =>
+          onChange([
+            ...cases,
+            mode === 'args' ? { args: [], expectedOutput: '' } : { input: '', expectedOutput: '' },
+          ])
+        }
       >
         + Add test case
       </Button>
