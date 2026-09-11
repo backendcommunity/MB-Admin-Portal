@@ -37,6 +37,15 @@ export type TeamInviteRow = {
   invitedByUserId: string;
   expiresAt: string;
   createdAt: string;
+  /**
+   * `PENDING | ACCEPTED | REVOKED | EXPIRED` — a real column on the raw
+   * `TeamInvite` row. `GET /:id/invites` (academy `admin/teams.ts`) returns
+   * `prisma.teamInvite.findMany()` output directly, not through
+   * `teamDetailRow`'s mapper, so this field is present on the wire. Missing
+   * from this type as shipped in Task 8 — the Invites tab's "Outcome" column
+   * needs it to tell an accepted invite from a revoked or expired one.
+   */
+  status: string;
 };
 
 export type TeamSummary = {

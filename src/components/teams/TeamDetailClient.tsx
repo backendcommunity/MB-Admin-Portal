@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { type ReactNode, useState } from 'react';
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
@@ -10,23 +10,42 @@ import { PageHeader } from '@/components/shared/PageHeader';
 import { Stat, StatRow } from '@/components/shared/Stat';
 import { TabBar } from '@/components/shared/TabBar';
 import { LoadingState, ErrorState } from '@/components/shared/LoadingState';
+import { EmptyState } from '@/components/shared/EmptyState';
 import { Field, Section } from '@/components/shared/form/Section';
 import { StatusBadge } from '@/components/shared/StatusBadge';
 import { SuperAdminOnly } from '@/components/shared/SuperAdminOnly';
-import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import ArchiveTeamDialog from '@/components/teams/ArchiveTeamDialog';
+import { MembersTab } from '@/components/teams/tabs/MembersTab';
+import { InvitesTab } from '@/components/teams/tabs/InvitesTab';
 import { useSeededForm } from '@/lib/forms/useSeededForm';
 import { archiveTeam, fetchTeam, formatCurrency, renameTeam, restoreTeam } from '@/lib/api/teams';
 
 const TABS = [
   ['overview', 'Overview'],
   ['members', 'Members'],
+  ['invites', 'Invites'],
+  ['groups', 'Groups'],
+  ['assignments', 'Assignments'],
+  ['paths', 'Paths'],
+  ['billing', 'Billing'],
+  ['reports', 'Reports'],
 ] as const;
 
 type TabId = (typeof TABS)[number][0];
+
+// Tasks 10 and 11 replace these with real tab components — every tab is
+// clickable and renders something today, none disabled, so a placeholder
+// beats a dead button.
+const COMING_SOON_LABEL: Record<Exclude<TabId, 'overview' | 'members' | 'invites'>, string> = {
+  groups: 'Groups',
+  assignments: 'Assignments',
+  paths: 'Paths',
+  billing: 'Billing',
+  reports: 'Reports',
+};
 
 type Tone = 'neutral' | 'info' | 'success' | 'danger' | 'warning';
 
@@ -36,12 +55,6 @@ function subscriptionTone(status: string | null): Tone {
   if (s === 'canceled' || s === 'past_due') return 'danger';
   if (s === 'paused') return 'warning';
   return 'neutral';
-}
-
-function memberStatusTone(status: string): Tone {
-  if (status === 'ACTIVE') return 'success';
-  if (status === 'REMOVED') return 'neutral';
-  return 'info';
 }
 
 function fmt(iso: string | null) {
@@ -59,10 +72,13 @@ function extractErrorMessage(err: unknown, fallback: string): string {
 }
 
 /**
- * Follows `ProjectDetailClient`: breadcrumb, `PageHeader` with a badge,
- * a `StatRow`, a `TabBar`. Only Overview and Members ship in this slice —
- * Invites, Groups, Assignments, Paths, Billing and Reports arrive in later
- * slices and are deliberately not rendered here, even disabled.
+ * A SHELL: header, `StatRow`, `TabBar`, and a switch that renders one tab
+ * component. Follows `ProjectDetailClient`'s pattern.
+ *
+ * Every tab a team can have ships in `TABS` now — Members and Invites are
+ * real, Groups/Assignments/Paths/Billing/Reports render a placeholder that
+ * Tasks 10-11 replace. None are disabled: a control a staff member cannot
+ * click for no visible reason reads as broken.
  */
 function TeamDetailClient() {
   const params = useParams<{ id: string }>();
@@ -76,7 +92,6 @@ function TeamDetailClient() {
   });
 
   const [tab, setTab] = useState<TabId>('overview');
-  const [showRemoved, setShowRemoved] = useState(false);
   const [archiveOpen, setArchiveOpen] = useState(false);
   const [saving, setSaving] = useState(false);
   const [restoring, setRestoring] = useState(false);
@@ -102,7 +117,9 @@ function TeamDetailClient() {
 
   // Every write here touches a row the teams list also renders (name,
   // archived state, seats), and that list's query has its own staleTime —
-  // without this it would keep serving a stale row until it expires.
+  // without this it would keep serving a stale row until it expires. Every
+  // tab's own writes reuse this exact function as their `onChanged`, so a
+  // role change or a revoked invite refreshes both places too.
   const invalidate = () => {
     queryClient.invalidateQueries({ queryKey: ['admin-teams'] });
     refetch();
@@ -149,8 +166,74 @@ function TeamDetailClient() {
   };
 
   const activeMembers = data.members.filter((m) => m.status !== 'REMOVED');
-  const visibleMembers = showRemoved ? data.members : activeMembers;
   const isArchived = Boolean(data.archivedAt);
+  // A plain function declaration doesn't inherit the `data`-is-defined
+  // narrowing from the guards above (TypeScript doesn't carry control-flow
+  // narrowing across a nested function boundary) — `team`'s own declared
+  // type is `TeamDetail`, non-optional, regardless.
+  const team = data;
+
+  function renderTab(): ReactNode {
+    switch (tab) {
+      case 'overview':
+        return (
+          <div className="grid gap-4 lg:grid-cols-[1fr_280px]">
+            <Section title="Identity" id="section-identity">
+              <Field label="Team name" htmlFor="team-name" required>
+                <Input
+                  id="team-name"
+                  value={draft.name}
+                  onChange={(event) => setDraft((d) => ({ ...d, name: event.target.value }))}
+                  disabled={isArchived}
+                />
+              </Field>
+            </Section>
+
+            <Section title="Subscription" id="section-subscription">
+              <dl className="space-y-2 text-sm">
+                <div className="flex justify-between gap-3">
+                  <dt className="text-muted-foreground">Status</dt>
+                  <dd>{team.subscription?.status ?? '—'}</dd>
+                </div>
+                <div className="flex justify-between gap-3">
+                  <dt className="text-muted-foreground">Paid seats</dt>
+                  <dd>{team.subscription ? team.subscription.paidSeats : '—'}</dd>
+                </div>
+                <div className="flex justify-between gap-3">
+                  <dt className="text-muted-foreground">Per-seat price</dt>
+                  <dd>
+                    {formatCurrency(
+                      team.subscription?.amount ?? null,
+                      team.subscription?.currency ?? null,
+                    )}
+                  </dd>
+                </div>
+              </dl>
+            </Section>
+          </div>
+        );
+      case 'members':
+        return (
+          <MembersTab
+            teamId={id}
+            members={team.members}
+            isArchived={isArchived}
+            onChanged={invalidate}
+          />
+        );
+      case 'invites':
+        return (
+          <InvitesTab
+            teamId={id}
+            seats={team.seats}
+            isArchived={isArchived}
+            onChanged={invalidate}
+          />
+        );
+      default:
+        return <EmptyState title={COMING_SOON_LABEL[tab]} description="Coming in this slice." />;
+    }
+  }
 
   return (
     <div>
@@ -218,87 +301,7 @@ function TeamDetailClient() {
 
       <TabBar tabs={TABS} value={tab} onChange={setTab} />
 
-      {tab === 'overview' ? (
-        <div className="grid gap-4 lg:grid-cols-[1fr_280px]">
-          <Section title="Identity" id="section-identity">
-            <Field label="Team name" htmlFor="team-name" required>
-              <Input
-                id="team-name"
-                value={draft.name}
-                onChange={(event) => setDraft((d) => ({ ...d, name: event.target.value }))}
-                disabled={isArchived}
-              />
-            </Field>
-          </Section>
-
-          <Section title="Subscription" id="section-subscription">
-            <dl className="space-y-2 text-sm">
-              <div className="flex justify-between gap-3">
-                <dt className="text-muted-foreground">Status</dt>
-                <dd>{data.subscription?.status ?? '—'}</dd>
-              </div>
-              <div className="flex justify-between gap-3">
-                <dt className="text-muted-foreground">Paid seats</dt>
-                <dd>{data.subscription ? data.subscription.paidSeats : '—'}</dd>
-              </div>
-              <div className="flex justify-between gap-3">
-                <dt className="text-muted-foreground">Per-seat price</dt>
-                <dd>
-                  {formatCurrency(
-                    data.subscription?.amount ?? null,
-                    data.subscription?.currency ?? null,
-                  )}
-                </dd>
-              </div>
-            </dl>
-          </Section>
-        </div>
-      ) : (
-        <Card className="overflow-x-auto p-0">
-          <div className="flex items-center justify-between border-b px-4 py-3">
-            <span className="text-sm font-semibold text-foreground">Members</span>
-            <label
-              htmlFor="show-removed"
-              className="flex items-center gap-2 text-xs text-muted-foreground"
-            >
-              <input
-                id="show-removed"
-                type="checkbox"
-                checked={showRemoved}
-                onChange={(event) => setShowRemoved(event.target.checked)}
-              />
-              Show removed
-            </label>
-          </div>
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b bg-muted/50 text-left text-xs font-medium text-muted-foreground">
-                <th className="px-4 py-3">Name</th>
-                <th className="px-4 py-3">Email</th>
-                <th className="px-4 py-3">Role</th>
-                <th className="px-4 py-3">Status</th>
-                <th className="px-4 py-3">Joined</th>
-              </tr>
-            </thead>
-            <tbody>
-              {visibleMembers.map((m) => (
-                <tr key={m.id} className="border-t hover:bg-muted/30">
-                  <td className="px-4 py-3">{m.user?.name ?? '—'}</td>
-                  <td className="px-4 py-3 text-muted-foreground">{m.user?.email ?? '—'}</td>
-                  <td className="px-4 py-3">{m.role}</td>
-                  <td className="px-4 py-3">
-                    <StatusBadge label={m.status} tone={memberStatusTone(m.status)} />
-                  </td>
-                  <td className="px-4 py-3 text-muted-foreground">{fmt(m.joinedAt)}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-          {visibleMembers.length === 0 ? (
-            <div className="py-12 text-center text-sm text-muted-foreground">No members found.</div>
-          ) : null}
-        </Card>
-      )}
+      {renderTab()}
 
       <ArchiveTeamDialog
         open={archiveOpen}
