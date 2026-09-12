@@ -3,7 +3,22 @@ import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
-vi.mock('@/lib/api/teams');
+// Partial mock: every write/fetch is a mock fn, but `formatCurrency` — a
+// pure formatter the charging confirmation calls directly for the per-seat
+// price, and whose non-USD behaviour this file specifically tests — keeps
+// its real implementation. A blanket automock would turn it into a
+// `vi.fn()` returning `undefined`, silently hiding the price from every
+// assertion below without failing loudly.
+vi.mock('@/lib/api/teams', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/lib/api/teams')>();
+  return {
+    ...actual,
+    fetchTeamInvites: vi.fn(),
+    inviteTeamMember: vi.fn(),
+    resendTeamInvite: vi.fn(),
+    revokeTeamInvite: vi.fn(),
+  };
+});
 vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
 
 import {
@@ -59,9 +74,21 @@ function wrap(ui: React.ReactNode) {
   return render(<QueryClientProvider client={qc}>{ui}</QueryClientProvider>);
 }
 
-function setup(seatUsage: TeamSeatUsage, onChanged = vi.fn()) {
+const defaultSeatPrice = { amount: 12, currency: 'USD' };
+
+function setup(
+  seatUsage: TeamSeatUsage,
+  onChanged = vi.fn(),
+  seatPrice: { amount: number | null; currency: string | null } = defaultSeatPrice,
+) {
   return wrap(
-    <InvitesTab teamId="tm1" seats={seatUsage} isArchived={false} onChanged={onChanged} />,
+    <InvitesTab
+      teamId="tm1"
+      seats={seatUsage}
+      seatPrice={seatPrice}
+      isArchived={false}
+      onChanged={onChanged}
+    />,
   );
 }
 
@@ -225,6 +252,51 @@ describe('InvitesTab', () => {
 
       await userEvent.click(screen.getByRole('button', { name: /charge.*send/i }));
       expect(inviteTeamMember).toHaveBeenCalledTimes(1);
+      expect(onChanged).toHaveBeenCalled();
+    });
+  });
+
+  describe('charging confirmation — the per-seat price', () => {
+    it('shows the formatted per-seat price when confirming a charging invite', async () => {
+      setup(seats({ available: 0 }), vi.fn(), { amount: 12, currency: 'USD' });
+      await screen.findAllByText('tunde@kuda.com');
+      await userEvent.click(screen.getByRole('button', { name: /invite member/i }));
+      await userEvent.type(screen.getByLabelText(/email/i), 'new@kuda.com');
+      await userEvent.click(screen.getByRole('button', { name: /send invite/i }));
+
+      expect(screen.getByText(/\$12\.00/)).toBeInTheDocument();
+      // Per-seat list price, not an exact total — proration is not asserted.
+      expect(screen.getByText(/per-seat/i)).toBeInTheDocument();
+      expect(screen.getByText(/prorat/i)).toBeInTheDocument();
+    });
+
+    it('renders a non-USD currency correctly and never labels it USD', async () => {
+      setup(seats({ available: 0 }), vi.fn(), { amount: 9.99, currency: 'EUR' });
+      await screen.findAllByText('tunde@kuda.com');
+      await userEvent.click(screen.getByRole('button', { name: /invite member/i }));
+      await userEvent.type(screen.getByLabelText(/email/i), 'new@kuda.com');
+      await userEvent.click(screen.getByRole('button', { name: /send invite/i }));
+
+      expect(screen.getByText(/€9\.99/)).toBeInTheDocument();
+      expect(screen.queryByText(/USD/)).not.toBeInTheDocument();
+    });
+
+    it('falls back to wording without a figure when amount is null, and still allows the invite after confirming', async () => {
+      const onChanged = vi.fn();
+      vi.mocked(inviteTeamMember).mockResolvedValue({ id: 'inv3' } as never);
+      setup(seats({ available: 0 }), onChanged, { amount: null, currency: null });
+      await screen.findAllByText('tunde@kuda.com');
+      await userEvent.click(screen.getByRole('button', { name: /invite member/i }));
+      await userEvent.type(screen.getByLabelText(/email/i), 'new@kuda.com');
+      await userEvent.click(screen.getByRole('button', { name: /send invite/i }));
+
+      // Warning still appears, just without a figure.
+      expect(screen.getByText(/^Confirm:/i)).toBeInTheDocument();
+      expect(screen.getByText(/immediately charge the team owner.s card/i)).toBeInTheDocument();
+
+      const confirmButton = screen.getByRole('button', { name: /charge.*send/i });
+      await userEvent.click(confirmButton);
+      expect(inviteTeamMember).toHaveBeenCalledWith('tm1', 'new@kuda.com');
       expect(onChanged).toHaveBeenCalled();
     });
   });

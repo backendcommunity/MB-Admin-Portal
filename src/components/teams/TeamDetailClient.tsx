@@ -291,6 +291,10 @@ function TeamDetailClient() {
           <InvitesTab
             teamId={id}
             seats={team.seats}
+            seatPrice={{
+              amount: team.subscription?.amount ?? null,
+              currency: team.subscription?.currency ?? null,
+            }}
             isArchived={isArchived}
             onChanged={invalidate}
           />

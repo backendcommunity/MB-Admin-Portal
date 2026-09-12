@@ -23,12 +23,16 @@ import { LoadingState, ErrorState } from '@/components/shared/LoadingState';
 import { useSeededForm } from '@/lib/forms/useSeededForm';
 import {
   fetchTeamInvites,
+  formatCurrency,
   inviteTeamMember,
   resendTeamInvite,
   revokeTeamInvite,
   type TeamInviteRow,
   type TeamSeatUsage,
 } from '@/lib/api/teams';
+
+/** The subscription's per-seat list price — `TeamDetail.subscription.{amount,currency}`. */
+type SeatPrice = { amount: number | null; currency: string | null };
 
 function fmt(iso: string | null) {
   if (!iso) return '—';
@@ -66,11 +70,13 @@ function outcomeTone(status: string): 'success' | 'neutral' | 'danger' {
 export function InvitesTab({
   teamId,
   seats,
+  seatPrice,
   isArchived,
   onChanged,
 }: {
   teamId: string;
   seats: TeamSeatUsage;
+  seatPrice: SeatPrice;
   isArchived: boolean;
   onChanged: () => void;
 }) {
@@ -257,6 +263,7 @@ export function InvitesTab({
         onOpenChange={setInviting}
         teamId={teamId}
         seats={seats}
+        seatPrice={seatPrice}
         onInvited={async () => {
           await refetch();
           onChanged();
@@ -286,18 +293,31 @@ export function InvitesTab({
  *   still real, so a plain click-and-send is not: the first click on "Send
  *   invite" only reveals an explicit confirmation naming the charge, and
  *   `inviteTeamMember` is called only from the second, confirming click.
+ *
+ *   That confirmation names `seatPrice` — the subscription's per-seat LIST
+ *   price, formatted with `formatCurrency` (never assume USD; Paddle
+ *   localization means the same plan can settle in another currency). It is
+ *   deliberately worded as the per-seat price, not "this will cost X": the
+ *   real prorated charge is only known from a Paddle preview the admin
+ *   portal has no route to call, so asserting an exact total here would be
+ *   a precision this UI does not have. When `seatPrice.amount` is null
+ *   (detail payload without a resolvable price), the warning still renders
+ *   and still gates the send — a missing figure must never look like a
+ *   weaker safeguard, only a plainer one.
  */
 function InviteMemberDialog({
   open,
   onOpenChange,
   teamId,
   seats,
+  seatPrice,
   onInvited,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   teamId: string;
   seats: TeamSeatUsage;
+  seatPrice: SeatPrice;
   onInvited: () => void | Promise<void>;
 }) {
   const [email, setEmail] = useSeededForm(open ? 'open' : 'closed', () => '');
@@ -307,6 +327,8 @@ function InviteMemberDialog({
   const valid = EMAIL_SHAPE.test(trimmed);
   const unsubscribed = !seats.subscribed;
   const chargesCard = seats.subscribed && seats.available < 1;
+  const formattedSeatPrice =
+    seatPrice.amount != null ? formatCurrency(seatPrice.amount, seatPrice.currency) : null;
 
   // Reopening the dialog must not carry a stale confirmation forward — the
   // same reset `useSeededForm` gives `email` on open/close.
@@ -392,7 +414,15 @@ function InviteMemberDialog({
         {chargesCard && confirming ? (
           <div className="rounded-lg border border-destructive/40 bg-destructive/10 p-3 text-xs text-destructive">
             Confirm: sending this invite will immediately charge the team owner&apos;s card for one
-            additional seat. This cannot be undone from here.
+            additional seat
+            {formattedSeatPrice ? (
+              <>
+                {' '}
+                at the per-seat list price of <b>{formattedSeatPrice}</b> (the exact prorated amount
+                is calculated by the payment provider when the invite is sent)
+              </>
+            ) : null}
+            . This cannot be undone from here.
           </div>
         ) : null}
 
