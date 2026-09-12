@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { getCoreRowModel, useReactTable, type ColumnDef } from '@tanstack/react-table';
 import { toast } from 'sonner';
@@ -20,7 +20,6 @@ import { Field } from '@/components/shared/form/Section';
 import { DataTable } from '@/components/shared/DataTable';
 import { StatusBadge } from '@/components/shared/StatusBadge';
 import { LoadingState, ErrorState } from '@/components/shared/LoadingState';
-import { SuperAdminOnly } from '@/components/shared/SuperAdminOnly';
 import { useSeededForm } from '@/lib/forms/useSeededForm';
 import {
   fetchTeamInvites,
@@ -225,11 +224,13 @@ export function InvitesTab({
           </Button>
         </div>
 
-        <div className="mb-3 rounded-lg border border-info/40 bg-info-wash p-3 text-xs text-info">
-          A pending invite <b>holds a seat</b>. Revoking releases the seat for reuse but never
-          lowers <span className="font-mono">paidSeats</span> — the period is already funded, which
-          is what makes a replacement free until renewal.
-        </div>
+        {seats.subscribed ? (
+          <div className="mb-3 rounded-lg border border-info/40 bg-info-wash p-3 text-xs text-info">
+            A pending invite <b>holds a seat</b>. Revoking releases the seat for reuse but never
+            lowers <span className="font-mono">paidSeats</span> — the period is already funded,
+            which is what makes a replacement free until renewal.
+          </div>
+        ) : null}
 
         <Card className="overflow-hidden p-0">
           <DataTable table={pendingTable} mobileTitle={(row) => row.original.email} />
@@ -266,16 +267,25 @@ export function InvitesTab({
 }
 
 /**
- * THE money-honest dialog. `seats.available` decides which of two mutually
- * exclusive states renders — never both, never neither:
+ * THE money-honest dialog. `seats` decides which of THREE mutually exclusive
+ * states renders — never more than one, never none:
  *
- * - `available > 0`: this invite spends a seat already paid for. Free,
- *   plainly stated, no gating.
- * - `available === 0`: sending it makes the API add a seat and charge the
- *   customer's card. Stated plainly, and the submit control is wrapped in
- *   `SuperAdminOnly` — the API itself 403s a non-super-admin here, so an
- *   ADMIN must never see an enabled button that only ends in that 403 after
- *   they've typed an email and clicked send.
+ * - `!subscribed`: the team has no subscription at all. There is no seat
+ *   gate and nothing to charge — `POST /:id/invites` sends this invite for
+ *   free. Stated plainly, with no seat/cost language: a number like
+ *   "N spare seats" would assert a denominator this team doesn't have.
+ *   Members here hold no paid access until a subscription is attached
+ *   (`recomputeEntitlement` only ever grants premium off an *entitling*
+ *   subscription) — said explicitly so nobody reads "free" as "paid".
+ * - `subscribed && available > 0`: this invite spends a seat already paid
+ *   for. Free, plainly stated, no gating.
+ * - `subscribed && available === 0`: sending it makes the API add a seat
+ *   and charge the team owner's card. There is no SUPER_ADMIN escalation on
+ *   this path any more — any admin `requireStrictAdmin` admits may trigger
+ *   the charge — so the control itself is never role-gated. The money is
+ *   still real, so a plain click-and-send is not: the first click on "Send
+ *   invite" only reveals an explicit confirmation naming the charge, and
+ *   `inviteTeamMember` is called only from the second, confirming click.
  */
 function InviteMemberDialog({
   open,
@@ -292,9 +302,17 @@ function InviteMemberDialog({
 }) {
   const [email, setEmail] = useSeededForm(open ? 'open' : 'closed', () => '');
   const [sending, setSending] = useState(false);
+  const [confirming, setConfirming] = useState(false);
   const trimmed = email.trim();
   const valid = EMAIL_SHAPE.test(trimmed);
-  const chargesCard = seats.available < 1;
+  const unsubscribed = !seats.subscribed;
+  const chargesCard = seats.subscribed && seats.available < 1;
+
+  // Reopening the dialog must not carry a stale confirmation forward — the
+  // same reset `useSeededForm` gives `email` on open/close.
+  useEffect(() => {
+    if (open) setConfirming(false);
+  }, [open]);
 
   const submit = async () => {
     if (!valid) return;
@@ -313,9 +331,26 @@ function InviteMemberDialog({
     }
   };
 
+  const handleSendClick = () => {
+    if (!valid) return;
+    // Charging and not yet confirmed: reveal the confirmation instead of
+    // sending. Every other case (free states, or already confirmed) sends.
+    if (chargesCard && !confirming) {
+      setConfirming(true);
+      return;
+    }
+    void submit();
+  };
+
+  const sendLabel = sending
+    ? 'Sending…'
+    : chargesCard && confirming
+      ? 'Yes, charge and send'
+      : 'Send invite';
+
   const sendButton = (
-    <Button onClick={submit} disabled={sending || !valid}>
-      {sending ? 'Sending…' : 'Send invite'}
+    <Button onClick={handleSendClick} disabled={sending || !valid}>
+      {sendLabel}
     </Button>
   );
 
@@ -337,10 +372,15 @@ function InviteMemberDialog({
           />
         </Field>
 
-        {chargesCard ? (
+        {unsubscribed ? (
+          <div className="rounded-lg border border-info/40 bg-info-wash p-3 text-xs text-info">
+            This team has no subscription. Invites here are free, and nobody is charged. Members
+            hold no paid access until a subscription is attached.
+          </div>
+        ) : chargesCard ? (
           <div className="rounded-lg border border-warning bg-warning-wash p-3 text-xs text-warning">
             This team has no spare seats. Sending this invite adds a seat and{' '}
-            <b>charges the customer&apos;s card</b>. Only a super admin can do this.
+            <b>charges the team owner&apos;s card</b>.
           </div>
         ) : (
           <div className="rounded-lg border border-info/40 bg-info-wash p-3 text-xs text-info">
@@ -349,17 +389,18 @@ function InviteMemberDialog({
           </div>
         )}
 
+        {chargesCard && confirming ? (
+          <div className="rounded-lg border border-destructive/40 bg-destructive/10 p-3 text-xs text-destructive">
+            Confirm: sending this invite will immediately charge the team owner&apos;s card for one
+            additional seat. This cannot be undone from here.
+          </div>
+        ) : null}
+
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)} disabled={sending}>
             Cancel
           </Button>
-          {chargesCard ? (
-            <SuperAdminOnly reason="Adding a seat charges the customer's card — super admin only">
-              {sendButton}
-            </SuperAdminOnly>
-          ) : (
-            sendButton
-          )}
+          {sendButton}
         </DialogFooter>
       </DialogContent>
     </Dialog>
