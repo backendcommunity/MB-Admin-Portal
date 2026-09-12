@@ -52,6 +52,8 @@ import {
   restoreTeamPath,
   attachTeamSubscription,
   detachTeamSubscription,
+  recordManualTeamPayment,
+  updateManualTeamPayment,
   dismissTeamSeatGap,
   fetchTeamOverview,
   fetchTeamReport,
@@ -382,6 +384,52 @@ describe('billing', () => {
   it('detaches via DELETE /admin/teams/:id/subscription with no body', async () => {
     await detachTeamSubscription('tm1');
     expect(del).toHaveBeenCalledWith('/admin/teams/tm1/subscription');
+  });
+
+  it('records a manual (bank-transfer) payment via POST /admin/teams/:id/subscription/manual', async () => {
+    const teamRow = {
+      id: 'tm1',
+      name: 'Kuda',
+      owner: null,
+      processor: 'MANUAL',
+      subscriptionStatus: 'ACTIVE',
+      seats: {
+        subscribed: true,
+        paidSeats: 25,
+        activeMembers: 1,
+        pendingInvites: 0,
+        used: 1,
+        available: 24,
+      },
+      seatGap: null,
+      archivedAt: null,
+      createdAt: '2026-01-01T00:00:00.000Z',
+    };
+    post.mockResolvedValueOnce({ data: { success: true, data: teamRow } });
+    const result = await recordManualTeamPayment('tm1', {
+      seats: 25,
+      expiry: '2027-09-12T00:00:00.000Z',
+      amount: 500,
+      currency: 'NGN',
+    });
+    expect(post).toHaveBeenCalledWith('/admin/teams/tm1/subscription/manual', {
+      seats: 25,
+      expiry: '2027-09-12T00:00:00.000Z',
+      amount: 500,
+      currency: 'NGN',
+    });
+    expect(result).toEqual(teamRow);
+  });
+
+  it('renews/corrects a manual payment via PATCH /admin/teams/:id/subscription/manual', async () => {
+    patch.mockResolvedValueOnce({
+      data: { success: true, data: { id: 'tm1', processor: 'MANUAL' } },
+    });
+    const result = await updateManualTeamPayment('tm1', { expiry: '2028-09-12T00:00:00.000Z' });
+    expect(patch).toHaveBeenCalledWith('/admin/teams/tm1/subscription/manual', {
+      expiry: '2028-09-12T00:00:00.000Z',
+    });
+    expect(result).toEqual({ id: 'tm1', processor: 'MANUAL' });
   });
 
   it('dismisses the seat-gap alert via POST /seat-gap/dismiss — not a reconcile, and changes no seats', async () => {

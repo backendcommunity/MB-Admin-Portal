@@ -36,8 +36,14 @@ const PAGE = 25;
 // (see the admin teams router). "ALL" is the portal-local sentinel for
 // "no filter" and is stripped before the request goes out.
 const STATUSES = ['active', 'past_due', 'paused', 'canceled', 'archived'] as const;
-const PROCESSORS = ['PADDLE', 'ASYNCPAY', 'STRIPE', 'PAYSTACK', 'NONE'] as const;
+const PROCESSORS = ['PADDLE', 'ASYNCPAY', 'STRIPE', 'PAYSTACK', 'MANUAL', 'NONE'] as const;
 const SEAT_STATES = ['mismatch'] as const;
+
+/** `MANUAL` (a real subscription with no payment channel — paid by bank
+ * transfer, see `TeamProcessor`) reads better than the raw enum value. */
+function processorLabel(processor: TeamSummary['processor']): string {
+  return processor === 'MANUAL' ? 'Paid manually' : (processor ?? '');
+}
 
 function TeamsTable() {
   const router = useRouter();
@@ -96,7 +102,9 @@ function TeamsTable() {
           row.original.processor ? (
             <div>
               <div>{row.original.subscriptionStatus ?? '—'}</div>
-              <div className="text-xs text-muted-foreground">{row.original.processor}</div>
+              <div className="text-xs text-muted-foreground">
+                {processorLabel(row.original.processor)}
+              </div>
             </div>
           ) : (
             <span className="text-muted-foreground">No subscription</span>

@@ -76,4 +76,22 @@ describe('TeamsTable', () => {
     wrap(<TeamsTable />);
     expect(await screen.findByText(/no teams/i)).toBeInTheDocument();
   });
+
+  it('renders a MANUAL row sensibly, not the raw processor string', async () => {
+    vi.mocked(fetchTeams).mockResolvedValue({
+      teams: [row({ processor: 'MANUAL', subscriptionStatus: 'ACTIVE' })],
+      total: 1,
+      page: 1,
+      limit: 25,
+    });
+    wrap(<TeamsTable />);
+    expect((await screen.findAllByText(/paid manually/i)).length).toBeGreaterThan(0);
+  });
+
+  it('includes MANUAL in the processor filter', async () => {
+    wrap(<TeamsTable />);
+    await screen.findAllByText('Kuda Engineering');
+    await userEvent.click(screen.getByLabelText(/filter by processor/i));
+    expect((await screen.findAllByText('MANUAL')).length).toBeGreaterThan(0);
+  });
 });

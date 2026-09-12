@@ -29,11 +29,20 @@ import {
   adminSetTeamSeats,
   dismissTeamSeatGap,
   fetchTeamAuditLog,
+  recordManualTeamPayment,
+  updateManualTeamPayment,
   formatCurrency,
   type TeamDetail,
   type TeamProcessor,
   type TeamAuditLogEntry,
 } from '@/lib/api/teams';
+
+/** One year from today, as `yyyy-mm-dd` for a native date input. */
+function defaultExpiry(): string {
+  const d = new Date();
+  d.setFullYear(d.getFullYear() + 1);
+  return d.toISOString().slice(0, 10);
+}
 
 type Subscription = NonNullable<TeamDetail['subscription']>;
 
@@ -148,6 +157,17 @@ export function BillingTab({
   );
   const [seatsSaving, setSeatsSaving] = useState(false);
 
+  const isManual = processor === 'MANUAL';
+
+  const [manualOpen, setManualOpen] = useState(false);
+  const [manualDraft, setManualDraft] = useSeededForm(manualOpen ? 'open' : 'closed', () => ({
+    seats: String(subscription?.paidSeats ?? ''),
+    expiry: subscription?.expiry ? subscription.expiry.slice(0, 10) : defaultExpiry(),
+    amount: subscription?.amount != null ? String(subscription.amount) : '',
+    currency: subscription?.currency ?? '',
+  }));
+  const [manualSaving, setManualSaving] = useState(false);
+
   const doDismiss = async () => {
     setDismissing(true);
     try {
@@ -219,6 +239,49 @@ export function BillingTab({
     }
   };
 
+  /**
+   * Records a fresh manual (bank-transfer) payment when the team has no
+   * subscription (`POST .../subscription/manual`), or extends/corrects an
+   * existing one (`PATCH .../subscription/manual`) when it already has a
+   * MANUAL subscription. Either 409 the API can send here — "already has a
+   * subscription attached", "processor-backed", or the seats-below-usage
+   * one naming the exact figure — is surfaced verbatim, never a generic
+   * toast.
+   */
+  const doSaveManual = async () => {
+    const seats = Number(manualDraft.seats);
+    if (!Number.isFinite(seats) || seats < 1 || !manualDraft.expiry.trim()) return;
+    setManualSaving(true);
+    try {
+      const payload = {
+        seats,
+        expiry: new Date(manualDraft.expiry).toISOString(),
+        ...(manualDraft.amount.trim() ? { amount: Number(manualDraft.amount) } : {}),
+        ...(manualDraft.currency.trim()
+          ? { currency: manualDraft.currency.trim().toUpperCase() }
+          : {}),
+      };
+      if (subscription) {
+        await updateManualTeamPayment(teamId, payload);
+        toast.success('Manual payment extended.');
+      } else {
+        await recordManualTeamPayment(teamId, payload);
+        toast.success('Manual payment recorded. Members now have Pro access.');
+      }
+      setManualOpen(false);
+      onChanged();
+    } catch (error) {
+      toast.error(
+        subscription
+          ? 'Could not extend the manual payment'
+          : 'Could not record the manual payment',
+        { description: extractErrorMessage(error, 'Unknown error') },
+      );
+    } finally {
+      setManualSaving(false);
+    }
+  };
+
   const entries = auditLog?.data ?? [];
   const columns = useMemo<ColumnDef<TeamAuditLogEntry>[]>(
     () => [
@@ -258,6 +321,27 @@ export function BillingTab({
         </Alert>
       ) : null}
 
+      {isManual && subscription ? (
+        <Alert>
+          <AlertDescription className="space-y-2">
+            <p>
+              Paid manually (bank transfer) — expires{' '}
+              <strong>{subscription.expiry ? fmt(subscription.expiry) : '—'}</strong>. A nightly job
+              revokes Pro access for the whole team, after a grace period, once this date lapses —
+              extend it before then to keep the team on Pro.
+            </p>
+            <Button
+              size="sm"
+              variant="outline"
+              disabled={isArchived}
+              onClick={() => setManualOpen(true)}
+            >
+              Extend / renew
+            </Button>
+          </AlertDescription>
+        </Alert>
+      ) : null}
+
       <Section title="Subscription" id="section-billing-subscription">
         <dl className="grid gap-2 text-sm sm:grid-cols-2">
           <div className="flex justify-between gap-3">
@@ -279,7 +363,7 @@ export function BillingTab({
           </div>
           <div className="flex justify-between gap-3">
             <dt className="text-muted-foreground">Processor</dt>
-            <dd>{processor ?? '—'}</dd>
+            <dd>{isManual ? 'Paid manually (bank transfer)' : (processor ?? '—')}</dd>
           </div>
           <div className="flex justify-between gap-3">
             <dt className="text-muted-foreground">Cycle</dt>
@@ -330,9 +414,19 @@ export function BillingTab({
               </SuperAdminOnly>
             </>
           ) : (
-            <Button size="sm" disabled={isArchived} onClick={() => setAttaching(true)}>
-              Attach subscription
-            </Button>
+            <>
+              <Button size="sm" disabled={isArchived} onClick={() => setAttaching(true)}>
+                Attach subscription
+              </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                disabled={isArchived}
+                onClick={() => setManualOpen(true)}
+              >
+                Record manual payment
+              </Button>
+            </>
           )}
         </div>
       </Section>
@@ -417,6 +511,74 @@ export function BillingTab({
             </Button>
             <Button onClick={doSetSeats} disabled={seatsSaving || !seatsDraft.trim()}>
               {seatsSaving ? 'Saving…' : 'Save'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={manualOpen} onOpenChange={(next) => !next && setManualOpen(false)}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>
+              {subscription ? 'Extend manual payment' : 'Record manual payment'}
+            </DialogTitle>
+          </DialogHeader>
+          <FieldGrid>
+            <Field label="Seats" htmlFor="manual-seats" required>
+              <Input
+                id="manual-seats"
+                type="number"
+                min={1}
+                value={manualDraft.seats}
+                onChange={(event) => setManualDraft((d) => ({ ...d, seats: event.target.value }))}
+              />
+            </Field>
+            <Field
+              label="Expiry"
+              htmlFor="manual-expiry"
+              required
+              hint="This is what keeps the team's Pro access alive — a nightly job revokes it for the whole team, after a grace period, once this date lapses."
+            >
+              <Input
+                id="manual-expiry"
+                type="date"
+                value={manualDraft.expiry}
+                onChange={(event) => setManualDraft((d) => ({ ...d, expiry: event.target.value }))}
+              />
+            </Field>
+            <Field label="Amount (optional)" htmlFor="manual-amount">
+              <Input
+                id="manual-amount"
+                type="number"
+                min={0}
+                value={manualDraft.amount}
+                onChange={(event) => setManualDraft((d) => ({ ...d, amount: event.target.value }))}
+              />
+            </Field>
+            <Field
+              label="Currency (optional)"
+              htmlFor="manual-currency"
+              hint="3-letter code, e.g. NGN."
+            >
+              <Input
+                id="manual-currency"
+                maxLength={3}
+                value={manualDraft.currency}
+                onChange={(event) =>
+                  setManualDraft((d) => ({ ...d, currency: event.target.value.toUpperCase() }))
+                }
+              />
+            </Field>
+          </FieldGrid>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setManualOpen(false)} disabled={manualSaving}>
+              Cancel
+            </Button>
+            <Button
+              onClick={doSaveManual}
+              disabled={manualSaving || !manualDraft.seats.trim() || !manualDraft.expiry.trim()}
+            >
+              {manualSaving ? 'Saving…' : subscription ? 'Extend' : 'Record payment'}
             </Button>
           </DialogFooter>
         </DialogContent>

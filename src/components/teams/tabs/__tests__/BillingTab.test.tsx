@@ -18,6 +18,8 @@ vi.mock('@/lib/api/teams', async (importOriginal) => {
     adminSetTeamSeats: vi.fn(),
     dismissTeamSeatGap: vi.fn(),
     fetchTeamAuditLog: vi.fn(),
+    recordManualTeamPayment: vi.fn(),
+    updateManualTeamPayment: vi.fn(),
   };
 });
 vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
@@ -28,6 +30,8 @@ import {
   adminSetTeamSeats,
   dismissTeamSeatGap,
   fetchTeamAuditLog,
+  recordManualTeamPayment,
+  updateManualTeamPayment,
   type TeamDetail,
 } from '@/lib/api/teams';
 import { BillingTab } from '@/components/teams/tabs/BillingTab';
@@ -72,6 +76,8 @@ beforeEach(() => {
   vi.mocked(detachTeamSubscription).mockReset();
   vi.mocked(adminSetTeamSeats).mockReset();
   vi.mocked(dismissTeamSeatGap).mockReset();
+  vi.mocked(recordManualTeamPayment).mockReset();
+  vi.mocked(updateManualTeamPayment).mockReset();
   vi.mocked(toast.error).mockReset();
   vi.mocked(toast.success).mockReset();
   useAuthStore.setState({ userRole: 'SUPER_ADMIN' as never, authResolved: true });
@@ -240,5 +246,85 @@ describe('BillingTab — subscription card', () => {
     const dashRows = screen.getAllByText('—');
     expect(dashRows.length).toBeGreaterThanOrEqual(3);
     expect(screen.queryByText(/monthly/i)).not.toBeInTheDocument();
+  });
+});
+
+describe('BillingTab — manual (bank-transfer) payments', () => {
+  it('renders a MANUAL subscription as manual with its expiry, never as "No subscription" or the raw processor name', async () => {
+    setup({
+      processor: 'MANUAL',
+      subscription: subscription({ expiry: '2027-03-14T00:00:00.000Z' }),
+    });
+
+    expect((await screen.findAllByText(/paid manually/i)).length).toBeGreaterThan(0);
+    expect(screen.queryByText(/no subscription/i)).not.toBeInTheDocument();
+    expect(screen.getAllByText(/Mar 14, 2027/).length).toBeGreaterThan(0);
+  });
+
+  it('a team with no subscription offers "Record manual payment"', async () => {
+    setup({ subscription: null });
+    expect(
+      await screen.findByRole('button', { name: /record manual payment/i }),
+    ).toBeInTheDocument();
+  });
+
+  it('recording a manual payment calls recordManualTeamPayment with seats + expiry and refreshes', async () => {
+    const onChanged = vi.fn();
+    vi.mocked(recordManualTeamPayment).mockResolvedValue({} as never);
+    setup({ subscription: null }, onChanged);
+
+    await userEvent.click(await screen.findByRole('button', { name: /record manual payment/i }));
+    const seatsInput = screen.getByLabelText(/^seats/i);
+    await userEvent.clear(seatsInput);
+    await userEvent.type(seatsInput, '10');
+    const expiryInput = screen.getByLabelText(/expiry/i) as HTMLInputElement;
+    expect(expiryInput.value).not.toBe('');
+    await userEvent.click(screen.getByRole('button', { name: /record payment/i }));
+
+    expect(recordManualTeamPayment).toHaveBeenCalledWith(
+      'tm1',
+      expect.objectContaining({ seats: 10, expiry: expect.any(String) }),
+    );
+    expect(onChanged).toHaveBeenCalled();
+  });
+
+  it('extending a MANUAL subscription calls updateManualTeamPayment and refreshes', async () => {
+    const onChanged = vi.fn();
+    vi.mocked(updateManualTeamPayment).mockResolvedValue({} as never);
+    setup({ processor: 'MANUAL', subscription: subscription() }, onChanged);
+
+    await userEvent.click(await screen.findByRole('button', { name: /extend|renew/i }));
+    await userEvent.click(screen.getByRole('button', { name: /extend/i }));
+
+    expect(updateManualTeamPayment).toHaveBeenCalledWith('tm1', expect.any(Object));
+    expect(onChanged).toHaveBeenCalled();
+  });
+
+  it('surfaces the 409 message verbatim when a manual payment cannot be recorded', async () => {
+    const serverMessage = 'This team already has a subscription attached. Detach it first.';
+    vi.mocked(recordManualTeamPayment).mockRejectedValue({
+      response: { data: { message: serverMessage } },
+    });
+    setup({ subscription: null });
+
+    await userEvent.click(await screen.findByRole('button', { name: /record manual payment/i }));
+    const seatsInput = screen.getByLabelText(/^seats/i);
+    await userEvent.clear(seatsInput);
+    await userEvent.type(seatsInput, '10');
+    await userEvent.click(screen.getByRole('button', { name: /record payment/i }));
+
+    expect(toast.error).toHaveBeenCalledWith(
+      expect.any(String),
+      expect.objectContaining({ description: serverMessage }),
+    );
+  });
+
+  it('never labels a non-USD manual-subscription amount as USD', async () => {
+    setup({
+      processor: 'MANUAL',
+      subscription: subscription({ amount: 500, currency: 'NGN', paidSeats: 10 }),
+    });
+    expect((await screen.findAllByText(/NGN/)).length).toBeGreaterThan(0);
+    expect(screen.queryByText(/USD/)).not.toBeInTheDocument();
   });
 });

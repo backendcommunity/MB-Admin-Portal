@@ -1,6 +1,15 @@
 import { axiosInstance } from './axios';
 
-export type TeamProcessor = 'PADDLE' | 'ASYNCPAY' | 'STRIPE' | 'PAYSTACK' | null;
+/**
+ * `MANUAL` is a real third state, not a variant of `null`. `teamRow`/
+ * `teamDetailRow` (academy `modules/admin/helpers/team-shape.ts`) derive
+ * `processor` as `team.subscription.paymentChannel?.channel ?? "MANUAL"` —
+ * a team paid by bank transfer has a real `Subscription` row (so it is not
+ * `null`, which means "no subscription at all") but no payment channel (so
+ * it is not a channel name either). See `POST /:id/subscription/manual` in
+ * academy `modules/admin/teams.ts`.
+ */
+export type TeamProcessor = 'PADDLE' | 'ASYNCPAY' | 'STRIPE' | 'PAYSTACK' | 'MANUAL' | null;
 
 export type TeamOwner = {
   id: string;
@@ -697,6 +706,62 @@ export async function attachTeamSubscription(
 export async function detachTeamSubscription(teamId: string) {
   const res = await axiosInstance.delete<{ success: boolean; data: TeamSummary }>(
     `/admin/teams/${teamId}/subscription`,
+  );
+  return res.data.data;
+}
+
+export type RecordManualTeamPaymentInput = {
+  seats: number;
+  /** ISO date string. */
+  expiry: string;
+  amount?: number;
+  currency?: string;
+  planId?: string;
+};
+
+export type UpdateManualTeamPaymentInput = {
+  expiry?: string;
+  seats?: number;
+  amount?: number;
+  currency?: string;
+};
+
+/**
+ * Grant Pro to a team that paid by bank transfer/invoice directly, staff
+ * having set the team up by hand. `POST /:id/subscription/manual`
+ * (`AdminCreateManualSubscription`, academy `modules/admin/teams.ts`)
+ * creates a processor-less `Subscription` row and responds `teamRow(...)` —
+ * the same summary shape every other team write in this file returns, NOT
+ * the full `TeamDetail`: this response never carries
+ * `subscription.expiry`/`amount`/`currency`. Callers that need those refetch
+ * the team detail (the same `onChanged`/invalidate pattern every other write
+ * in this file already uses), they never read them off this result.
+ *
+ * 409s when a subscription is already attached ("...Detach it first.") —
+ * surface `error.response.data.message` verbatim, never a generic toast.
+ */
+export async function recordManualTeamPayment(teamId: string, input: RecordManualTeamPaymentInput) {
+  const res = await axiosInstance.post<{ success: boolean; data: TeamSummary }>(
+    `/admin/teams/${teamId}/subscription/manual`,
+    input,
+  );
+  return res.data.data;
+}
+
+/**
+ * Record a renewal, or correct a mistake, on an EXISTING manual grant.
+ * `PATCH /:id/subscription/manual` (`AdminUpdateManualSubscription`) 409s
+ * when the subscription is processor-backed ("...cannot be edited by hand
+ * here."), and 409s when `seats` would drop below current usage — naming
+ * the exact figure, same as `adminSetTeamSeats`. Surface
+ * `error.response.data.message` verbatim in both cases. Responds the same
+ * `teamRow(...)` summary shape as the create route above — same caveat: no
+ * `subscription.expiry`/`amount`/`currency` on this result.
+ */
+export async function updateManualTeamPayment(teamId: string, input: UpdateManualTeamPaymentInput) {
+  const res = await axiosInstance.patch<{ success: boolean; data: TeamSummary }>(
+    `/admin/teams/${teamId}/subscription/manual`,
+    input,
   );
   return res.data.data;
 }
