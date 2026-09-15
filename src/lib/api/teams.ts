@@ -1,6 +1,15 @@
 import { axiosInstance } from './axios';
 
-export type TeamProcessor = 'PADDLE' | 'ASYNCPAY' | 'STRIPE' | 'PAYSTACK' | null;
+/**
+ * `MANUAL` is a real third state, not a variant of `null`. `teamRow`/
+ * `teamDetailRow` (academy `modules/admin/helpers/team-shape.ts`) derive
+ * `processor` as `team.subscription.paymentChannel?.channel ?? "MANUAL"` —
+ * a team paid by bank transfer has a real `Subscription` row (so it is not
+ * `null`, which means "no subscription at all") but no payment channel (so
+ * it is not a channel name either). See `POST /:id/subscription/manual` in
+ * academy `modules/admin/teams.ts`.
+ */
+export type TeamProcessor = 'PADDLE' | 'ASYNCPAY' | 'STRIPE' | 'PAYSTACK' | 'MANUAL' | null;
 
 export type TeamOwner = {
   id: string;
@@ -61,6 +70,15 @@ export type TeamSummary = {
    * conflating the two is the bug this rewrite fixes.
    */
   seatGap: number | null;
+  /**
+   * Staff-granted Pro, independent of any subscription — `teamRow`
+   * (academy `modules/admin/helpers/team-shape.ts`) sends this on every team
+   * row. Entitlement is `comped OR entitling(subscription.status)`:
+   * attaching a subscription clears it server-side (`PATCH /:id/subscription`),
+   * so this field must always be read back from a fresh fetch after an
+   * attach rather than assumed to still hold client-side.
+   */
+  comped: boolean;
   archivedAt: string | null;
   createdAt: string;
 };
@@ -98,6 +116,13 @@ export type CreateTeamInput = {
   ownerEmail: string;
   subscriptionId?: string;
   seats?: number;
+  /**
+   * Only meaningful with no `subscriptionId` — comps the team on creation.
+   * `ValidateCreateTeam` (academy `modules/admin/validators/teams.ts`)
+   * defaults this to `true` server-side when omitted and no subscription is
+   * attached, so it need only be sent to override that default.
+   */
+  comped?: boolean;
 };
 
 type Paged<T> = { teams: T[]; total: number; page: number; limit: number };
@@ -198,6 +223,42 @@ export async function setTeamMemberRole(teamId: string, memberId: string, role: 
 export async function removeTeamMember(teamId: string, memberId: string) {
   const res = await axiosInstance.delete<{ success: boolean; data: { id: string } }>(
     `/admin/teams/${teamId}/members/${memberId}`,
+  );
+  return res.data.data;
+}
+
+/**
+ * The raw `TeamMember` row `POST /:id/members` responds with —
+ * `prisma.teamMember.create`/`.update` output directly, NOT joined to
+ * `user` the way `TeamMemberRow` (the roster shape from `GET /:id`) is. A
+ * caller reading `.user.name`/`.user.email` off this result would get
+ * `undefined`: refetch the team detail (this file's usual `onChanged`/
+ * invalidate pattern) to get the joined row with a name and email.
+ */
+export type AddedTeamMember = {
+  id: string;
+  teamId: string;
+  userId: string;
+  role: string;
+  status: string;
+  joinedAt: string;
+  removedAt: string | null;
+};
+
+/**
+ * `POST /:id/members` — add an EXISTING user to the team directly. They are
+ * ACTIVE immediately and become Pro immediately (subject to the team's
+ * capacity/comp rules), unlike `inviteTeamMember`, which waits for the
+ * invitee to accept. 422 for an unknown email, 409 if already an active
+ * member, 409 at capacity on a processor-backed team (no charge is ever
+ * made on this route — that belongs to the invite flow). Surface
+ * `error.response.data.message` verbatim in every case; each names the
+ * actual problem.
+ */
+export async function addTeamMember(teamId: string, input: { email: string }) {
+  const res = await axiosInstance.post<{ success: boolean; data: AddedTeamMember }>(
+    `/admin/teams/${teamId}/members`,
+    input,
   );
   return res.data.data;
 }
@@ -697,6 +758,106 @@ export async function attachTeamSubscription(
 export async function detachTeamSubscription(teamId: string) {
   const res = await axiosInstance.delete<{ success: boolean; data: TeamSummary }>(
     `/admin/teams/${teamId}/subscription`,
+  );
+  return res.data.data;
+}
+
+/**
+ * Subscription statuses that confer entitlement — mirrors
+ * `ENTITLING_STATUSES` in academy `src/helpers/entitlement.ts` exactly
+ * (compared case-insensitively there too, since admin-granted subscriptions
+ * write uppercase while provider webhooks write lowercase). No route
+ * returns an "is this entitling" boolean directly, so the Billing tab
+ * derives it client-side from `subscription.status` to decide whether
+ * "Comp this team" should be offered — the API is still the final word:
+ * `POST /:id/comp` 409s regardless, and that message is always the one
+ * surfaced on failure.
+ */
+const ENTITLING_SUBSCRIPTION_STATUSES = ['active', 'canceling', 'pausing', 'resuming', 'trialing'];
+
+export function isEntitlingSubscriptionStatus(status: string | null | undefined): boolean {
+  return ENTITLING_SUBSCRIPTION_STATUSES.includes((status ?? '').trim().toLowerCase());
+}
+
+/**
+ * `POST /:id/comp` — staff-granted Pro for every ACTIVE member, independent
+ * of any subscription (the bank-transfer/pilot/comped case). 409s when the
+ * team already has an ENTITLING subscription attached ("...would be
+ * redundant and would mask the real billing state") or is already comped —
+ * surface `error.response.data.message` verbatim.
+ */
+export async function compTeam(teamId: string) {
+  const res = await axiosInstance.post<{ success: boolean; data: TeamSummary }>(
+    `/admin/teams/${teamId}/comp`,
+  );
+  return res.data.data;
+}
+
+/**
+ * `DELETE /:id/comp` — revoke a staff comp. Every active member is
+ * recomputed: one funded ONLY by the comp loses Pro immediately unless a
+ * subscription (or another grant) still covers them. 409s when the team is
+ * not currently comped.
+ */
+export async function uncompTeam(teamId: string) {
+  const res = await axiosInstance.delete<{ success: boolean; data: TeamSummary }>(
+    `/admin/teams/${teamId}/comp`,
+  );
+  return res.data.data;
+}
+
+export type RecordManualTeamPaymentInput = {
+  seats: number;
+  /** ISO date string. */
+  expiry: string;
+  amount?: number;
+  currency?: string;
+  planId?: string;
+};
+
+export type UpdateManualTeamPaymentInput = {
+  expiry?: string;
+  seats?: number;
+  amount?: number;
+  currency?: string;
+};
+
+/**
+ * Grant Pro to a team that paid by bank transfer/invoice directly, staff
+ * having set the team up by hand. `POST /:id/subscription/manual`
+ * (`AdminCreateManualSubscription`, academy `modules/admin/teams.ts`)
+ * creates a processor-less `Subscription` row and responds `teamRow(...)` —
+ * the same summary shape every other team write in this file returns, NOT
+ * the full `TeamDetail`: this response never carries
+ * `subscription.expiry`/`amount`/`currency`. Callers that need those refetch
+ * the team detail (the same `onChanged`/invalidate pattern every other write
+ * in this file already uses), they never read them off this result.
+ *
+ * 409s when a subscription is already attached ("...Detach it first.") —
+ * surface `error.response.data.message` verbatim, never a generic toast.
+ */
+export async function recordManualTeamPayment(teamId: string, input: RecordManualTeamPaymentInput) {
+  const res = await axiosInstance.post<{ success: boolean; data: TeamSummary }>(
+    `/admin/teams/${teamId}/subscription/manual`,
+    input,
+  );
+  return res.data.data;
+}
+
+/**
+ * Record a renewal, or correct a mistake, on an EXISTING manual grant.
+ * `PATCH /:id/subscription/manual` (`AdminUpdateManualSubscription`) 409s
+ * when the subscription is processor-backed ("...cannot be edited by hand
+ * here."), and 409s when `seats` would drop below current usage — naming
+ * the exact figure, same as `adminSetTeamSeats`. Surface
+ * `error.response.data.message` verbatim in both cases. Responds the same
+ * `teamRow(...)` summary shape as the create route above — same caveat: no
+ * `subscription.expiry`/`amount`/`currency` on this result.
+ */
+export async function updateManualTeamPayment(teamId: string, input: UpdateManualTeamPaymentInput) {
+  const res = await axiosInstance.patch<{ success: boolean; data: TeamSummary }>(
+    `/admin/teams/${teamId}/subscription/manual`,
+    input,
   );
   return res.data.data;
 }
