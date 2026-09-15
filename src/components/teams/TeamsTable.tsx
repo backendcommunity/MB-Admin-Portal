@@ -98,8 +98,29 @@ function TeamsTable() {
       {
         id: 'subscription',
         header: 'Subscription',
-        cell: ({ row }) =>
-          row.original.processor ? (
+        cell: ({ row }) => {
+          // Comped is checked FIRST: a comped team grants Pro to every
+          // active member independent of any subscription (`teamRow`'s
+          // `comped` field, academy `modules/admin/helpers/team-shape.ts`),
+          // and — before this — rendered identically to a team funding
+          // nothing at all. That collision is exactly what this branch
+          // fixes: a comped team must never read as "No subscription".
+          if (row.original.comped) {
+            return (
+              <div>
+                <StatusBadge tone="info" label="Comped" />
+                {row.original.processor ? (
+                  <div className="mt-1 text-xs text-muted-foreground">
+                    Also has a {processorLabel(row.original.processor)} subscription (
+                    {row.original.subscriptionStatus ?? '—'})
+                  </div>
+                ) : (
+                  <div className="mt-1 text-xs text-muted-foreground">Staff-granted Pro</div>
+                )}
+              </div>
+            );
+          }
+          return row.original.processor ? (
             <div>
               <div>{row.original.subscriptionStatus ?? '—'}</div>
               <div className="text-xs text-muted-foreground">
@@ -108,7 +129,8 @@ function TeamsTable() {
             </div>
           ) : (
             <span className="text-muted-foreground">No subscription</span>
-          ),
+          );
+        },
       },
       {
         id: 'seats',

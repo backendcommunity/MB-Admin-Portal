@@ -20,6 +20,8 @@ vi.mock('@/lib/api/teams', async (importOriginal) => {
     fetchTeamAuditLog: vi.fn(),
     recordManualTeamPayment: vi.fn(),
     updateManualTeamPayment: vi.fn(),
+    compTeam: vi.fn(),
+    uncompTeam: vi.fn(),
   };
 });
 vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
@@ -32,6 +34,8 @@ import {
   fetchTeamAuditLog,
   recordManualTeamPayment,
   updateManualTeamPayment,
+  compTeam,
+  uncompTeam,
   type TeamDetail,
 } from '@/lib/api/teams';
 import { BillingTab } from '@/components/teams/tabs/BillingTab';
@@ -63,6 +67,7 @@ function setup(props: Partial<React.ComponentProps<typeof BillingTab>> = {}, onC
       processor="PADDLE"
       subscription={subscription()}
       seatGap={null}
+      comped={false}
       isArchived={false}
       onChanged={onChanged}
       {...props}
@@ -78,6 +83,8 @@ beforeEach(() => {
   vi.mocked(dismissTeamSeatGap).mockReset();
   vi.mocked(recordManualTeamPayment).mockReset();
   vi.mocked(updateManualTeamPayment).mockReset();
+  vi.mocked(compTeam).mockReset();
+  vi.mocked(uncompTeam).mockReset();
   vi.mocked(toast.error).mockReset();
   vi.mocked(toast.success).mockReset();
   useAuthStore.setState({ userRole: 'SUPER_ADMIN' as never, authResolved: true });
@@ -326,5 +333,82 @@ describe('BillingTab — manual (bank-transfer) payments', () => {
     });
     expect((await screen.findAllByText(/NGN/)).length).toBeGreaterThan(0);
     expect(screen.queryByText(/USD/)).not.toBeInTheDocument();
+  });
+});
+
+describe('BillingTab — access state (comp)', () => {
+  it('shows the comped state and offers Remove comp, with a plain revoke warning', async () => {
+    setup({ comped: true, subscription: null, processor: null });
+
+    expect(await screen.findByText(/comped/i)).toBeInTheDocument();
+    expect(screen.getByText(/every active member has pro/i)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /remove comp/i })).toBeInTheDocument();
+    expect(
+      screen.getByText(/revokes pro for every member unless a subscription is attached/i),
+    ).toBeInTheDocument();
+  });
+
+  it('a team with neither a comp nor a subscription states plainly that members have no Pro access, and offers Comp this team', async () => {
+    setup({ comped: false, subscription: null, processor: null });
+
+    expect(await screen.findByText(/no pro access/i)).toBeInTheDocument();
+    const compButton = screen.getByRole('button', { name: /comp this team/i });
+    expect(compButton).toBeEnabled();
+  });
+
+  it('a team with an entitling subscription has the comp control disabled, with the reason shown', async () => {
+    setup({ comped: false, subscription: subscription({ status: 'active' }), processor: 'PADDLE' });
+
+    const compButton = await screen.findByRole('button', { name: /comp this team/i });
+    expect(compButton).toBeDisabled();
+    expect(screen.getByText(/redundant/i)).toBeInTheDocument();
+  });
+
+  it('a team with a lapsed (non-entitling) subscription is treated as no-Pro-access, and the comp control is enabled', async () => {
+    setup({
+      comped: false,
+      subscription: subscription({ status: 'canceled' }),
+      processor: 'PADDLE',
+    });
+
+    expect(await screen.findByText(/no pro access/i)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /comp this team/i })).toBeEnabled();
+  });
+
+  it('comping a team calls compTeam and refreshes', async () => {
+    const onChanged = vi.fn();
+    vi.mocked(compTeam).mockResolvedValue({} as never);
+    setup({ comped: false, subscription: null, processor: null }, onChanged);
+
+    await userEvent.click(await screen.findByRole('button', { name: /comp this team/i }));
+
+    expect(compTeam).toHaveBeenCalledWith('tm1');
+    expect(onChanged).toHaveBeenCalled();
+  });
+
+  it('removing a comp asks for confirmation, then calls uncompTeam and refreshes', async () => {
+    const onChanged = vi.fn();
+    vi.mocked(uncompTeam).mockResolvedValue({} as never);
+    setup({ comped: true, subscription: null, processor: null }, onChanged);
+
+    await userEvent.click(await screen.findByRole('button', { name: /remove comp/i }));
+    await userEvent.click(screen.getByRole('button', { name: /yes, remove comp/i }));
+
+    expect(uncompTeam).toHaveBeenCalledWith('tm1');
+    expect(onChanged).toHaveBeenCalled();
+  });
+
+  it('surfaces the comp 409 verbatim when it fails', async () => {
+    const serverMessage =
+      'This team already has an active subscription. Comping it would be redundant and would mask the real billing state.';
+    vi.mocked(compTeam).mockRejectedValue({ response: { data: { message: serverMessage } } });
+    setup({ comped: false, subscription: null, processor: null });
+
+    await userEvent.click(await screen.findByRole('button', { name: /comp this team/i }));
+
+    expect(toast.error).toHaveBeenCalledWith(
+      expect.any(String),
+      expect.objectContaining({ description: serverMessage }),
+    );
   });
 });

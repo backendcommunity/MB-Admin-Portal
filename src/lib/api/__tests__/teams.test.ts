@@ -61,6 +61,10 @@ import {
   fetchTeamProgress,
   fetchTeamLeaderboard,
   fetchTeamAuditLog,
+  compTeam,
+  uncompTeam,
+  addTeamMember,
+  isEntitlingSubscriptionStatus,
 } from '@/lib/api/teams';
 
 beforeEach(() => {
@@ -443,6 +447,62 @@ describe('billing', () => {
     expect(result).toEqual({ id: 'tm1', reportedSeatGap: null });
     // No sibling "reconcile" function was introduced for this action.
     expect((teamsApi as Record<string, unknown>).reconcileTeamSeatGap).toBeUndefined();
+  });
+});
+
+describe('comp', () => {
+  it('comps a team via POST /admin/teams/:id/comp with no body and returns the full team row', async () => {
+    const teamRow = { id: 'tm1', comped: true };
+    post.mockResolvedValueOnce({ data: { success: true, data: teamRow } });
+    const result = await compTeam('tm1');
+    expect(post).toHaveBeenCalledWith('/admin/teams/tm1/comp');
+    expect(result).toEqual(teamRow);
+  });
+
+  it('removes a comp via DELETE /admin/teams/:id/comp with no body and returns the full team row', async () => {
+    const teamRow = { id: 'tm1', comped: false };
+    del.mockResolvedValueOnce({ data: { success: true, data: teamRow } });
+    const result = await uncompTeam('tm1');
+    expect(del).toHaveBeenCalledWith('/admin/teams/tm1/comp');
+    expect(result).toEqual(teamRow);
+  });
+});
+
+describe('isEntitlingSubscriptionStatus', () => {
+  it('treats active/canceling/pausing/resuming/trialing as entitling, case-insensitively', () => {
+    expect(isEntitlingSubscriptionStatus('active')).toBe(true);
+    expect(isEntitlingSubscriptionStatus('ACTIVE')).toBe(true);
+    expect(isEntitlingSubscriptionStatus('canceling')).toBe(true);
+    expect(isEntitlingSubscriptionStatus('pausing')).toBe(true);
+    expect(isEntitlingSubscriptionStatus('resuming')).toBe(true);
+    expect(isEntitlingSubscriptionStatus('trialing')).toBe(true);
+  });
+
+  it('treats paused/canceled/past_due/missing as non-entitling', () => {
+    expect(isEntitlingSubscriptionStatus('paused')).toBe(false);
+    expect(isEntitlingSubscriptionStatus('canceled')).toBe(false);
+    expect(isEntitlingSubscriptionStatus('past_due')).toBe(false);
+    expect(isEntitlingSubscriptionStatus(null)).toBe(false);
+    expect(isEntitlingSubscriptionStatus(undefined)).toBe(false);
+  });
+});
+
+describe('add member', () => {
+  it('adds an existing user via POST /admin/teams/:id/members with {email} and unwraps the raw TeamMember row — no `user` join on this response', async () => {
+    const member = {
+      id: 'mem9',
+      teamId: 'tm1',
+      userId: 'u9',
+      role: 'MEMBER',
+      status: 'ACTIVE',
+      joinedAt: '2026-09-15T00:00:00.000Z',
+      removedAt: null,
+    };
+    post.mockResolvedValueOnce({ data: { success: true, data: member } });
+    const result = await addTeamMember('tm1', { email: 'new@kuda.com' });
+    expect(post).toHaveBeenCalledWith('/admin/teams/tm1/members', { email: 'new@kuda.com' });
+    expect(result).toEqual(member);
+    expect(result).not.toHaveProperty('user');
   });
 });
 

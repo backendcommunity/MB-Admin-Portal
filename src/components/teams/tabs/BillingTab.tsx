@@ -31,6 +31,9 @@ import {
   fetchTeamAuditLog,
   recordManualTeamPayment,
   updateManualTeamPayment,
+  compTeam,
+  uncompTeam,
+  isEntitlingSubscriptionStatus,
   formatCurrency,
   type TeamDetail,
   type TeamProcessor,
@@ -118,6 +121,7 @@ export function BillingTab({
   processor,
   subscription,
   seatGap,
+  comped,
   isArchived,
   onChanged,
 }: {
@@ -125,6 +129,7 @@ export function BillingTab({
   processor: TeamProcessor;
   subscription: Subscription | null;
   seatGap: number | null;
+  comped: boolean;
   isArchived: boolean;
   onChanged: () => void;
 }) {
@@ -168,6 +173,12 @@ export function BillingTab({
   }));
   const [manualSaving, setManualSaving] = useState(false);
 
+  const [comping, setComping] = useState(false);
+  const [uncompOpen, setUncompOpen] = useState(false);
+  const [uncomping, setUncomping] = useState(false);
+
+  const hasEntitlingSubscription = isEntitlingSubscriptionStatus(subscription?.status);
+
   const doDismiss = async () => {
     setDismissing(true);
     try {
@@ -180,6 +191,49 @@ export function BillingTab({
       });
     } finally {
       setDismissing(false);
+    }
+  };
+
+  /**
+   * `POST /:id/comp` — no confirmation needed, unlike Detach/Remove comp:
+   * comping only ever ADDS access, so there is nothing destructive to guard
+   * against. The 409 for "already has an entitling subscription" is the
+   * same reason the control is disabled below when that's true, but it is
+   * still surfaced verbatim on the (rarer) race where it fires anyway.
+   */
+  const doComp = async () => {
+    setComping(true);
+    try {
+      await compTeam(teamId);
+      toast.success('Team comped — every active member has Pro now.');
+      onChanged();
+    } catch (error) {
+      toast.error('Could not comp this team', {
+        description: extractErrorMessage(error, 'Unknown error'),
+      });
+    } finally {
+      setComping(false);
+    }
+  };
+
+  /**
+   * Removing a comp is the destructive half — it can immediately revoke Pro
+   * for every active member with no subscription to fall back on — so it
+   * gets the same confirm-first treatment as Detach.
+   */
+  const doUncomp = async () => {
+    setUncompOpen(false);
+    setUncomping(true);
+    try {
+      await uncompTeam(teamId);
+      toast.success('Comp removed.');
+      onChanged();
+    } catch (error) {
+      toast.error('Could not remove the comp', {
+        description: extractErrorMessage(error, 'Unknown error'),
+      });
+    } finally {
+      setUncomping(false);
     }
   };
 
@@ -341,6 +395,66 @@ export function BillingTab({
           </AlertDescription>
         </Alert>
       ) : null}
+
+      <Section title="Access" id="section-billing-access">
+        {comped ? (
+          <Alert>
+            <AlertDescription className="space-y-2">
+              <p>
+                <strong>Comped.</strong> Every active member has Pro, granted by staff — no billing
+                is attached to this team.
+              </p>
+              <div className="flex flex-wrap items-center gap-2">
+                <Button
+                  size="sm"
+                  variant="destructive"
+                  disabled={isArchived || uncomping}
+                  onClick={() => setUncompOpen(true)}
+                >
+                  {uncomping ? 'Removing…' : 'Remove comp'}
+                </Button>
+                <span className="text-xs text-muted-foreground">
+                  Removing this comp revokes Pro for every member unless a subscription is attached.
+                </span>
+              </div>
+            </AlertDescription>
+          </Alert>
+        ) : hasEntitlingSubscription ? (
+          <Alert>
+            <AlertDescription className="space-y-2">
+              <p>
+                <strong>Subscription-backed.</strong> Pro access follows this team&apos;s
+                subscription — see its status below.
+              </p>
+              <div className="flex flex-wrap items-center gap-2">
+                <Button
+                  size="sm"
+                  disabled
+                  title="This team already has an entitling subscription. Comping it would be redundant and would mask the real billing state."
+                >
+                  Comp this team
+                </Button>
+                <span className="text-xs text-muted-foreground">
+                  This team already has an entitling subscription — comping it would be redundant
+                  and would mask the real billing state.
+                </span>
+              </div>
+            </AlertDescription>
+          </Alert>
+        ) : (
+          <Alert variant="destructive">
+            <AlertDescription className="space-y-2">
+              <p>
+                <strong>No Pro access.</strong> This team has neither a comp nor an entitling
+                subscription attached — nobody on this team is on Pro right now.
+              </p>
+              <Button size="sm" disabled={isArchived || comping} onClick={doComp}>
+                {comping ? 'Comping…' : 'Comp this team'}
+              </Button>
+            </AlertDescription>
+          </Alert>
+        )}
+      </Section>
 
       <Section title="Subscription" id="section-billing-subscription">
         <dl className="grid gap-2 text-sm sm:grid-cols-2">
@@ -591,6 +705,15 @@ export function BillingTab({
         description="This revokes entitlement for every active member immediately. The subscription itself is not cancelled — it is only unlinked from this team, and can be re-attached later."
         onCancel={() => setDetachOpen(false)}
         onConfirm={doDetach}
+      />
+
+      <ConfirmDelete
+        open={uncompOpen}
+        confirmLabel="Yes, remove comp"
+        title="Remove this team's comp?"
+        description="This revokes Pro access for every active member immediately, unless a subscription is attached to cover them instead."
+        onCancel={() => setUncompOpen(false)}
+        onConfirm={doUncomp}
       />
     </div>
   );

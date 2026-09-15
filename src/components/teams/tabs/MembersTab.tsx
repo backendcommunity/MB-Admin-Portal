@@ -7,6 +7,7 @@ import { toast } from 'sonner';
 
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
+import { Input } from '@/components/ui/input';
 import {
   Dialog,
   DialogContent,
@@ -14,10 +15,13 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
+import { Field } from '@/components/shared/form/Section';
 import { DataTable } from '@/components/shared/DataTable';
 import { StatusBadge } from '@/components/shared/StatusBadge';
 import ConfirmDelete from '@/components/users/ConfirmDelete';
+import { useSeededForm } from '@/lib/forms/useSeededForm';
 import {
+  addTeamMember,
   fetchTeamMemberProgress,
   fetchTeamProgress,
   removeTeamMember,
@@ -51,6 +55,7 @@ function extractErrorMessage(err: unknown, fallback: string): string {
 }
 
 const ROLES: TeamMemberRole[] = ['ADMIN', 'MEMBER'];
+const EMAIL_SHAPE = /^[^@\s]+@[^@\s.]+(\.[^@\s.]+)+$/;
 
 /**
  * Completes slice 1's read-only roster: change role, remove, and per-member
@@ -71,13 +76,23 @@ export function MembersTab({
   members,
   isArchived,
   onChanged,
+  onInviteInstead = () => {},
 }: {
   teamId: string;
   members: TeamMemberRow[];
   isArchived: boolean;
   onChanged: () => void;
+  /**
+   * Jumps to the Invites tab — wired by `TeamDetailClient` to switch tabs.
+   * Optional (defaults to a no-op) so this component still renders standalone
+   * in tests/stories without a shell to hand it a real tab switcher.
+   */
+  onInviteInstead?: () => void;
 }) {
   const [showRemoved, setShowRemoved] = useState(false);
+  const [adding, setAdding] = useState(false);
+  const [addEmail, setAddEmail] = useSeededForm(adding ? 'open' : 'closed', () => '');
+  const [addSaving, setAddSaving] = useState(false);
   const [roleFor, setRoleFor] = useState<TeamMemberRow | null>(null);
   const [nextRole, setNextRole] = useState<TeamMemberRole>('MEMBER');
   const [savingRole, setSavingRole] = useState(false);
@@ -154,6 +169,31 @@ export function MembersTab({
       });
     } finally {
       setSavingRole(false);
+    }
+  };
+
+  /**
+   * `POST /:id/members` — adds an EXISTING user immediately (ACTIVE, Pro
+   * now), unlike `inviteTeamMember` which sends an email the person must
+   * accept. 422 for an unknown email, 409 already-active or at-capacity —
+   * every one of those messages names the actual problem, so it is
+   * surfaced verbatim rather than a generic toast.
+   */
+  const doAdd = async () => {
+    const email = addEmail.trim();
+    if (!EMAIL_SHAPE.test(email)) return;
+    setAddSaving(true);
+    try {
+      await addTeamMember(teamId, { email });
+      toast.success(`${email} added to the team — they have Pro now.`);
+      setAdding(false);
+      onChanged();
+    } catch (error) {
+      toast.error('Could not add them', {
+        description: extractErrorMessage(error, 'Unknown error'),
+      });
+    } finally {
+      setAddSaving(false);
     }
   };
 
@@ -288,20 +328,40 @@ export function MembersTab({
 
   return (
     <div className="space-y-3">
-      <div className="flex items-center justify-between">
-        <span className="text-sm font-semibold text-foreground">Members</span>
-        <label
-          htmlFor="show-removed"
-          className="flex items-center gap-2 text-xs text-muted-foreground"
-        >
-          <input
-            id="show-removed"
-            type="checkbox"
-            checked={showRemoved}
-            onChange={(event) => setShowRemoved(event.target.checked)}
-          />
-          Show removed
-        </label>
+      <div className="space-y-2">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <span className="text-sm font-semibold text-foreground">Members</span>
+          <div className="flex items-center gap-3">
+            <label
+              htmlFor="show-removed"
+              className="flex items-center gap-2 text-xs text-muted-foreground"
+            >
+              <input
+                id="show-removed"
+                type="checkbox"
+                checked={showRemoved}
+                onChange={(event) => setShowRemoved(event.target.checked)}
+              />
+              Show removed
+            </label>
+            <Button size="sm" disabled={isArchived} onClick={() => setAdding(true)}>
+              Add member
+            </Button>
+            <button
+              type="button"
+              className="text-xs text-muted-foreground underline-offset-2 hover:underline"
+              onClick={onInviteInstead}
+            >
+              Invite someone instead
+            </button>
+          </div>
+        </div>
+        {/* The whole point of having both: an operator must never have to
+            guess which one does what. */}
+        <p className="text-xs text-muted-foreground">
+          Add puts an existing user on the team right now — they get Pro immediately. Invite emails
+          someone and they join once they accept.
+        </p>
       </div>
 
       <Card className="overflow-hidden p-0">
@@ -337,6 +397,36 @@ export function MembersTab({
             </Button>
             <Button onClick={saveRole} disabled={savingRole}>
               {savingRole ? 'Saving…' : 'Save'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={adding} onOpenChange={(next) => !next && setAdding(false)}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Add an existing member</DialogTitle>
+          </DialogHeader>
+          <p className="text-xs text-muted-foreground">
+            Adds an existing Masteringbackend user to this team right now. They become an ACTIVE
+            member immediately and get Pro access immediately — unlike Invite, which emails them and
+            waits for them to accept.
+          </p>
+          <Field label="Email" htmlFor="add-member-email" required>
+            <Input
+              id="add-member-email"
+              type="email"
+              value={addEmail}
+              onChange={(event) => setAddEmail(event.target.value)}
+              placeholder="name@kuda.com"
+            />
+          </Field>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setAdding(false)} disabled={addSaving}>
+              Cancel
+            </Button>
+            <Button onClick={doAdd} disabled={addSaving || !EMAIL_SHAPE.test(addEmail.trim())}>
+              {addSaving ? 'Adding…' : 'Add'}
             </Button>
           </DialogFooter>
         </DialogContent>

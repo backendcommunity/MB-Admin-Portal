@@ -284,6 +284,7 @@ function TeamDetailClient() {
             members={team.members}
             isArchived={isArchived}
             onChanged={invalidate}
+            onInviteInstead={() => setTab('invites')}
           />
         );
       case 'invites':
@@ -326,6 +327,7 @@ function TeamDetailClient() {
             processor={team.processor}
             subscription={team.subscription}
             seatGap={team.seatGap}
+            comped={team.comped}
             isArchived={isArchived}
             onChanged={invalidate}
           />
