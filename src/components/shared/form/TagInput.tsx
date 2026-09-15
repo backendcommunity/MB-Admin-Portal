@@ -15,6 +15,8 @@ export function TagInput({
   id,
   disabled,
   max = 20,
+  validate,
+  onInvalidEntry,
 }: {
   value: string[];
   onChange: (next: string[]) => void;
@@ -22,6 +24,10 @@ export function TagInput({
   id?: string;
   disabled?: boolean;
   max?: number;
+  /** Optional per-entry shape check (e.g. email format). Rejected entries never become chips. */
+  validate?: (entry: string) => boolean;
+  /** Called with the raw entry when `validate` rejects it, so the caller can surface why. */
+  onInvalidEntry?: (entry: string) => void;
 }) {
   const [draft, setDraft] = useState('');
 
@@ -31,6 +37,10 @@ export function TagInput({
     if (value.length >= max) return;
     if (value.some((existing) => existing.toLowerCase() === entry.toLowerCase())) {
       setDraft('');
+      return;
+    }
+    if (validate && !validate(entry)) {
+      onInvalidEntry?.(entry);
       return;
     }
     onChange([...value, entry]);

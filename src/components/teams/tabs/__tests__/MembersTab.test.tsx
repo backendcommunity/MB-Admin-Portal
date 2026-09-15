@@ -69,9 +69,15 @@ function wrap(ui: React.ReactNode) {
   return render(<QueryClientProvider client={qc}>{ui}</QueryClientProvider>);
 }
 
-function setup(onChanged = vi.fn()) {
+function setup(onChanged = vi.fn(), hasSubscription = false) {
   return wrap(
-    <MembersTab teamId="tm1" members={members} isArchived={false} onChanged={onChanged} />,
+    <MembersTab
+      teamId="tm1"
+      members={members}
+      isArchived={false}
+      hasSubscription={hasSubscription}
+      onChanged={onChanged}
+    />,
   );
 }
 
@@ -257,41 +263,75 @@ describe('MembersTab', () => {
 
     it('adding a member calls addTeamMember with the email and refreshes', async () => {
       const onChanged = vi.fn();
-      vi.mocked(addTeamMember).mockResolvedValue({
-        id: 'mem9',
-        teamId: 'tm1',
-        userId: 'u9',
-        role: 'MEMBER',
-        status: 'ACTIVE',
-        joinedAt: '2026-09-15T00:00:00.000Z',
-        removedAt: null,
-      });
+      vi.mocked(addTeamMember).mockResolvedValue([
+        { email: 'new@kuda.com', status: 'added', memberId: 'mem9' },
+      ]);
       setup(onChanged);
 
       await userEvent.click(screen.getByRole('button', { name: /add member/i }));
-      await userEvent.type(screen.getByLabelText(/email/i), 'new@kuda.com');
+      await userEvent.type(screen.getByLabelText(/emails/i), 'new@kuda.com{Enter}');
       await userEvent.click(screen.getByRole('button', { name: /^add$/i }));
 
-      expect(addTeamMember).toHaveBeenCalledWith('tm1', { email: 'new@kuda.com' });
+      expect(addTeamMember).toHaveBeenCalledWith('tm1', { emails: ['new@kuda.com'] });
       expect(onChanged).toHaveBeenCalled();
     });
 
-    it('renders the API 422 message verbatim for an unknown email', async () => {
-      const serverMessage =
-        'No user with that email exists. Create the user first, then add them to the team.';
-      vi.mocked(addTeamMember).mockRejectedValue({
-        response: { data: { message: serverMessage } },
-      });
+    it('accepts several emails as chips and sends them all in one call', async () => {
+      const onChanged = vi.fn();
+      vi.mocked(addTeamMember).mockResolvedValue([
+        { email: 'a@kuda.com', status: 'added', memberId: 'm1' },
+        { email: 'b@kuda.com', status: 'added', memberId: 'm2' },
+      ]);
+      setup(onChanged);
+
+      await userEvent.click(screen.getByRole('button', { name: /add member/i }));
+      const input = screen.getByLabelText(/emails/i);
+      await userEvent.type(input, 'a@kuda.com{Enter}');
+      await userEvent.type(input, 'b@kuda.com{Enter}');
+      await userEvent.click(screen.getByRole('button', { name: /^add 2$/i }));
+
+      expect(addTeamMember).toHaveBeenCalledWith('tm1', { emails: ['a@kuda.com', 'b@kuda.com'] });
+      expect(onChanged).toHaveBeenCalled();
+    });
+
+    it('rejects a malformed entry as a chip instead of sending it', async () => {
       setup();
 
       await userEvent.click(screen.getByRole('button', { name: /add member/i }));
-      await userEvent.type(screen.getByLabelText(/email/i), 'ghost@kuda.com');
-      await userEvent.click(screen.getByRole('button', { name: /^add$/i }));
+      const input = screen.getByLabelText(/emails/i);
+      await userEvent.type(input, 'not-an-email{Enter}');
 
       expect(toast.error).toHaveBeenCalledWith(
-        expect.any(String),
-        expect.objectContaining({ description: serverMessage }),
+        expect.stringContaining('not-an-email'),
+        expect.anything(),
       );
+      expect(screen.getByRole('button', { name: /^add$/i })).toBeDisabled();
+    });
+
+    it('reports a per-email failure without blocking the emails that succeeded', async () => {
+      vi.mocked(addTeamMember).mockResolvedValue([
+        { email: 'new@kuda.com', status: 'added', memberId: 'mem9' },
+        { email: 'ghost@kuda.com', status: 'unknown-user' },
+      ]);
+      setup();
+
+      await userEvent.click(screen.getByRole('button', { name: /add member/i }));
+      const input = screen.getByLabelText(/emails/i);
+      await userEvent.type(input, 'new@kuda.com{Enter}');
+      await userEvent.type(input, 'ghost@kuda.com{Enter}');
+      await userEvent.click(screen.getByRole('button', { name: /^add 2$/i }));
+
+      expect(toast.success).toHaveBeenCalledWith(expect.stringContaining('new@kuda.com'));
+      expect(toast.error).toHaveBeenCalledWith(
+        expect.stringContaining('ghost@kuda.com'),
+        expect.objectContaining({ description: expect.stringContaining('no account') }),
+      );
+    });
+
+    it('disables Add member when a subscription is attached, pointing at Invite instead', () => {
+      setup(vi.fn(), true);
+      expect(screen.getByRole('button', { name: /add member/i })).toBeDisabled();
+      expect(screen.getByText(/subscription attached/i)).toBeInTheDocument();
     });
   });
 });
