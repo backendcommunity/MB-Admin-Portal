@@ -227,36 +227,22 @@ export async function removeTeamMember(teamId: string, memberId: string) {
   return res.data.data;
 }
 
-/**
- * The raw `TeamMember` row `POST /:id/members` responds with —
- * `prisma.teamMember.create`/`.update` output directly, NOT joined to
- * `user` the way `TeamMemberRow` (the roster shape from `GET /:id`) is. A
- * caller reading `.user.name`/`.user.email` off this result would get
- * `undefined`: refetch the team detail (this file's usual `onChanged`/
- * invalidate pattern) to get the joined row with a name and email.
- */
-export type AddedTeamMember = {
-  id: string;
-  teamId: string;
-  userId: string;
-  role: string;
-  status: string;
-  joinedAt: string;
-  removedAt: string | null;
+export type AddTeamMemberResult = {
+  email: string;
+  status: 'added' | 'reactivated' | 'already-member' | 'unknown-user' | 'at-capacity';
+  memberId?: string;
 };
 
 /**
- * `POST /:id/members` — add an EXISTING user to the team directly. They are
- * ACTIVE immediately and become Pro immediately (subject to the team's
+ * `POST /:id/members` — batch-add EXISTING users to the team directly. Each
+ * is ACTIVE immediately and becomes Pro immediately (subject to the team's
  * capacity/comp rules), unlike `inviteTeamMember`, which waits for the
- * invitee to accept. 422 for an unknown email, 409 if already an active
- * member, 409 at capacity on a processor-backed team (no charge is ever
- * made on this route — that belongs to the invite flow). Surface
- * `error.response.data.message` verbatim in every case; each names the
- * actual problem.
+ * invitee to accept. One bad address never fails the whole call — the
+ * response is one result per email, in the same order, each tagged with its
+ * own outcome instead of a single thrown error.
  */
-export async function addTeamMember(teamId: string, input: { email: string }) {
-  const res = await axiosInstance.post<{ success: boolean; data: AddedTeamMember }>(
+export async function addTeamMember(teamId: string, input: { emails: string[] }) {
+  const res = await axiosInstance.post<{ success: boolean; data: AddTeamMemberResult[] }>(
     `/admin/teams/${teamId}/members`,
     input,
   );

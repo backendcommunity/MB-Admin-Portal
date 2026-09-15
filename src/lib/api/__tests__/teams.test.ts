@@ -488,21 +488,17 @@ describe('isEntitlingSubscriptionStatus', () => {
 });
 
 describe('add member', () => {
-  it('adds an existing user via POST /admin/teams/:id/members with {email} and unwraps the raw TeamMember row — no `user` join on this response', async () => {
-    const member = {
-      id: 'mem9',
-      teamId: 'tm1',
-      userId: 'u9',
-      role: 'MEMBER',
-      status: 'ACTIVE',
-      joinedAt: '2026-09-15T00:00:00.000Z',
-      removedAt: null,
-    };
-    post.mockResolvedValueOnce({ data: { success: true, data: member } });
-    const result = await addTeamMember('tm1', { email: 'new@kuda.com' });
-    expect(post).toHaveBeenCalledWith('/admin/teams/tm1/members', { email: 'new@kuda.com' });
-    expect(result).toEqual(member);
-    expect(result).not.toHaveProperty('user');
+  it('adds one or more existing users via POST /admin/teams/:id/members with {emails} and returns a per-email result array', async () => {
+    const results = [
+      { email: 'new@kuda.com', status: 'added', memberId: 'mem9' },
+      { email: 'ghost@kuda.com', status: 'unknown-user' },
+    ];
+    post.mockResolvedValueOnce({ data: { success: true, data: results } });
+    const result = await addTeamMember('tm1', { emails: ['new@kuda.com', 'ghost@kuda.com'] });
+    expect(post).toHaveBeenCalledWith('/admin/teams/tm1/members', {
+      emails: ['new@kuda.com', 'ghost@kuda.com'],
+    });
+    expect(result).toEqual(results);
   });
 });
 
