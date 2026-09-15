@@ -117,6 +117,18 @@ describe('TeamsTable', () => {
     expect(screen.queryAllByText(/no subscription/i)).toHaveLength(0);
   });
 
+  it('sends processor=COMPED when the Comped filter option is selected', async () => {
+    wrap(<TeamsTable />);
+    await screen.findAllByText('Kuda Engineering');
+    await userEvent.click(screen.getByLabelText(/filter by processor/i));
+    await userEvent.click((await screen.findAllByText(/comped/i))[0]);
+    await waitFor(() =>
+      expect(vi.mocked(fetchTeams)).toHaveBeenCalledWith(
+        expect.objectContaining({ processor: 'COMPED' }),
+      ),
+    );
+  });
+
   it('still renders "No subscription" for an uncomped team with no processor', async () => {
     vi.mocked(fetchTeams).mockResolvedValue({
       teams: [row({ processor: null, subscriptionStatus: null, comped: false })],
