@@ -50,18 +50,22 @@ describe('NewTeamClient', () => {
     expect(screen.getByLabelText(/paid seats/i)).toBeDisabled();
   });
 
-  it('omits seats from the payload when no subscription is chosen', async () => {
+  it('omits seats from the payload when no subscription is chosen, but includes the default comped grant', async () => {
     wrap(<NewTeamClient />);
     await userEvent.type(screen.getByLabelText(/team name/i), 'Kuda');
     await userEvent.type(screen.getByLabelText(/owner email/i), 'a@kuda.com');
     await userEvent.click(screen.getByRole('button', { name: /create team/i }));
-    expect(vi.mocked(createTeam)).toHaveBeenCalledWith({ name: 'Kuda', ownerEmail: 'a@kuda.com' });
+    expect(vi.mocked(createTeam)).toHaveBeenCalledWith({
+      name: 'Kuda',
+      ownerEmail: 'a@kuda.com',
+      comped: true,
+    });
   });
 
-  it('shows the no-Pro-access warning for the default "no subscription yet" choice, and submits neither subscriptionId nor seats', async () => {
+  it('defaults to comped Pro access for the "no subscription yet" choice, and submits neither subscriptionId nor seats', async () => {
     wrap(<NewTeamClient />);
     expect(screen.getByRole('radio', { name: /no subscription yet/i })).toBeChecked();
-    expect(screen.getByText(/no pro access/i)).toBeInTheDocument();
+    expect(screen.getByRole('checkbox', { name: /grant pro/i })).toBeChecked();
 
     await userEvent.type(screen.getByLabelText(/team name/i), 'Kuda');
     await userEvent.type(screen.getByLabelText(/owner email/i), 'a@kuda.com');
@@ -70,7 +74,59 @@ describe('NewTeamClient', () => {
     const payload = vi.mocked(createTeam).mock.calls[0][0];
     expect(payload).not.toHaveProperty('subscriptionId');
     expect(payload).not.toHaveProperty('seats');
+    expect(payload).toHaveProperty('comped', true);
     expect(recordManualTeamPayment).not.toHaveBeenCalled();
+  });
+
+  describe('comp checkbox on the "no subscription yet" branch', () => {
+    it('is visible and pre-ticked by default, with copy saying members get Pro immediately', async () => {
+      wrap(<NewTeamClient />);
+      const checkbox = screen.getByRole('checkbox', { name: /grant pro/i });
+      expect(checkbox).toBeChecked();
+      expect(screen.getByText(/every member added will have pro immediately/i)).toBeInTheDocument();
+    });
+
+    it('is absent on the "paid manually" branch', async () => {
+      wrap(<NewTeamClient />);
+      await userEvent.click(screen.getByRole('radio', { name: /paid manually/i }));
+      expect(screen.queryByRole('checkbox', { name: /grant pro/i })).not.toBeInTheDocument();
+    });
+
+    it('is absent on the "attach an existing subscription" branch', async () => {
+      wrap(<NewTeamClient />);
+      await userEvent.click(
+        screen.getByRole('radio', { name: /attach an existing subscription/i }),
+      );
+      expect(screen.queryByRole('checkbox', { name: /grant pro/i })).not.toBeInTheDocument();
+    });
+
+    it('sends comped:true by default', async () => {
+      wrap(<NewTeamClient />);
+      await userEvent.type(screen.getByLabelText(/team name/i), 'Kuda');
+      await userEvent.type(screen.getByLabelText(/owner email/i), 'a@kuda.com');
+      await userEvent.click(screen.getByRole('button', { name: /create team/i }));
+      expect(vi.mocked(createTeam)).toHaveBeenCalledWith(expect.objectContaining({ comped: true }));
+    });
+
+    it('unticking sends comped:false and switches the copy to the no-Pro warning', async () => {
+      wrap(<NewTeamClient />);
+      const checkbox = screen.getByRole('checkbox', { name: /grant pro/i });
+      await userEvent.click(checkbox);
+      expect(checkbox).not.toBeChecked();
+      expect(
+        screen.getByText(
+          /members will have no pro access until billing is attached or the team is comped/i,
+        ),
+      ).toBeInTheDocument();
+
+      await userEvent.type(screen.getByLabelText(/team name/i), 'Kuda');
+      await userEvent.type(screen.getByLabelText(/owner email/i), 'a@kuda.com');
+      await userEvent.click(screen.getByRole('button', { name: /create team/i }));
+
+      expect(vi.mocked(createTeam)).toHaveBeenCalledWith(
+        expect.objectContaining({ comped: false }),
+      );
+    });
   });
 
   it('choosing "paid manually" reveals seats/expiry, defaults expiry to a year out, and submits them via recordManualTeamPayment', async () => {

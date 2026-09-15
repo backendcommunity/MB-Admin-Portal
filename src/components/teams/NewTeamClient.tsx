@@ -19,6 +19,12 @@ type TeamDraft = {
   name: string;
   ownerEmail: string;
   billing: BillingChoice;
+  // "No subscription yet" only — whether to comp the team on creation.
+  // Pre-ticked: the only reason staff make a subscription-less team is to
+  // provision a comped one, so that is the default. See `comped` on
+  // `CreateTeamInput` and `ValidateCreateTeam` (academy
+  // `modules/admin/validators/teams.ts`).
+  comp: boolean;
   // "Attach an existing subscription"
   subscriptionId: string;
   existingSeats: string;
@@ -40,6 +46,7 @@ const emptyDraft = (): TeamDraft => ({
   name: '',
   ownerEmail: '',
   billing: 'none',
+  comp: true,
   subscriptionId: '',
   existingSeats: '',
   manualSeats: '',
@@ -106,6 +113,11 @@ export default function NewTeamClient() {
       if (form.billing === 'existing' && form.subscriptionId) {
         payload.subscriptionId = form.subscriptionId;
         if (form.existingSeats) payload.seats = Number(form.existingSeats);
+      }
+      // Comp only applies with no subscription attached — billing governs
+      // on the other two branches, so `comped` is never sent there.
+      if (form.billing === 'none') {
+        payload.comped = form.comp;
       }
 
       const created = await createTeam(payload);
@@ -205,12 +217,33 @@ export default function NewTeamClient() {
               <span>
                 <span className="block text-sm font-medium">No subscription yet</span>
                 <span className="block text-xs text-muted-foreground">
-                  No Pro access for anyone on this team until a subscription is attached or a manual
-                  payment is recorded. This is the default — nothing is billed and nobody is
-                  unlocked.
+                  No subscription is created. Whether anyone gets Pro access depends on the comp
+                  option below.
                 </span>
               </span>
             </label>
+
+            {form.billing === 'none' ? (
+              <label className="ml-8 flex items-start gap-3 rounded-lg border border-dashed border-border p-3 cursor-pointer">
+                <input
+                  type="checkbox"
+                  className="mt-1"
+                  checked={form.comp}
+                  onChange={(e) => set('comp', e.target.checked)}
+                  aria-label="Grant Pro to members now (comp the team)"
+                />
+                <span>
+                  <span className="block text-sm font-medium">
+                    Grant Pro to members now (comp the team)
+                  </span>
+                  <span className="block text-xs text-muted-foreground">
+                    {form.comp
+                      ? 'Every member added will have Pro immediately, at no charge, until this is un-comped or a subscription is attached.'
+                      : 'Members will have NO Pro access until billing is attached or the team is comped later — this team will look normal but entitle nobody.'}
+                  </span>
+                </span>
+              </label>
+            ) : null}
 
             <label className={radioOption(form.billing === 'manual')}>
               <input

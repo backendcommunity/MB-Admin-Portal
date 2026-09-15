@@ -116,6 +116,13 @@ export type CreateTeamInput = {
   ownerEmail: string;
   subscriptionId?: string;
   seats?: number;
+  /**
+   * Only meaningful with no `subscriptionId` — comps the team on creation.
+   * `ValidateCreateTeam` (academy `modules/admin/validators/teams.ts`)
+   * defaults this to `true` server-side when omitted and no subscription is
+   * attached, so it need only be sent to override that default.
+   */
+  comped?: boolean;
 };
 
 type Paged<T> = { teams: T[]; total: number; page: number; limit: number };
