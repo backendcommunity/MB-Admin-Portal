@@ -1,9 +1,14 @@
 /**
- * Archive/restore (POST /admin/teams/:id/archive, /restore) are
- * `requireSuperAdmin` on the API. An ADMIN must not see an enabled control
- * that only ends in a 403 after they've typed the team name to confirm —
- * the button should be disabled (with a reason), same as other
- * `SuperAdminOnly` controls in the console.
+ * Archive/restore (POST /admin/teams/:id/archive, /restore) moved from
+ * `requireSuperAdmin` to `requireStrictAdmin` on the API (no SUPER_ADMIN
+ * account exists in the database, so the super-admin tier made both
+ * unreachable by anyone; the owner decided requireStrictAdmin — ADMIN or
+ * SUPER_ADMIN — instead). The `SuperAdminOnly` wrapper that used to disable
+ * these controls for an ADMIN is gone: the whole `/teams/[id]` page is
+ * already gated to ADMIN/SUPER_ADMIN by `ProtectedPage` (instructors never
+ * reach it), so both roles should see the controls enabled. The
+ * type-to-confirm on archive is unaffected by any of this — it stays a
+ * separate safety gate, not a role gate.
  */
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
@@ -62,12 +67,12 @@ beforeEach(() => {
   vi.mocked(fetchTeam).mockResolvedValue(detail() as never);
 });
 
-describe('TeamDetailClient — archive/restore role gate', () => {
-  it('disables Archive team for an ADMIN', async () => {
+describe('TeamDetailClient — archive/restore, no role gate below the page boundary', () => {
+  it('leaves Archive team enabled for an ADMIN', async () => {
     asRole('ADMIN');
     wrap(<TeamDetailClient />);
     const archiveButton = await screen.findByRole('button', { name: /archive team/i });
-    expect(archiveButton).toBeDisabled();
+    expect(archiveButton).toBeEnabled();
   });
 
   it('leaves Archive team enabled for a SUPER_ADMIN', async () => {
@@ -77,14 +82,14 @@ describe('TeamDetailClient — archive/restore role gate', () => {
     expect(archiveButton).toBeEnabled();
   });
 
-  it('disables Restore for an ADMIN on an archived team', async () => {
+  it('leaves Restore enabled for an ADMIN on an archived team', async () => {
     asRole('ADMIN');
     vi.mocked(fetchTeam).mockResolvedValue(
       detail({ archivedAt: '2026-09-01T00:00:00.000Z' }) as never,
     );
     wrap(<TeamDetailClient />);
     const restoreButton = await screen.findByRole('button', { name: /restore/i });
-    expect(restoreButton).toBeDisabled();
+    expect(restoreButton).toBeEnabled();
   });
 
   it('leaves Restore enabled for a SUPER_ADMIN on an archived team', async () => {

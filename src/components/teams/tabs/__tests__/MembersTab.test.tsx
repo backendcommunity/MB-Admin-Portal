@@ -11,9 +11,11 @@ import {
   removeTeamMember,
   fetchTeamProgress,
   fetchTeamMemberProgress,
+  addTeamMember,
 } from '@/lib/api/teams';
 import { MembersTab } from '@/components/teams/tabs/MembersTab';
 import type { TeamMemberRow, TeamProgressRow } from '@/lib/api/teams';
+import { toast } from 'sonner';
 
 const members: TeamMemberRow[] = [
   {
@@ -83,6 +85,9 @@ beforeEach(() => {
   // settle marker for userEvent interactions that follow).
   vi.mocked(fetchTeamProgress).mockResolvedValue(progressRows);
   vi.mocked(fetchTeamMemberProgress).mockReset();
+  vi.mocked(addTeamMember).mockReset();
+  vi.mocked(toast.error).mockReset();
+  vi.mocked(toast.success).mockReset();
 });
 
 describe('MembersTab', () => {
@@ -236,6 +241,57 @@ describe('MembersTab', () => {
       expect(screen.getByText('Backend path')).toBeInTheDocument();
       expect(screen.getByText('2 of 5 items')).toBeInTheDocument();
       expect(screen.queryByText('[object Object]')).not.toBeInTheDocument();
+    });
+  });
+
+  describe('Add member — distinct from Invite', () => {
+    it('renders Add member beside an Invite affordance that describes a different action', () => {
+      setup();
+      expect(screen.getByRole('button', { name: /add member/i })).toBeInTheDocument();
+      // The Invite alternative is surfaced right beside it, and the copy
+      // spells out the actual difference so an operator never has to guess.
+      expect(screen.getByText(/invite someone instead/i)).toBeInTheDocument();
+      expect(screen.getByText(/get.*pro immediately/i)).toBeInTheDocument();
+      expect(screen.getByText(/invite.*join once they accept/i)).toBeInTheDocument();
+    });
+
+    it('adding a member calls addTeamMember with the email and refreshes', async () => {
+      const onChanged = vi.fn();
+      vi.mocked(addTeamMember).mockResolvedValue({
+        id: 'mem9',
+        teamId: 'tm1',
+        userId: 'u9',
+        role: 'MEMBER',
+        status: 'ACTIVE',
+        joinedAt: '2026-09-15T00:00:00.000Z',
+        removedAt: null,
+      });
+      setup(onChanged);
+
+      await userEvent.click(screen.getByRole('button', { name: /add member/i }));
+      await userEvent.type(screen.getByLabelText(/email/i), 'new@kuda.com');
+      await userEvent.click(screen.getByRole('button', { name: /^add$/i }));
+
+      expect(addTeamMember).toHaveBeenCalledWith('tm1', { email: 'new@kuda.com' });
+      expect(onChanged).toHaveBeenCalled();
+    });
+
+    it('renders the API 422 message verbatim for an unknown email', async () => {
+      const serverMessage =
+        'No user with that email exists. Create the user first, then add them to the team.';
+      vi.mocked(addTeamMember).mockRejectedValue({
+        response: { data: { message: serverMessage } },
+      });
+      setup();
+
+      await userEvent.click(screen.getByRole('button', { name: /add member/i }));
+      await userEvent.type(screen.getByLabelText(/email/i), 'ghost@kuda.com');
+      await userEvent.click(screen.getByRole('button', { name: /^add$/i }));
+
+      expect(toast.error).toHaveBeenCalledWith(
+        expect.any(String),
+        expect.objectContaining({ description: serverMessage }),
+      );
     });
   });
 });

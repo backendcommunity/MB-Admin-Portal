@@ -36,13 +36,31 @@ const PAGE = 25;
 // (see the admin teams router). "ALL" is the portal-local sentinel for
 // "no filter" and is stripped before the request goes out.
 const STATUSES = ['active', 'past_due', 'paused', 'canceled', 'archived'] as const;
-const PROCESSORS = ['PADDLE', 'ASYNCPAY', 'STRIPE', 'PAYSTACK', 'MANUAL', 'NONE'] as const;
+const PROCESSORS = [
+  'PADDLE',
+  'ASYNCPAY',
+  'STRIPE',
+  'PAYSTACK',
+  'MANUAL',
+  'NONE',
+  'COMPED',
+] as const;
 const SEAT_STATES = ['mismatch'] as const;
 
 /** `MANUAL` (a real subscription with no payment channel — paid by bank
  * transfer, see `TeamProcessor`) reads better than the raw enum value. */
 function processorLabel(processor: TeamSummary['processor']): string {
   return processor === 'MANUAL' ? 'Paid manually' : (processor ?? '');
+}
+
+/** The processor filter dropdown mixes payment processors (PADDLE, MANUAL,
+ * …) with billing states (NONE, COMPED) — `admin/teams.ts`'s `GET /` maps
+ * `processor=COMPED` to `where.comped = true`, disjoint from `NONE`. Label
+ * the two billing-state options so they read as states, not a processor. */
+function filterOptionLabel(option: string): string {
+  if (option === 'NONE') return 'No subscription';
+  if (option === 'COMPED') return 'Comped';
+  return option;
 }
 
 function TeamsTable() {
@@ -98,8 +116,29 @@ function TeamsTable() {
       {
         id: 'subscription',
         header: 'Subscription',
-        cell: ({ row }) =>
-          row.original.processor ? (
+        cell: ({ row }) => {
+          // Comped is checked FIRST: a comped team grants Pro to every
+          // active member independent of any subscription (`teamRow`'s
+          // `comped` field, academy `modules/admin/helpers/team-shape.ts`),
+          // and — before this — rendered identically to a team funding
+          // nothing at all. That collision is exactly what this branch
+          // fixes: a comped team must never read as "No subscription".
+          if (row.original.comped) {
+            return (
+              <div>
+                <StatusBadge tone="info" label="Comped" />
+                {row.original.processor ? (
+                  <div className="mt-1 text-xs text-muted-foreground">
+                    Also has a {processorLabel(row.original.processor)} subscription (
+                    {row.original.subscriptionStatus ?? '—'})
+                  </div>
+                ) : (
+                  <div className="mt-1 text-xs text-muted-foreground">Staff-granted Pro</div>
+                )}
+              </div>
+            );
+          }
+          return row.original.processor ? (
             <div>
               <div>{row.original.subscriptionStatus ?? '—'}</div>
               <div className="text-xs text-muted-foreground">
@@ -108,7 +147,8 @@ function TeamsTable() {
             </div>
           ) : (
             <span className="text-muted-foreground">No subscription</span>
-          ),
+          );
+        },
       },
       {
         id: 'seats',
@@ -189,7 +229,7 @@ function TeamsTable() {
         <SelectItem value="ALL">{allLabel}</SelectItem>
         {options.map((option) => (
           <SelectItem key={option} value={option}>
-            {option}
+            {filterOptionLabel(option)}
           </SelectItem>
         ))}
       </SelectContent>

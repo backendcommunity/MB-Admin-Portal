@@ -25,6 +25,7 @@ const row = (over = {}) => ({
     available: 2,
   },
   seatGap: null,
+  comped: false,
   archivedAt: null,
   createdAt: '2026-03-14T00:00:00.000Z',
   ...over,
@@ -93,5 +94,51 @@ describe('TeamsTable', () => {
     await screen.findAllByText('Kuda Engineering');
     await userEvent.click(screen.getByLabelText(/filter by processor/i));
     expect((await screen.findAllByText('MANUAL')).length).toBeGreaterThan(0);
+  });
+
+  it('shows a comped row as Comped — distinct from a plain no-subscription row', async () => {
+    vi.mocked(fetchTeams).mockResolvedValue({
+      teams: [
+        row({
+          id: 'tm1',
+          name: 'Comped Co',
+          processor: null,
+          subscriptionStatus: null,
+          comped: true,
+        }),
+      ],
+      total: 1,
+      page: 1,
+      limit: 25,
+    });
+    wrap(<TeamsTable />);
+
+    expect((await screen.findAllByText(/comped/i)).length).toBeGreaterThan(0);
+    expect(screen.queryAllByText(/no subscription/i)).toHaveLength(0);
+  });
+
+  it('sends processor=COMPED when the Comped filter option is selected', async () => {
+    wrap(<TeamsTable />);
+    await screen.findAllByText('Kuda Engineering');
+    await userEvent.click(screen.getByLabelText(/filter by processor/i));
+    await userEvent.click((await screen.findAllByText(/comped/i))[0]);
+    await waitFor(() =>
+      expect(vi.mocked(fetchTeams)).toHaveBeenCalledWith(
+        expect.objectContaining({ processor: 'COMPED' }),
+      ),
+    );
+  });
+
+  it('still renders "No subscription" for an uncomped team with no processor', async () => {
+    vi.mocked(fetchTeams).mockResolvedValue({
+      teams: [row({ processor: null, subscriptionStatus: null, comped: false })],
+      total: 1,
+      page: 1,
+      limit: 25,
+    });
+    wrap(<TeamsTable />);
+
+    expect((await screen.findAllByText(/no subscription/i)).length).toBeGreaterThan(0);
+    expect(screen.queryAllByText(/comped/i)).toHaveLength(0);
   });
 });
