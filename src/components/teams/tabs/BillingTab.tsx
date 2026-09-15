@@ -19,7 +19,6 @@ import { Section, Field, FieldGrid } from '@/components/shared/form/Section';
 import { Card } from '@/components/ui/card';
 import { DataTable } from '@/components/shared/DataTable';
 import { StatusBadge } from '@/components/shared/StatusBadge';
-import { SuperAdminOnly } from '@/components/shared/SuperAdminOnly';
 import { LoadingState, ErrorState } from '@/components/shared/LoadingState';
 import ConfirmDelete from '@/components/users/ConfirmDelete';
 import { useSeededForm } from '@/lib/forms/useSeededForm';
@@ -91,10 +90,13 @@ function summariseChange(entry: TeamAuditLogEntry): string {
 
 /**
  * Subscription card (attach/detach/seat-adjust), the seat-gap alert, and
- * change history. Detach is `SuperAdminOnly` because `DELETE
- * /:id/subscription` is `requireSuperAdmin` on the API — it revokes
- * entitlement for every active member at once, the same blast radius as
- * archive/restore on `TeamDetailClient`.
+ * change history. Detach carries no role wrapper of its own: `DELETE
+ * /:id/subscription` is `requireStrictAdmin` on the API (ADMIN or
+ * SUPER_ADMIN, instructors excluded), and this whole page is already gated
+ * to ADMIN/SUPER_ADMIN by `ProtectedPage`. It still revokes entitlement for
+ * every active member at once — the same blast radius as archive/restore on
+ * `TeamDetailClient` — which is why the confirm-before-detach dialog below
+ * stays exactly as it is; that's the safety gate, not the role tier.
  *
  * `Team.reportedSeatGap` (`seatGap` here) is HEADROOM (`seats - used`), never
  * an error — the nightly `reconcileTeamSeats` cron that writes it says so
@@ -516,16 +518,14 @@ export function BillingTab({
               >
                 Adjust seats
               </Button>
-              <SuperAdminOnly reason="Forbidden: super admin access required">
-                <Button
-                  size="sm"
-                  variant="destructive"
-                  disabled={isArchived || detaching}
-                  onClick={() => setDetachOpen(true)}
-                >
-                  {detaching ? 'Detaching…' : 'Detach'}
-                </Button>
-              </SuperAdminOnly>
+              <Button
+                size="sm"
+                variant="destructive"
+                disabled={isArchived || detaching}
+                onClick={() => setDetachOpen(true)}
+              >
+                {detaching ? 'Detaching…' : 'Detach'}
+              </Button>
             </>
           ) : (
             <>

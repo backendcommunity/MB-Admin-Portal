@@ -135,12 +135,19 @@ describe('BillingTab — seat-gap panel', () => {
   });
 });
 
-describe('BillingTab — Detach, SuperAdminOnly', () => {
-  it('disables Detach for an ADMIN', async () => {
+// Detach moved from requireSuperAdmin to requireStrictAdmin on the API (no
+// SUPER_ADMIN account exists in the database, so the super-admin tier made
+// it unreachable by anyone). The SuperAdminOnly wrapper that used to disable
+// this control for an ADMIN is gone: the whole /teams/[id] page is already
+// gated to ADMIN/SUPER_ADMIN by ProtectedPage, so both roles should see it
+// enabled. The confirm-before-detach dialog is unaffected — a role gate and
+// a safety gate are different things.
+describe('BillingTab — Detach, requireStrictAdmin', () => {
+  it('leaves Detach enabled for an ADMIN', async () => {
     useAuthStore.setState({ userRole: 'ADMIN' as never, authResolved: true });
     setup();
     const detachButton = await screen.findByRole('button', { name: /detach/i });
-    expect(detachButton).toBeDisabled();
+    expect(detachButton).toBeEnabled();
   });
 
   it('leaves Detach enabled for a SUPER_ADMIN', async () => {
