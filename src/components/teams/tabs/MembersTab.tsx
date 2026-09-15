@@ -7,7 +7,7 @@ import { toast } from 'sonner';
 
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
-import { Input } from '@/components/ui/input';
+import { TagInput } from '@/components/shared/form/TagInput';
 import {
   Dialog,
   DialogContent,
@@ -75,12 +75,20 @@ export function MembersTab({
   teamId,
   members,
   isArchived,
+  hasSubscription,
   onChanged,
   onInviteInstead = () => {},
 }: {
   teamId: string;
   members: TeamMemberRow[];
   isArchived: boolean;
+  /**
+   * True once ANY subscription (processor-backed or manual) is attached.
+   * Direct add has no capacity/billing gate of its own — that logic lives on
+   * the invite flow — so once a team is on a plan, Add is disabled and staff
+   * are pointed at Invite instead.
+   */
+  hasSubscription: boolean;
   onChanged: () => void;
   /**
    * Jumps to the Invites tab — wired by `TeamDetailClient` to switch tabs.
@@ -91,7 +99,7 @@ export function MembersTab({
 }) {
   const [showRemoved, setShowRemoved] = useState(false);
   const [adding, setAdding] = useState(false);
-  const [addEmail, setAddEmail] = useSeededForm(adding ? 'open' : 'closed', () => '');
+  const [addEmails, setAddEmails] = useSeededForm(adding ? 'open' : 'closed', () => [] as string[]);
   const [addSaving, setAddSaving] = useState(false);
   const [roleFor, setRoleFor] = useState<TeamMemberRow | null>(null);
   const [nextRole, setNextRole] = useState<TeamMemberRole>('MEMBER');
@@ -173,19 +181,35 @@ export function MembersTab({
   };
 
   /**
-   * `POST /:id/members` — adds an EXISTING user immediately (ACTIVE, Pro
-   * now), unlike `inviteTeamMember` which sends an email the person must
-   * accept. 422 for an unknown email, 409 already-active or at-capacity —
-   * every one of those messages names the actual problem, so it is
-   * surfaced verbatim rather than a generic toast.
+   * `POST /:id/members` — adds one or more EXISTING users immediately
+   * (ACTIVE, Pro now), unlike `inviteTeamMember` which sends an email the
+   * person must accept. One bad address never fails the batch: the response
+   * is a per-email outcome, summarized into a single toast rather than
+   * surfaced as one pass/fail.
    */
   const doAdd = async () => {
-    const email = addEmail.trim();
-    if (!EMAIL_SHAPE.test(email)) return;
+    if (!addEmails.length) return;
     setAddSaving(true);
     try {
-      await addTeamMember(teamId, { email });
-      toast.success(`${email} added to the team — they have Pro now.`);
+      const results = await addTeamMember(teamId, { emails: addEmails });
+      const added = results.filter((r) => r.status === 'added' || r.status === 'reactivated');
+      const failed = results.filter((r) => r.status !== 'added' && r.status !== 'reactivated');
+      if (added.length) {
+        toast.success(
+          added.length === 1
+            ? `${added[0].email} added to the team — they have Pro now.`
+            : `${added.length} people added to the team — they have Pro now.`,
+        );
+      }
+      failed.forEach((r) => {
+        const reason =
+          r.status === 'unknown-user'
+            ? 'no account with that email'
+            : r.status === 'already-member'
+              ? 'already a member'
+              : 'team is at capacity';
+        toast.error(`Could not add ${r.email}`, { description: reason });
+      });
       setAdding(false);
       onChanged();
     } catch (error) {
@@ -344,7 +368,11 @@ export function MembersTab({
               />
               Show removed
             </label>
-            <Button size="sm" disabled={isArchived} onClick={() => setAdding(true)}>
+            <Button
+              size="sm"
+              disabled={isArchived || hasSubscription}
+              onClick={() => setAdding(true)}
+            >
               Add member
             </Button>
             <button
@@ -359,8 +387,9 @@ export function MembersTab({
         {/* The whole point of having both: an operator must never have to
             guess which one does what. */}
         <p className="text-xs text-muted-foreground">
-          Add puts an existing user on the team right now — they get Pro immediately. Invite emails
-          someone and they join once they accept.
+          {hasSubscription
+            ? 'This team has a subscription attached, so capacity and billing are handled by Invite — use "Invite someone instead" to add people.'
+            : 'Add puts an existing user on the team right now — they get Pro immediately. Invite emails someone and they join once they accept.'}
         </p>
       </div>
 
@@ -412,21 +441,28 @@ export function MembersTab({
             member immediately and get Pro access immediately — unlike Invite, which emails them and
             waits for them to accept.
           </p>
-          <Field label="Email" htmlFor="add-member-email" required>
-            <Input
+          <Field label="Emails" htmlFor="add-member-email" required>
+            <TagInput
               id="add-member-email"
-              type="email"
-              value={addEmail}
-              onChange={(event) => setAddEmail(event.target.value)}
-              placeholder="name@kuda.com"
+              value={addEmails}
+              onChange={setAddEmails}
+              validate={(entry) => EMAIL_SHAPE.test(entry)}
+              onInvalidEntry={(entry) =>
+                toast.error(`"${entry}" doesn't look like an email`, {
+                  description: 'Fix it and press Enter to add it.',
+                })
+              }
+              placeholder="name@kuda.com, press Enter"
+              max={50}
+              disabled={addSaving}
             />
           </Field>
           <DialogFooter>
             <Button variant="outline" onClick={() => setAdding(false)} disabled={addSaving}>
               Cancel
             </Button>
-            <Button onClick={doAdd} disabled={addSaving || !EMAIL_SHAPE.test(addEmail.trim())}>
-              {addSaving ? 'Adding…' : 'Add'}
+            <Button onClick={doAdd} disabled={addSaving || addEmails.length === 0}>
+              {addSaving ? 'Adding…' : addEmails.length > 1 ? `Add ${addEmails.length}` : 'Add'}
             </Button>
           </DialogFooter>
         </DialogContent>

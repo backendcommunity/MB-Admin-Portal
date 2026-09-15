@@ -282,6 +282,7 @@ function TeamDetailClient() {
             teamId={id}
             members={team.members}
             isArchived={isArchived}
+            hasSubscription={Boolean(team.subscription)}
             onChanged={invalidate}
             onInviteInstead={() => setTab('invites')}
           />
