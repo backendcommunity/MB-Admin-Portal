@@ -62,6 +62,7 @@ import {
   type DraftQuestion,
 } from '@/lib/courses/quiz';
 import { ITEM_LABELS, ITEM_OWNED, missingFor, type ItemKind } from '@/lib/courses/items';
+import { JsonFillPanel } from '@/components/courses/JsonFillPanel';
 import { cn } from '@/lib/utils';
 
 export type DrawerTarget =
@@ -616,6 +617,13 @@ export default function ItemDrawer({
 
           {editing || mode === 'new' ? (
             <>
+              {/* Items only. A chapter is four short fields — a JSON box would
+                  cost more to read than the form it fills. `patch` merges, so
+                  the panel's partial patch leaves every other field alone. */}
+              {target.kind !== 'chapter' ? (
+                <JsonFillPanel kind={kind} onFill={patch} disabled={busy} />
+              ) : null}
+
               <Field label="Title" required>
                 <Input value={str('title')} onChange={(e) => patch({ title: e.target.value })} />
               </Field>
