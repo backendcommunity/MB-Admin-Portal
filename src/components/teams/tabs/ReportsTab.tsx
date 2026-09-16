@@ -8,6 +8,7 @@ import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { DataTable } from '@/components/shared/DataTable';
+import { CompletionsChart } from '@/components/teams/tabs/CompletionsChart';
 import { LoadingState, ErrorState } from '@/components/shared/LoadingState';
 import { cn } from '@/lib/utils';
 import {
@@ -26,6 +27,11 @@ function extractErrorMessage(err: unknown, fallback: string): string {
 const RANGES: { value: ReportRange; label: string }[] = [
   { value: '12w', label: '12 weeks' },
   { value: '12m', label: '12 months' },
+];
+
+const VIEWS: { value: 'chart' | 'table'; label: string }[] = [
+  { value: 'chart', label: 'Chart' },
+  { value: 'table', label: 'Table' },
 ];
 
 const TILES: { key: keyof TeamReportTotals; label: string }[] = [
@@ -102,6 +108,11 @@ function downloadCsv(filename: string, csv: string) {
  */
 export function ReportsTab({ teamId }: { teamId: string }) {
   const [range, setRange] = useState<ReportRange>('12w');
+  // The chart answers "is this team finishing more than it was?" at a glance;
+  // the table is still one click away for the exact numbers, for the
+  // `activeMembers` column the chart does not plot, and as the non-visual
+  // route to the same data.
+  const [view, setView] = useState<'chart' | 'table'>('chart');
 
   const { data, isLoading, isError, refetch } = useQuery({
     queryKey: ['admin-team-report', teamId, range],
@@ -191,10 +202,43 @@ export function ReportsTab({ teamId }: { teamId: string }) {
       </div>
 
       <div className="space-y-2">
-        <span className="text-sm font-semibold text-foreground">Completions</span>
-        <Card className="overflow-hidden p-0">
-          <DataTable table={table} mobileTitle={(row) => row.original.bucket} />
-        </Card>
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <span className="text-sm font-semibold text-foreground">Completions</span>
+          <div
+            role="group"
+            aria-label="Completions view"
+            className="flex gap-1 rounded-lg border border-border bg-card p-1"
+          >
+            {VIEWS.map((v) => (
+              <Button
+                key={v.value}
+                size="sm"
+                variant={view === v.value ? 'default' : 'ghost'}
+                aria-pressed={view === v.value}
+                onClick={() => setView(v.value)}
+              >
+                {v.label}
+              </Button>
+            ))}
+          </div>
+        </div>
+
+        {series.length === 0 ? (
+          <Card className="p-8">
+            <p className="text-center text-sm text-muted-foreground">
+              No completions recorded in this window yet.
+            </p>
+          </Card>
+        ) : view === 'table' ? (
+          <Card className="overflow-hidden p-0">
+            <DataTable table={table} mobileTitle={(row) => row.original.bucket} />
+          </Card>
+        ) : (
+          <Card className="p-4">
+            <CompletionsChart series={series} period={data.range.period} />
+          </Card>
+        )}
+
         <p className="text-xs text-muted-foreground">
           Completions before {data.range.completionsBegin} may be undercounted — see the note in
           this tab&apos;s source for why.
