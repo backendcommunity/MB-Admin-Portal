@@ -99,12 +99,41 @@ describe('ReportsTab — range selector', () => {
 });
 
 describe('ReportsTab — completions series', () => {
-  it('renders every bucket, on both desktop and mobile layouts', async () => {
+  it('leads with the chart, naming both plotted series', async () => {
     wrap(<ReportsTab teamId="tm1" />);
     await screen.findByText('11');
+
+    expect(screen.getByRole('button', { name: /^chart$/i })).toHaveAttribute(
+      'aria-pressed',
+      'true',
+    );
+    // Two series always carry a legend, so identity is never colour-alone.
+    // (`Courses finished` is also a stat-tile label, hence getAllByText.)
+    expect(screen.getAllByText('Courses finished').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('Paths finished').length).toBeGreaterThan(0);
+    // The chart replaces the table rather than sitting beside it.
+    expect(screen.queryByText('2026-08-01')).not.toBeInTheDocument();
+  });
+
+  it('keeps the exact figures one click away, on both desktop and mobile layouts', async () => {
+    wrap(<ReportsTab teamId="tm1" />);
+    await screen.findByText('11');
+    await userEvent.click(screen.getByRole('button', { name: /^table$/i }));
+
     // Both layouts render from the same column defs, so use getAllByText.
     expect(screen.getAllByText('2026-08-01').length).toBeGreaterThan(0);
     expect(screen.getAllByText('2026-08-08').length).toBeGreaterThan(0);
+    // `activeMembers` is not plotted, so the table is the only place the
+    // per-bucket figure shows up — losing it here would be a real regression.
+    expect(screen.getAllByText('Active members').length).toBeGreaterThan(0);
+  });
+
+  it('says so plainly when the window has no buckets, instead of an empty chart frame', async () => {
+    vi.mocked(fetchTeamReport).mockResolvedValue(report({ series: [] }));
+    wrap(<ReportsTab teamId="tm1" />);
+    await screen.findByText('11');
+
+    expect(screen.getByText(/no completions recorded/i)).toBeInTheDocument();
   });
 });
 

@@ -229,9 +229,29 @@ export async function removeTeamMember(teamId: string, memberId: string) {
 
 export type AddTeamMemberResult = {
   email: string;
-  status: 'added' | 'reactivated' | 'already-member' | 'unknown-user' | 'at-capacity';
+  /**
+   * `request-failed` is the ONLY status the API never sends — it is minted
+   * here, for the emails of a batch whose request threw. Without it a failed
+   * batch could only be reported by throwing, which would discard the results
+   * of every batch that already succeeded.
+   */
+  status:
+    | 'added'
+    | 'reactivated'
+    | 'already-member'
+    | 'unknown-user'
+    | 'at-capacity'
+    | 'request-failed';
   memberId?: string;
 };
+
+/**
+ * `ValidateAdminAddMembers` (academy `modules/admin/validators/teams.ts`)
+ * caps `emails` at 50 per request and 422s the WHOLE request past that. It
+ * bounds one write+notify pass on the server, so it is a per-REQUEST bound —
+ * not a limit on how many people an operator may add at once.
+ */
+const ADD_MEMBERS_PER_REQUEST = 50;
 
 /**
  * `POST /:id/members` — batch-add EXISTING users to the team directly. Each
@@ -240,13 +260,37 @@ export type AddTeamMemberResult = {
  * invitee to accept. One bad address never fails the whole call — the
  * response is one result per email, in the same order, each tagged with its
  * own outcome instead of a single thrown error.
+ *
+ * Any number of emails may be passed: the list is split into whole requests
+ * of `ADD_MEMBERS_PER_REQUEST` and sent in sequence, with the results
+ * concatenated back in the original order. Sequential rather than parallel
+ * because each request mutates the same team's seat count — firing them at
+ * once would race the server's own capacity check.
+ *
+ * A batch that throws does NOT abort the rest: its emails come back as
+ * `request-failed` and the following batches still go out, so one network
+ * blip never costs the operator the batches that already landed nor the ones
+ * still to come.
  */
 export async function addTeamMember(teamId: string, input: { emails: string[] }) {
-  const res = await axiosInstance.post<{ success: boolean; data: AddTeamMemberResult[] }>(
-    `/admin/teams/${teamId}/members`,
-    input,
-  );
-  return res.data.data;
+  const batches: string[][] = [];
+  for (let i = 0; i < input.emails.length; i += ADD_MEMBERS_PER_REQUEST) {
+    batches.push(input.emails.slice(i, i + ADD_MEMBERS_PER_REQUEST));
+  }
+
+  const results: AddTeamMemberResult[] = [];
+  for (const emails of batches) {
+    try {
+      const res = await axiosInstance.post<{ success: boolean; data: AddTeamMemberResult[] }>(
+        `/admin/teams/${teamId}/members`,
+        { emails },
+      );
+      results.push(...res.data.data);
+    } catch {
+      results.push(...emails.map((email) => ({ email, status: 'request-failed' as const })));
+    }
+  }
+  return results;
 }
 
 /**

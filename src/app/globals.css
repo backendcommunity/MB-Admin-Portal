@@ -173,10 +173,20 @@
   --input: #243a51;
   --ring: #35c3e0;
 
-  --chart-1: #35c3e0;
+  /* Series colours, not brand chrome — so these are NOT the dark --primary.
+     On the #101e2b card surface, --chart-1 and --chart-4 are stepped into the
+     dark-mode lightness band (OKLCH L 0.48–0.67) and separate by ΔE 17.6 to
+     normal vision and 10.3 under deuteranopia/tritanopia. The brighter
+     #35c3e0/#9d86ff they replace sat above the band and, paired with
+     --chart-2, fell under the ΔE 15 normal-vision floor — two adjacent series
+     a full-colour reader could not reliably tell apart.
+     --chart-2/3/5 keep their original steps: they are still unconsumed, and
+     are NOT yet validated as a dark categorical set. Re-run the palette
+     validator against #101e2b before reaching for them. */
+  --chart-1: #22a2be;
   --chart-2: #43c08c;
   --chart-3: #e0a343;
-  --chart-4: #9d86ff;
+  --chart-4: #8571e8;
   --chart-5: #9db0c4;
 
   /* The rail is the one surface that does not invert: it is the brand anchor,
