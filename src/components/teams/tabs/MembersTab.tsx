@@ -7,7 +7,7 @@ import { toast } from 'sonner';
 
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
-import { TagInput } from '@/components/shared/form/TagInput';
+import { TagInput, splitEntries, type RejectedEntries } from '@/components/shared/form/TagInput';
 import {
   Dialog,
   DialogContent,
@@ -58,6 +58,20 @@ const ROLES: TeamMemberRole[] = ['ADMIN', 'MEMBER'];
 const EMAIL_SHAPE = /^[^@\s]+@[^@\s.]+(\.[^@\s.]+)+$/;
 
 /**
+ * An email can never contain a space, so whitespace joins commas and
+ * semicolons as a separator here. That covers every shape a roster actually
+ * arrives in: a spreadsheet column (newlines), a mail client's To: field
+ * (comma or semicolon), or a Slack message (spaces).
+ */
+const EMAIL_SPLIT = /[\s,;]+/;
+
+/** "a, b and c" — with a cutoff, so a 50-address list never becomes a wall. */
+function listSome(items: string[], limit = 3): string {
+  if (items.length <= limit) return items.join(', ');
+  return `${items.slice(0, limit).join(', ')} and ${items.length - limit} more`;
+}
+
+/**
  * Completes slice 1's read-only roster: change role, remove, and per-member
  * progress. Both writes are `requireStrictAdmin` on the API — this whole
  * page is already gated to ADMIN/SUPER_ADMIN by `ProtectedPage`, so neither
@@ -100,6 +114,12 @@ export function MembersTab({
   const [showRemoved, setShowRemoved] = useState(false);
   const [adding, setAdding] = useState(false);
   const [addEmails, setAddEmails] = useSeededForm(adding ? 'open' : 'closed', () => [] as string[]);
+  // The text still sitting in the input, uncommitted. Clicking Add blurs the
+  // input, and blur-then-click is a race the operator should never have to
+  // know about: they typed an address, they pressed Add, it must send. So the
+  // draft is tracked here and folded into the batch, which makes the outcome
+  // identical whether or not the blur commit lands first.
+  const [addDraft, setAddDraft] = useSeededForm(adding ? 'open' : 'closed', () => '');
   const [addSaving, setAddSaving] = useState(false);
   const [roleFor, setRoleFor] = useState<TeamMemberRow | null>(null);
   const [nextRole, setNextRole] = useState<TeamMemberRole>('MEMBER');
@@ -181,6 +201,45 @@ export function MembersTab({
   };
 
   /**
+   * Chips plus whatever is still uncommitted in the box, deduped
+   * case-insensitively. Deliberately uncapped: `addTeamMember` splits the
+   * list into requests the API will accept, so there is no number of
+   * addresses this form has to refuse. This — not `addEmails` — is what the
+   * button reflects and what gets sent.
+   */
+  const pendingEmails = useMemo(() => {
+    const out: string[] = [];
+    const seen = new Set<string>();
+    for (const email of [...addEmails, ...splitEntries(addDraft, EMAIL_SPLIT)]) {
+      const key = email.toLowerCase();
+      if (seen.has(key)) continue;
+      if (!EMAIL_SHAPE.test(email)) continue;
+      seen.add(key);
+      out.push(email);
+    }
+    return out;
+  }, [addEmails, addDraft]);
+
+  /**
+   * One toast per REASON, never one per address: a pasted list of thirty
+   * unknown addresses is a single "30 of these have no account" — thirty
+   * stacked toasts would bury the ones that did go in.
+   */
+  const reportRejected = ({ invalid }: RejectedEntries) => {
+    if (invalid.length === 1) {
+      toast.error(`"${invalid[0]}" doesn't look like an email`, {
+        description: 'It is still in the box — fix it and it goes in with the rest.',
+      });
+    } else if (invalid.length > 1) {
+      toast.error(`${invalid.length} of those don't look like emails`, {
+        description: `${listSome(invalid)} — still in the box, fix them and they go in with the rest.`,
+      });
+    }
+    // No `overflow` branch: the field is uncapped, so `onRejected` can only
+    // ever carry invalid entries here.
+  };
+
+  /**
    * `POST /:id/members` — adds one or more EXISTING users immediately
    * (ACTIVE, Pro now), unlike `inviteTeamMember` which sends an email the
    * person must accept. One bad address never fails the batch: the response
@@ -188,10 +247,10 @@ export function MembersTab({
    * surfaced as one pass/fail.
    */
   const doAdd = async () => {
-    if (!addEmails.length) return;
+    if (!pendingEmails.length) return;
     setAddSaving(true);
     try {
-      const results = await addTeamMember(teamId, { emails: addEmails });
+      const results = await addTeamMember(teamId, { emails: pendingEmails });
       const added = results.filter((r) => r.status === 'added' || r.status === 'reactivated');
       const failed = results.filter((r) => r.status !== 'added' && r.status !== 'reactivated');
       if (added.length) {
@@ -201,17 +260,35 @@ export function MembersTab({
             : `${added.length} people added to the team — they have Pro now.`,
         );
       }
-      failed.forEach((r) => {
+      // Grouped by reason for the same reason `reportRejected` is: a batch of
+      // fifty must not be able to fire fifty toasts.
+      const byReason = new Map<string, string[]>();
+      for (const r of failed) {
         const reason =
           r.status === 'unknown-user'
             ? 'no account with that email'
             : r.status === 'already-member'
               ? 'already a member'
-              : 'team is at capacity';
-        toast.error(`Could not add ${r.email}`, { description: reason });
-      });
-      setAdding(false);
-      onChanged();
+              : r.status === 'request-failed'
+                ? 'the request failed — these were not added, try them again'
+                : 'team is at capacity';
+        byReason.set(reason, [...(byReason.get(reason) ?? []), r.email]);
+      }
+      for (const [reason, emails] of byReason) {
+        toast.error(
+          emails.length === 1
+            ? `Could not add ${emails[0]}`
+            : `Could not add ${emails.length} of them`,
+          { description: `${reason} — ${listSome(emails)}` },
+        );
+      }
+      // Nothing landed, so the dialog stays open with the list intact —
+      // closing it would make the operator re-paste the whole roster just to
+      // retry. Any success at all means the roster changed and must refresh.
+      if (added.length) {
+        setAdding(false);
+        onChanged();
+      }
     } catch (error) {
       toast.error('Could not add them', {
         description: extractErrorMessage(error, 'Unknown error'),
@@ -437,9 +514,9 @@ export function MembersTab({
             <DialogTitle>Add an existing member</DialogTitle>
           </DialogHeader>
           <p className="text-xs text-muted-foreground">
-            Adds an existing Masteringbackend user to this team right now. They become an ACTIVE
-            member immediately and get Pro access immediately — unlike Invite, which emails them and
-            waits for them to accept.
+            Adds existing Masteringbackend users to this team right now. They become ACTIVE members
+            and get Pro access immediately — unlike Invite, which emails them and waits for them to
+            accept.
           </p>
           <Field label="Emails" htmlFor="add-member-email" required>
             <TagInput
@@ -447,22 +524,29 @@ export function MembersTab({
               value={addEmails}
               onChange={setAddEmails}
               validate={(entry) => EMAIL_SHAPE.test(entry)}
-              onInvalidEntry={(entry) =>
-                toast.error(`"${entry}" doesn't look like an email`, {
-                  description: 'Fix it and press Enter to add it.',
-                })
-              }
-              placeholder="name@kuda.com, press Enter"
-              max={50}
+              splitPattern={EMAIL_SPLIT}
+              onRejected={reportRejected}
+              onDraftChange={setAddDraft}
+              placeholder="Paste emails here — commas, spaces or one per line"
+              max={null}
               disabled={addSaving}
             />
           </Field>
+          <p className="text-xs text-muted-foreground">
+            {pendingEmails.length
+              ? `${pendingEmails.length} ${pendingEmails.length === 1 ? 'address' : 'addresses'} ready.`
+              : 'Paste a list straight from a spreadsheet, a mail client or Slack — as many as you like. No need to press Enter.'}
+          </p>
           <DialogFooter>
             <Button variant="outline" onClick={() => setAdding(false)} disabled={addSaving}>
               Cancel
             </Button>
-            <Button onClick={doAdd} disabled={addSaving || addEmails.length === 0}>
-              {addSaving ? 'Adding…' : addEmails.length > 1 ? `Add ${addEmails.length}` : 'Add'}
+            <Button onClick={doAdd} disabled={addSaving || pendingEmails.length === 0}>
+              {addSaving
+                ? 'Adding…'
+                : pendingEmails.length > 1
+                  ? `Add ${pendingEmails.length}`
+                  : 'Add'}
             </Button>
           </DialogFooter>
         </DialogContent>

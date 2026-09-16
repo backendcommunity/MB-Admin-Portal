@@ -82,6 +82,8 @@ beforeEach(() => {
   put.mockResolvedValue({ data: { success: true, data: { id: 'tm1' } } });
 });
 
+const emails = (n: number) => Array.from({ length: n }, (_, i) => `p${i}@kuda.com`);
+
 describe('teams api client', () => {
   it('lists from /admin/teams, not /teams', async () => {
     await fetchTeams({ page: 1 });
@@ -499,6 +501,54 @@ describe('add member', () => {
       emails: ['new@kuda.com', 'ghost@kuda.com'],
     });
     expect(result).toEqual(results);
+  });
+
+  it('sends one request when the list fits inside the API cap', async () => {
+    post.mockResolvedValue({ data: { success: true, data: [] } });
+    await addTeamMember('tm1', { emails: emails(50) });
+    expect(post).toHaveBeenCalledTimes(1);
+  });
+
+  it('splits a list past the cap into whole requests and merges the results in order', async () => {
+    const all = emails(120);
+    post.mockImplementation((_url: string, body: { emails: string[] }) => ({
+      data: {
+        success: true,
+        data: body.emails.map((email) => ({ email, status: 'added', memberId: `m-${email}` })),
+      },
+    }));
+
+    const result = await addTeamMember('tm1', { emails: all });
+
+    // 50 + 50 + 20 — the API 422s the WHOLE request past 50, so the cap is a
+    // per-request bound, not a limit on what an operator may paste.
+    expect(post).toHaveBeenCalledTimes(3);
+    expect(post.mock.calls[0][1]).toEqual({ emails: all.slice(0, 50) });
+    expect(post.mock.calls[1][1]).toEqual({ emails: all.slice(50, 100) });
+    expect(post.mock.calls[2][1]).toEqual({ emails: all.slice(100) });
+    expect(result.map((r) => r.email)).toEqual(all);
+  });
+
+  it('keeps the batches that landed when one request fails, naming the ones that did not', async () => {
+    const all = emails(120);
+    post.mockImplementation((_url: string, body: { emails: string[] }) => {
+      if (body.emails[0] === all[50]) throw new Error('boom');
+      return {
+        data: {
+          success: true,
+          data: body.emails.map((email) => ({ email, status: 'added', memberId: `m-${email}` })),
+        },
+      };
+    });
+
+    const result = await addTeamMember('tm1', { emails: all });
+
+    // A failed middle batch must not hide the 50 people who really were added,
+    // nor stop the batches after it.
+    expect(post).toHaveBeenCalledTimes(3);
+    expect(result.filter((r) => r.status === 'added')).toHaveLength(70);
+    const failed = result.filter((r) => r.status === 'request-failed');
+    expect(failed.map((r) => r.email)).toEqual(all.slice(50, 100));
   });
 });
 
