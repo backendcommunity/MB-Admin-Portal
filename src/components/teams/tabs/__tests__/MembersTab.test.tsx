@@ -328,6 +328,153 @@ describe('MembersTab', () => {
       );
     });
 
+    it('adds a pasted comma-separated list in one call, with no Enter presses', async () => {
+      const onChanged = vi.fn();
+      vi.mocked(addTeamMember).mockResolvedValue([
+        { email: 'a@kuda.com', status: 'added', memberId: 'm1' },
+        { email: 'b@kuda.com', status: 'added', memberId: 'm2' },
+        { email: 'c@kuda.com', status: 'added', memberId: 'm3' },
+      ]);
+      setup(onChanged);
+
+      await userEvent.click(screen.getByRole('button', { name: /add member/i }));
+      await userEvent.click(screen.getByLabelText(/emails/i));
+      await userEvent.paste('a@kuda.com, b@kuda.com, c@kuda.com');
+      await userEvent.click(screen.getByRole('button', { name: /^add 3$/i }));
+
+      expect(addTeamMember).toHaveBeenCalledWith('tm1', {
+        emails: ['a@kuda.com', 'b@kuda.com', 'c@kuda.com'],
+      });
+      expect(onChanged).toHaveBeenCalled();
+    });
+
+    it('splits a pasted list on newlines and spaces too, not only commas', async () => {
+      vi.mocked(addTeamMember).mockResolvedValue([
+        { email: 'a@kuda.com', status: 'added', memberId: 'm1' },
+        { email: 'b@kuda.com', status: 'added', memberId: 'm2' },
+      ]);
+      setup();
+
+      await userEvent.click(screen.getByRole('button', { name: /add member/i }));
+      await userEvent.click(screen.getByLabelText(/emails/i));
+      await userEvent.paste('a@kuda.com\nb@kuda.com');
+      await userEvent.click(screen.getByRole('button', { name: /^add 2$/i }));
+
+      expect(addTeamMember).toHaveBeenCalledWith('tm1', {
+        emails: ['a@kuda.com', 'b@kuda.com'],
+      });
+    });
+
+    it('sends a typed email when Add is clicked without an Enter press', async () => {
+      vi.mocked(addTeamMember).mockResolvedValue([
+        { email: 'solo@kuda.com', status: 'added', memberId: 'm1' },
+      ]);
+      setup();
+
+      await userEvent.click(screen.getByRole('button', { name: /add member/i }));
+      await userEvent.type(screen.getByLabelText(/emails/i), 'solo@kuda.com');
+      // No {Enter} — the operator typed one address and went straight for
+      // the button, which must not be disabled at that moment.
+      await userEvent.click(screen.getByRole('button', { name: /^add$/i }));
+
+      expect(addTeamMember).toHaveBeenCalledWith('tm1', { emails: ['solo@kuda.com'] });
+    });
+
+    it("takes a paste of any size — the per-request cap is the api client's problem", async () => {
+      const many = Array.from({ length: 120 }, (_, i) => `p${i}@kuda.com`);
+      vi.mocked(addTeamMember).mockResolvedValue(
+        many.map((email, i) => ({ email, status: 'added' as const, memberId: `m${i}` })),
+      );
+      setup();
+
+      await userEvent.click(screen.getByRole('button', { name: /add member/i }));
+      await userEvent.click(screen.getByLabelText(/emails/i));
+      await userEvent.paste(many.join(', '));
+
+      expect(screen.getByRole('button', { name: /^add 120$/i })).toBeInTheDocument();
+      // Nothing is refused on the way in, so no overflow toast.
+      expect(toast.error).not.toHaveBeenCalled();
+
+      await userEvent.click(screen.getByRole('button', { name: /^add 120$/i }));
+      expect(addTeamMember).toHaveBeenCalledWith('tm1', { emails: many });
+    });
+
+    it('names the addresses whose request failed, and keeps the dialog open when none landed', async () => {
+      vi.mocked(addTeamMember).mockResolvedValue([
+        { email: 'a@kuda.com', status: 'request-failed' },
+        { email: 'b@kuda.com', status: 'request-failed' },
+      ]);
+      const onChanged = vi.fn();
+      setup(onChanged);
+
+      await userEvent.click(screen.getByRole('button', { name: /add member/i }));
+      await userEvent.click(screen.getByLabelText(/emails/i));
+      await userEvent.paste('a@kuda.com, b@kuda.com');
+      await userEvent.click(screen.getByRole('button', { name: /^add 2$/i }));
+
+      await waitFor(() =>
+        expect(toast.error).toHaveBeenCalledWith(
+          expect.stringContaining('2'),
+          expect.objectContaining({ description: expect.stringMatching(/request failed/i) }),
+        ),
+      );
+      // Nobody was added, so the typed list must survive for a retry.
+      expect(screen.getByRole('button', { name: /^add 2$/i })).toBeInTheDocument();
+      expect(onChanged).not.toHaveBeenCalled();
+    });
+
+    it('closes and refreshes when some landed, even though others failed', async () => {
+      vi.mocked(addTeamMember).mockResolvedValue([
+        { email: 'a@kuda.com', status: 'added', memberId: 'm1' },
+        { email: 'b@kuda.com', status: 'request-failed' },
+      ]);
+      const onChanged = vi.fn();
+      setup(onChanged);
+
+      await userEvent.click(screen.getByRole('button', { name: /add member/i }));
+      await userEvent.click(screen.getByLabelText(/emails/i));
+      await userEvent.paste('a@kuda.com, b@kuda.com');
+      await userEvent.click(screen.getByRole('button', { name: /^add 2$/i }));
+
+      await waitFor(() => expect(onChanged).toHaveBeenCalled());
+    });
+
+    it('groups a batch of bad addresses into one toast instead of one each', async () => {
+      setup();
+
+      await userEvent.click(screen.getByRole('button', { name: /add member/i }));
+      await userEvent.click(screen.getByLabelText(/emails/i));
+      await userEvent.paste('good@kuda.com, nope, also-nope, third-nope');
+
+      expect(toast.error).toHaveBeenCalledTimes(1);
+      expect(toast.error).toHaveBeenCalledWith(
+        expect.stringContaining('3'),
+        expect.objectContaining({ description: expect.stringContaining('nope') }),
+      );
+    });
+
+    it('groups per-email failures by reason rather than one toast per email', async () => {
+      vi.mocked(addTeamMember).mockResolvedValue([
+        { email: 'a@kuda.com', status: 'added', memberId: 'm1' },
+        { email: 'x@kuda.com', status: 'unknown-user' },
+        { email: 'y@kuda.com', status: 'unknown-user' },
+        { email: 'z@kuda.com', status: 'already-member' },
+      ]);
+      setup();
+
+      await userEvent.click(screen.getByRole('button', { name: /add member/i }));
+      await userEvent.click(screen.getByLabelText(/emails/i));
+      await userEvent.paste('a@kuda.com, x@kuda.com, y@kuda.com, z@kuda.com');
+      await userEvent.click(screen.getByRole('button', { name: /^add 4$/i }));
+
+      // Two reasons among four emails — two toasts, not three.
+      await waitFor(() => expect(toast.error).toHaveBeenCalledTimes(2));
+      expect(toast.error).toHaveBeenCalledWith(
+        expect.stringContaining('2'),
+        expect.objectContaining({ description: expect.stringContaining('x@kuda.com') }),
+      );
+    });
+
     it('disables Add member when a subscription is attached, pointing at Invite instead', () => {
       setup(vi.fn(), true);
       expect(screen.getByRole('button', { name: /add member/i })).toBeDisabled();
