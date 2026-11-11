@@ -114,6 +114,11 @@ export type Cohort = {
   asyncpay_plan_id: string;
   allowsSubscription: boolean;
   paymentMethods: string[];
+  /**
+   * Team every paid buyer of this cohort joins (it is what gives them Pro).
+   * `""` when none is linked. Staff-only, like the pricing fields.
+   */
+  teamId?: string;
   studentCount?: number;
   weekCount?: number;
   /** Summed across the cohort's weeks — Prisma cannot count two levels down. */
