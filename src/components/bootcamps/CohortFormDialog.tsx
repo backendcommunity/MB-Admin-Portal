@@ -27,6 +27,7 @@ import { useSeededForm } from '@/lib/forms/useSeededForm';
 import { StaffOnly } from '@/components/shared/SuperAdminOnly';
 import { useAuthStore } from '@/store/authStore';
 import { stripPricingFields } from '@/lib/pricing-fields';
+import { ProgrammeTeamPicker } from './ProgrammeTeamPicker';
 
 /** An ISO timestamp as the `date` input wants it. */
 function dateValue(iso: string | null | undefined) {
@@ -55,6 +56,7 @@ const EMPTY = {
   paddle_price_id: '',
   asyncpay_plan_id: '',
   allowsSubscription: true,
+  teamId: '',
 };
 
 export default function CohortFormDialog({
@@ -88,6 +90,7 @@ export default function CohortFormDialog({
           paddle_price_id: cohort.paddle_price_id,
           asyncpay_plan_id: cohort.asyncpay_plan_id,
           allowsSubscription: cohort.allowsSubscription,
+          teamId: cohort.teamId ?? '',
         }
       : EMPTY,
   );
@@ -128,6 +131,7 @@ export default function CohortFormDialog({
         paddle_price_id: form.paddle_price_id,
         asyncpay_plan_id: form.asyncpay_plan_id,
         allowsSubscription: form.allowsSubscription,
+        teamId: form.teamId,
         // The API wants ISO; a `date` input gives a bare day.
         ...(form.startsAt ? { startsAt: new Date(form.startsAt).toISOString() } : {}),
         endsAt: form.endsAt ? new Date(form.endsAt).toISOString() : null,
@@ -302,6 +306,21 @@ export default function CohortFormDialog({
                 value={form.asyncpay_plan_id}
                 onChange={(event) => set('asyncpay_plan_id', event.target.value)}
               />
+            </div>
+          ) : null}
+
+          {isStaff ? (
+            <div className="space-y-1.5 sm:col-span-2">
+              <Label htmlFor="cohort-team">Programme team</Label>
+              <ProgrammeTeamPicker
+                id="cohort-team"
+                value={form.teamId}
+                onChange={(teamId) => set('teamId', teamId)}
+              />
+              <p className="text-xs text-muted-foreground">
+                Everyone who buys this cohort through a scholarship checkout joins this team,
+                which is what gives them Pro. Create the team under Teams first.
+              </p>
             </div>
           ) : null}
 
