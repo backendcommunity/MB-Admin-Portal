@@ -19,13 +19,15 @@ export const PRICING_FIELDS = [
   'asyncpay_plan_id',
   'allowsSubscription',
   'paymentMethods',
+  // Cohort's programme team: grants every paid buyer Pro, so staff only.
+  'teamId',
 ] as const;
 
 /**
  * Drop every pricing key from `data` for a non-staff caller — never send them
  * as `undefined` or `null`, the guard tests presence via `in`. A field absent
  * from `data` is left alone, so this is safe to apply uniformly across forms
- * that each only collect a subset of the eight (e.g. a cohort form has no
+ * that each only collect a subset of the nine (e.g. a cohort form has no
  * `paddlePlanCode`, a Ship form has no `paddle_price_id`).
  */
 export function stripPricingFields<T extends Record<string, unknown>>(data: T): Partial<T> {

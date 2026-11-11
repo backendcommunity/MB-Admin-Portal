@@ -12,6 +12,7 @@ describe('PRICING_FIELDS', () => {
       'asyncpay_plan_id',
       'allowsSubscription',
       'paymentMethods',
+      'teamId',
     ]);
   });
 });
@@ -28,6 +29,7 @@ describe('stripPricingFields', () => {
       asyncpay_plan_id: '',
       allowsSubscription: true,
       paymentMethods: ['card'],
+      teamId: 'b55d962b-ba81-44ff-89e7-3c924f52c2f1',
     });
 
     for (const field of PRICING_FIELDS) {
